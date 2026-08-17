@@ -46,10 +46,29 @@ Capacitor v7/v8 peer conflict from `@spryrocks/capacitor-socket-connection-plugi
 - **`@sentinel/marine` ships both ESM and CJS.** OceanSentinel's backend is bundled to
   CommonJS by esbuild, so the package needs its `dist-cjs/` output and the `require`
   export condition. `npm run build` produces both — don't drop one.
-- **Consuming apps need a Vite `resolve.alias`** for `react`, `react-dom`, and
-  `lucide-react` pointing at the app's own `node_modules`. Because `file:` deps resolve
-  through a symlink, Vite would otherwise bundle this repo's copy of React as a *second*
-  React instance, which crashes at mount with `Cannot read properties of null (reading 'useState')`.
+- **Every bare import a shared package makes must be aliased in the consuming app's Vite
+  config**, pointing at that app's own `node_modules`. This is the single most important
+  constraint here, and it bites in two different ways:
+  1. *Duplicate instances.* Because `file:` deps resolve through a symlink, Vite would
+     otherwise bundle this repo's copy of React as a **second** React instance, which
+     crashes at mount with `Cannot read properties of null (reading 'useState')`.
+  2. *Builds that pass locally and fail in CI.* Vite resolves a shared package's bare
+     imports relative to `sentinel-shared/`, **not** the app. On a dev machine that
+     usually works by accident, because these packages have their own `node_modules`
+     installed. A fresh clone (i.e. CI) has none, so the build fails with
+     `Rollup failed to resolve import "X" from ".../sentinel-shared/<pkg>/dist/...".`
+
+  The current set that must be aliased is `react`, `react-dom`, `react/jsx-runtime`
+  (covered by the `react` alias), `lucide-react`, `motion/react` (weather-ui only), and
+  `@capacitor/core` + `@capacitor/device` (auth-ui only). **Adding a new runtime import
+  to a shared package is a breaking change for every consumer** until its alias is added.
+  To check before pushing, build an app with the shared `node_modules` moved aside —
+  that reproduces CI exactly:
+
+  ```bash
+  mv sentinel-shared/auth-ui/node_modules{,.bak}   # repeat per package
+  cd <app> && npm run build                        # must still succeed
+  ```
 - **Peer dependency versions must stay aligned** with the apps (`react` ^19.0.1,
   `lucide-react` ^0.546.0, `@capacitor/*` ^8.x, `@supabase/supabase-js` ^2.110.0).
   Bumping one app without the others reintroduces duplicate-instance bugs.
