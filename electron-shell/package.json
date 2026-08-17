@@ -1,0 +1,13 @@
+{
+  "name": "@sentinel/electron-shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared Electron main-process building blocks for the Mariner Sentinel fleet (auto-updater IPC, platform compatibility, window diagnostics, tray).",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
