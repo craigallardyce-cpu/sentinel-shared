@@ -263,6 +263,20 @@ if (sharedHead) {
 }
 
 // ---------------------------------------------------------------------------
+// 8. The sentinel-check skill is canonical here but gets installed to the user's
+//    ~/.claude/skills. Warn only if an installed copy exists and has diverged;
+//    staying silent when it is absent, since not every machine installs it.
+// ---------------------------------------------------------------------------
+const canonicalSkill = path.join(SHARED_ROOT, 'skills/sentinel-check/SKILL.md');
+const home = process.env.HOME || process.env.USERPROFILE;
+if (home && exists(canonicalSkill)) {
+  const installed = path.join(home, '.claude/skills/sentinel-check/SKILL.md');
+  if (exists(installed) && readText(installed) !== readText(canonicalSkill)) {
+    warn('skill', 'installed ~/.claude/skills/sentinel-check/SKILL.md differs from the canonical copy in sentinel-shared — re-copy it');
+  }
+}
+
+// ---------------------------------------------------------------------------
 const scope = presentApps.length > 1 ? 'full fleet' : `${presentApps[0].name} only (cross-app checks skipped)`;
 console.log(`Fleet drift check — scope: ${scope}\n`);
 const fails = results.filter((r) => r.level === 'FAIL');

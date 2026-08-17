@@ -24,6 +24,23 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 
+## Tooling in this repo
+
+| Path | What it is |
+|---|---|
+| `scripts/check-fleet-drift.mjs` | Drift checker. Run from `Projects/` for the whole fleet, or from an app for that app only. Also runs in each app's CI on every push. |
+| `skills/sentinel-check/SKILL.md` | Canonical source for the `/sentinel-check` Claude Code skill. |
+
+The skill is **not** picked up from this repo automatically — copy it to your user-level
+skills directory so it is available from every app folder:
+
+```bash
+mkdir -p ~/.claude/skills/sentinel-check
+cp skills/sentinel-check/SKILL.md ~/.claude/skills/sentinel-check/SKILL.md
+```
+
+Edit the copy here, not the installed one; the drift checker warns if the two diverge.
+
 ## Working on a shared package
 
 Changes here do **not** reach the apps automatically. After editing:
