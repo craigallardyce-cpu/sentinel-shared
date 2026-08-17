@@ -198,14 +198,23 @@ for (const app of presentApps) {
   const mSrc = readText(manifest);
   const gSrc = readText(gradle);
 
-  // Review finding A2: OceanSentinel and HarborSentinel are chart and
-  // situational-awareness apps. On a tablet at the nav station or in the cockpit,
-  // landscape is the primary orientation, so locking to portrait is the defect —
-  // not the absence of a lock. An earlier pass got this backwards and added the
-  // lock to all three "for consistency"; this check exists so that cannot recur.
+  // Orientation policy: phones lock to portrait, tablets rotate freely. That
+  // cannot be expressed by android:screenOrientation, which has no screen-size
+  // qualifier, so it is a resource-qualified bool read in MainActivity. A hard
+  // manifest lock would override it and break landscape on tablets — which is
+  // what review finding A2 was about — so it is rejected here.
   if (/android:screenOrientation="portrait"/.test(mSrc)) {
-    fail('android', `${app.name}: activity is locked to portrait — chart/situational-awareness apps need landscape (review finding A2)`);
+    fail('android', `${app.name}: manifest hard-locks portrait, which also locks tablets — use the portrait_only bool instead (review finding A2)`);
   }
+  const boolsDefault = path.join(aDir, 'app/src/main/res/values/bools.xml');
+  const boolsTablet = path.join(aDir, 'app/src/main/res/values-sw600dp/bools.xml');
+  const mainActivity = walk(path.join(aDir, 'app/src/main/java')).find((f) => f.endsWith('MainActivity.java'));
+  const okDefault = exists(boolsDefault) && /name="portrait_only">true</.test(readText(boolsDefault));
+  const okTablet = exists(boolsTablet) && /name="portrait_only">false</.test(readText(boolsTablet));
+  const okActivity = mainActivity && /R\.bool\.portrait_only/.test(readText(mainActivity)) && /SCREEN_ORIENTATION_PORTRAIT/.test(readText(mainActivity));
+  if (!okDefault) fail('android', `${app.name}: res/values/bools.xml must set portrait_only=true (phones lock to portrait)`);
+  if (!okTablet) fail('android', `${app.name}: res/values-sw600dp/bools.xml must set portrait_only=false (tablets rotate freely)`);
+  if (!okActivity) fail('android', `${app.name}: MainActivity must apply R.bool.portrait_only via setRequestedOrientation`);
   if (!/android:networkSecurityConfig=/.test(mSrc)) fail('android', `${app.name}: no networkSecurityConfig referenced`);
   if (!exists(path.join(aDir, 'app/src/main/res/xml/network_security_config.xml'))) {
     fail('android', `${app.name}: network_security_config.xml missing`);
