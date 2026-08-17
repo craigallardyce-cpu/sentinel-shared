@@ -263,7 +263,91 @@ if (sharedHead) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. The sentinel-check skill is canonical here but gets installed to the user's
+// 8. Palette integrity.
+//
+//    OceanSentinel and VesselKeeper import @sentinel/theme, so their check is that
+//    they have not reintroduced a local copy of a shared token.
+//
+//    HarborSentinel is different on purpose: its @theme uses Material-style names
+//    with literal hex values, and only about half of them have a shared equivalent
+//    (the rest are roles like primary/on-primary that the other apps do not have).
+//    Rewriting it to var() refs would leave a half-literal theme for little gain, so
+//    instead its literals are checked against the shared values by an explicit
+//    name-to-name map. Value-based inference would be useless here: it would stop
+//    matching precisely when a value drifts, which is when it needs to speak up.
+// ---------------------------------------------------------------------------
+const tokensFile = path.join(SHARED_ROOT, 'theme/tokens.css');
+if (exists(tokensFile)) {
+  const sharedTokens = new Map(
+    [...readText(tokensFile).matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()])
+  );
+
+  // Apps that consume the shared palette must not redefine its tokens locally.
+  for (const app of presentApps.filter((a) => a.name !== 'HarborSentinel')) {
+    const cssPath = path.join(ROOT, app.name, app.name === 'OceanSentinel' ? 'frontend/src/index.css' : 'src/client/index.css');
+    if (!exists(cssPath)) continue;
+    const src = readText(cssPath);
+    if (!src.includes('@sentinel/theme/tokens.css')) {
+      fail('theme', `${app.name}: does not import @sentinel/theme/tokens.css`);
+      continue;
+    }
+    // Only :root counts as redefining the base palette. Scoped overrides such as
+    // .theme-night deliberately restate these tokens and must not be flagged.
+    // ":root" must start a line, so a descendant selector like ".theme-night :root"
+    // is not mistaken for the base palette.
+    for (const block of src.matchAll(/^[ \t]*:root\s*\{([^}]*)\}/gm)) {
+      for (const [name] of sharedTokens) {
+        if (new RegExp(`(^|\\s)${name}\\s*:`, 'm').test(block[1])) {
+          fail('theme', `${app.name}: :root redefines shared token ${name} — it should come from @sentinel/theme`);
+        }
+      }
+    }
+  }
+
+  // HarborSentinel keeps its own naming layer; verify the values still agree.
+  const HARBOR_TO_SHARED = {
+    '--color-background': '--bg-app',
+    '--color-error': '--color-red',
+    '--color-error-container': '--color-red-dim',
+    '--color-on-background': '--text-primary',
+    '--color-on-secondary-container': '--color-cyan-dim',
+    '--color-on-surface': '--text-primary',
+    '--color-on-surface-variant': '--text-secondary',
+    '--color-outline': '--text-muted',
+    '--color-outline-variant': '--border-color',
+    '--color-secondary': '--color-cyan',
+    '--color-secondary-container': '--color-amber',
+    '--color-secondary-fixed-dim': '--color-cyan',
+    '--color-surface': '--bg-app',
+    '--color-surface-container': '--bg-card',
+    '--color-surface-container-high': '--bg-card-hover',
+    '--color-surface-container-highest': '--bg-highest',
+    '--color-surface-container-low': '--bg-panel',
+    '--color-surface-container-lowest': '--bg-lowest',
+    '--color-surface-dim': '--bg-app',
+    '--color-surface-variant': '--bg-highest',
+    '--color-tertiary': '--color-orange',
+    '--color-tertiary-fixed-dim': '--color-orange',
+  };
+  const harbor = presentApps.find((a) => a.name === 'HarborSentinel');
+  const harborCss = harbor && path.join(ROOT, 'HarborSentinel/src/index.css');
+  if (harborCss && exists(harborCss)) {
+    const theme = readText(harborCss).match(/@theme\s*\{([\s\S]*?)\n\}/);
+    if (theme) {
+      const declared = new Map([...theme[1].matchAll(/(--color-[a-z0-9-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/g)].map((m) => [m[1], m[2].toLowerCase()]));
+      for (const [hName, sName] of Object.entries(HARBOR_TO_SHARED)) {
+        const have = declared.get(hName);
+        const want = (sharedTokens.get(sName) || '').toLowerCase();
+        if (have && want && have !== want) {
+          fail('theme', `HarborSentinel: ${hName} is ${have} but shared ${sName} is ${want} — palette has drifted`);
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. The sentinel-check skill is canonical here but gets installed to the user's
 //    ~/.claude/skills. Warn only if an installed copy exists and has diverged;
 //    staying silent when it is absent, since not every machine installs it.
 // ---------------------------------------------------------------------------

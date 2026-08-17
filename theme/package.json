@@ -1,0 +1,12 @@
+{
+  "name": "@sentinel/theme",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared colour palette and font tokens for the Mariner Sentinel fleet.",
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  },
+  "files": [
+    "tokens.css"
+  ]
+}

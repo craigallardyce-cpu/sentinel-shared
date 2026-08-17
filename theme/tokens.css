@@ -1,0 +1,59 @@
+/*
+ * Mariner Sentinel shared palette — the single source of truth for the fleet.
+ *
+ * OceanSentinel, HarborSentinel and VesselKeeper independently carried byte-identical
+ * copies of these values; HarborSentinel additionally maps the same hexes onto
+ * Material-style names. Consuming apps import this file and keep their own `@theme`
+ * naming layer on top, so no component or utility class changes.
+ *
+ * Changing a value here changes all three apps. That is the point.
+ */
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-heading: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* High-Contrast Sentinel night-mode system colors (from Harbor Sentinel UI) */
+  --bg-lowest: #040e1f;
+  --bg-app: #081425;
+  --bg-panel: #111c2d;
+  --bg-panel-header: #111c2d;
+  --bg-card: #152031;
+  --bg-card-hover: #1f2a3c;
+  --bg-highest: #2a3548;
+  
+  --border-color: #45464c;
+  --border-focus: #4cd7f6;
+  
+  --text-primary: #d8e3fb;
+  --text-secondary: #c6c6cd;
+  --text-muted: #909097;
+  
+  /* Neon Accents (From Harbor Sentinel UI) */
+  --color-cyan: #4cd7f6;
+  --color-cyan-dim: #00424e;
+  --color-cyan-glow: rgba(76, 215, 246, 0.15);
+  
+  --color-green: #22c55e;
+  --color-green-dim: #052e16;
+  --color-green-glow: rgba(34, 197, 94, 0.15);
+  
+  --color-orange: #ffb690;
+  --color-orange-dim: #7a3000;
+  --color-orange-glow: rgba(255, 182, 144, 0.15);
+  
+  --color-amber: #03b5d3;
+  --color-amber-dim: #00424e;
+  --color-amber-glow: rgba(3, 181, 211, 0.15);
+  
+  --color-red: #ffb4ab;
+  --color-red-dim: #93000a;
+  --color-red-glow: rgba(255, 180, 171, 0.15);
+  
+  /* Shadow & Blur effects */
+  --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --glass-blur: blur(8px);
+  --bg-panel-glass: rgba(17, 28, 45, 0.75);
+  --border-color-glass: rgba(76, 215, 246, 0.2);
+}
+
