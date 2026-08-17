@@ -198,7 +198,14 @@ for (const app of presentApps) {
   const mSrc = readText(manifest);
   const gSrc = readText(gradle);
 
-  if (!/android:screenOrientation=/.test(mSrc)) fail('android', `${app.name}: activity has no android:screenOrientation`);
+  // Review finding A2: OceanSentinel and HarborSentinel are chart and
+  // situational-awareness apps. On a tablet at the nav station or in the cockpit,
+  // landscape is the primary orientation, so locking to portrait is the defect —
+  // not the absence of a lock. An earlier pass got this backwards and added the
+  // lock to all three "for consistency"; this check exists so that cannot recur.
+  if (/android:screenOrientation="portrait"/.test(mSrc)) {
+    fail('android', `${app.name}: activity is locked to portrait — chart/situational-awareness apps need landscape (review finding A2)`);
+  }
   if (!/android:networkSecurityConfig=/.test(mSrc)) fail('android', `${app.name}: no networkSecurityConfig referenced`);
   if (!exists(path.join(aDir, 'app/src/main/res/xml/network_security_config.xml'))) {
     fail('android', `${app.name}: network_security_config.xml missing`);
