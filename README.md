@@ -23,6 +23,27 @@ Projects/
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers | OceanSentinel, HarborSentinel |
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
+| `@sentinel/theme` | The fleet colour palette and font tokens | OceanSentinel, VesselKeeper |
+| `@sentinel/db` | Database adapter contract (`DbAdapter`, `getDatabaseType`) | VesselKeeper |
+
+`@sentinel/db` is the first step of review finding H6 (three persistence strategies
+for one fleet). It currently has one consumer. HarborSentinel talks to
+`better-sqlite3` directly and OceanSentinel writes a JSON file; neither has been
+migrated, because:
+
+- **HarborSentinel** has 62 `db.prepare()` call sites across 10 files, 12 of them in
+  the anchor-watch polling loop. `better-sqlite3` is synchronous and this contract is
+  async, so every one becomes an `await` that cascades through the alarm path. That
+  wants its own change, with tests around the alarm first.
+- **OceanSentinel** has no SQL driver at all, only `pg`. Giving it local persistence
+  through this contract means adding a native SQLite module — importing the exact
+  problem H6 exists to remove, since native modules cannot run under Capacitor.
+  Node's built-in `node:sqlite` would avoid that but needs Node >= 22.5, and
+  Electron 32 ships Node 20. Its JSON writes are already atomic (finding S4) and the
+  dataset is a handful of records, so the urgency is low.
+
+The unlock for both is a non-native driver implementing `DbAdapter`. That should come
+before either migration, or the work gets done twice.
 
 ## Tooling in this repo
 
