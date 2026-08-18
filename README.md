@@ -45,6 +45,39 @@ migrated, because:
 The unlock for both is a non-native driver implementing `DbAdapter`. That should come
 before either migration, or the work gets done twice.
 
+### `@sentinel/db-wasm` and the Worker requirement
+
+`@sentinel/db-wasm` implements `DbAdapter` on SQLite compiled to WebAssembly, so it
+needs no native module and can run in a Capacitor WebView. It uses the OPFS
+SyncAccessHandle Pool VFS rather than serialising a whole database in and out of
+IndexedDB, which would reproduce the O(total records)-per-write cost that finding S4
+criticises in OceanSentinel's JSON file.
+
+**It must be constructed inside a Web Worker.** This was established by running it in a
+real browser, not from documentation:
+
+```
+secureContext: true          getDirectoryWorks: true
+hasSyncAccessHandle: false   isWorker: false
+```
+
+OPFS itself is available on the main thread, but `FileSystemFileHandle.createSyncAccessHandle`
+is not exposed there, and the pool VFS needs it. On the main thread the VFS fails with
+"Missing required OPFS APIs" and there is no header or flag that changes it — the plain
+OPFS VFS additionally wants COOP/COEP, which the pool VFS avoids, but neither escapes
+the Worker requirement.
+
+The adapter therefore **throws `OpfsUnavailableError` by default** rather than quietly
+handing back an in-memory database. An early version fell back silently and the harness
+caught it: every SQL check passed while nothing was actually being stored. Silently
+downgrading a durability layer is worse than refusing to start. Pass
+`allowMemoryFallback: true` only where non-durable storage is genuinely acceptable.
+
+Still to do before an app can adopt it: the worker host (message plumbing around the
+adapter) and confirmation that the worker plus the ~850KB `.wasm` asset resolve
+correctly under Vite and inside a packaged Capacitor build. Asset resolution there is
+the main remaining risk.
+
 ## Tooling in this repo
 
 | Path | What it is |
