@@ -1,5 +1,5 @@
 {
-  "name": "@sentinel/charts",
+  "name": "@mariner-sentinel/charts",
   "version": "1.0.0",
   "description": "Shared nautical chart provider registry for the Mariner Sentinel fleet: coverage-aware layer selection, tile URL construction, and licensing metadata.",
   "license": "MIT",

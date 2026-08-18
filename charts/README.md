@@ -1,4 +1,4 @@
-# @sentinel/charts
+# @mariner-sentinel/charts
 
 Nautical chart provider registry shared across the Mariner Sentinel fleet — coverage-aware
 layer selection, tile URL construction, and the licensing metadata that goes with them.
@@ -9,7 +9,7 @@ tile proxy, a layer picker and a fallback list in three separate applications.
 ## Install
 
 ```bash
-npm install @sentinel/charts
+npm install @mariner-sentinel/charts
 ```
 
 ## Use
@@ -19,7 +19,7 @@ Electron backend, a hosted tile proxy and a marketing site without any of them h
 on variable names.
 
 ```js
-import { createChartRegistry } from '@sentinel/charts';
+import { createChartRegistry } from '@mariner-sentinel/charts';
 
 const registry = createChartRegistry({ maptilerKey: process.env.MAPTILER_KEY });
 
