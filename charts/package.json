@@ -1,0 +1,49 @@
+{
+  "name": "@sentinel/charts",
+  "version": "1.0.0",
+  "description": "Shared nautical chart provider registry for the Mariner Sentinel fleet: coverage-aware layer selection, tile URL construction, and licensing metadata.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist-cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "dist-cjs",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/craigallardyce-cpu/sentinel-shared.git",
+    "directory": "charts"
+  },
+  "keywords": [
+    "nautical",
+    "charts",
+    "enc",
+    "s-57",
+    "marine",
+    "tiles",
+    "noaa",
+    "maptiler"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/finalize-cjs.mjs",
+    "prepublishOnly": "npm run build && npm test",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  }
+}
