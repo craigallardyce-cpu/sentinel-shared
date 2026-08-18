@@ -24,59 +24,44 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet colour palette and font tokens | OceanSentinel, VesselKeeper |
-| `@sentinel/db` | Database adapter contract (`DbAdapter`, `getDatabaseType`) | VesselKeeper |
 
-`@sentinel/db` is the first step of review finding H6 (three persistence strategies
-for one fleet). It currently has one consumer. HarborSentinel talks to
-`better-sqlite3` directly and OceanSentinel writes a JSON file; neither has been
-migrated, because:
 
-- **HarborSentinel** has 62 `db.prepare()` call sites across 10 files, 12 of them in
-  the anchor-watch polling loop. `better-sqlite3` is synchronous and this contract is
-  async, so every one becomes an `await` that cascades through the alarm path. That
-  wants its own change, with tests around the alarm first.
-- **OceanSentinel** has no SQL driver at all, only `pg`. Giving it local persistence
-  through this contract means adding a native SQLite module — importing the exact
+## Review finding H6: investigated, then parked
+
+H6 proposed standardising the fleet on one database adapter — VesselKeeper's, which
+already spoke SQLite locally and Postgres against Supabase. Two packages were built
+for it (`@sentinel/db`, `@sentinel/db-wasm`) and then **removed again**, because the
+work was not paying for itself. What was learned is worth more than the code was:
+
+- **HarborSentinel is the expensive migration.** 62 `db.prepare()` call sites across
+  10 files, 12 of them in the anchor-watch polling loop. `better-sqlite3` is
+  synchronous and any shared contract has to be async, so every one becomes an
+  `await` cascading through the alarm path that findings S1 and S3 already flag.
+- **OceanSentinel has no SQL driver at all**, only `pg`. Giving it local persistence
+  through such a contract means adding a native SQLite module — importing the exact
   problem H6 exists to remove, since native modules cannot run under Capacitor.
   Node's built-in `node:sqlite` would avoid that but needs Node >= 22.5, and
-  Electron 32 ships Node 20. Its JSON writes are already atomic (finding S4) and the
-  dataset is a handful of records, so the urgency is low.
+  Electron 32 ships Node 20.
+- **A non-native driver must run in a Web Worker.** Measured in a real browser, not
+  read from docs: OPFS itself works on the main thread (`getDirectory` succeeds) but
+  `FileSystemFileHandle.createSyncAccessHandle` is not exposed there, and SQLite's
+  OPFS SyncAccessHandle Pool VFS requires it. No header or flag changes that. The
+  plain OPFS VFS additionally wants COOP/COEP; the pool VFS avoids that but not the
+  Worker requirement.
+- **A durability layer must fail loudly.** The first driver caught the OPFS error and
+  quietly returned an in-memory database. Every SQL test passed while nothing was
+  being stored — only a close-and-reopen check caught it. If this is ever revisited,
+  refuse to start rather than silently downgrade.
+- **The motivating problem had a much cheaper fix.** The concern was HarborSentinel's
+  Android build keeping its breadcrumb trail in localStorage with nothing trimming it.
+  Samples are only appended when the vessel moves more than 2ft or an alarm is active,
+  so growth is slower than it first appeared, and a retention cap in
+  `useAnchorWatch.ts` (`capAnchorHistory`) bounds it in a few lines — the same
+  keep-recent-detail, thin-the-past approach as the server-side sweep in S2.
 
-The unlock for both is a non-native driver implementing `DbAdapter`. That should come
-before either migration, or the work gets done twice.
+Revisit this only if Android genuinely needs SQL-shaped local storage. Until then the
+three apps keep their own persistence, which is duplication but not a defect.
 
-### `@sentinel/db-wasm` and the Worker requirement
-
-`@sentinel/db-wasm` implements `DbAdapter` on SQLite compiled to WebAssembly, so it
-needs no native module and can run in a Capacitor WebView. It uses the OPFS
-SyncAccessHandle Pool VFS rather than serialising a whole database in and out of
-IndexedDB, which would reproduce the O(total records)-per-write cost that finding S4
-criticises in OceanSentinel's JSON file.
-
-**It must be constructed inside a Web Worker.** This was established by running it in a
-real browser, not from documentation:
-
-```
-secureContext: true          getDirectoryWorks: true
-hasSyncAccessHandle: false   isWorker: false
-```
-
-OPFS itself is available on the main thread, but `FileSystemFileHandle.createSyncAccessHandle`
-is not exposed there, and the pool VFS needs it. On the main thread the VFS fails with
-"Missing required OPFS APIs" and there is no header or flag that changes it — the plain
-OPFS VFS additionally wants COOP/COEP, which the pool VFS avoids, but neither escapes
-the Worker requirement.
-
-The adapter therefore **throws `OpfsUnavailableError` by default** rather than quietly
-handing back an in-memory database. An early version fell back silently and the harness
-caught it: every SQL check passed while nothing was actually being stored. Silently
-downgrading a durability layer is worse than refusing to start. Pass
-`allowMemoryFallback: true` only where non-durable storage is genuinely acceptable.
-
-Still to do before an app can adopt it: the worker host (message plumbing around the
-adapter) and confirmation that the worker plus the ~850KB `.wasm` asset resolve
-correctly under Vite and inside a packaged Capacitor build. Asset resolution there is
-the main remaining risk.
 
 ## Tooling in this repo
 
