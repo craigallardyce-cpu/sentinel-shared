@@ -1,0 +1,21 @@
+{
+  "name": "@sentinel/vessel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The fleet's canonical vessel identity record (public.vessels in the shared Supabase project): the VesselProfile type and typed read/write helpers.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

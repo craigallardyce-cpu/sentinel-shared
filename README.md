@@ -25,6 +25,7 @@ Projects/
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button`, `Input`/`Select`/`Textarea`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
+| `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | OceanSentinel, VesselKeeper |
 
 
 ## `@sentinel/theme`
@@ -82,6 +83,29 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 imports only `react`, `react-dom` and `lucide-react`, which every app already
 aliases in its Vite config. The drift checker fails an app that depends on it
 without the `@source` line.
+
+## `@sentinel/vessel`
+
+One vessel identity for the fleet. The record lives in `public.vessels` in the
+shared Supabase project (one row, keyed by `vessel_slug`, historically
+`'sentinel'`); this package is just the `VesselProfile` type plus
+`fetchVesselProfile()` / `saveVesselProfile()`. It takes any Supabase client as
+an argument, so it has no runtime dependencies and never bundles a second client.
+
+- **VesselKeeper owns the editor.** Its settings write `name` and `vessel_type`
+  through to the shared record (alongside its own `vesselstate` row, which still
+  holds engine/genset hours), and it now edits the MMSI too.
+- **OceanSentinel reads and writes the same record** — MMSI as before, plus the
+  boat name, and it adopts a name set elsewhere only while its own is still the
+  seed value, so it never overwrites a name the user typed locally.
+- **Writes are best-effort by design**: offline or signed-out returns false
+  quietly and the app keeps its local value. Treat the shared record as
+  eventually consistent, not a hard dependency.
+
+Column grants decide who may write what (migrations `002` and `007` in the
+MarinerSentinel Website repo): `anon` reads the identity columns and may update
+only `mmsi`/`updated_at`; `authenticated` may also update `name`/`vessel_type`;
+the site secrets are not client-readable at all.
 
 ## Review finding H6: investigated, then parked
 
