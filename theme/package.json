@@ -1,6 +1,6 @@
 {
   "name": "@sentinel/theme",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Shared colour palette, font tokens, Tailwind role map, night mode and glass surfaces for the Mariner Sentinel fleet.",
   "exports": {
@@ -9,7 +9,8 @@
     "./roles.css": "./roles.css",
     "./night.css": "./night.css",
     "./glass.css": "./glass.css",
-    "./motion.css": "./motion.css"
+    "./motion.css": "./motion.css",
+    "./shell.css": "./shell.css"
   },
   "files": [
     "index.css",
@@ -17,6 +18,7 @@
     "roles.css",
     "night.css",
     "glass.css",
-    "motion.css"
+    "motion.css",
+    "shell.css"
   ]
 }

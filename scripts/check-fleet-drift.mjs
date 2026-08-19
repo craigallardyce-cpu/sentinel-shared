@@ -48,7 +48,7 @@ const ALIGNED_DEPS = [
 // Modules that were extracted into @sentinel/*. A local file matching these names
 // reappearing usually means a copy crept back in.
 const RECOPY_PATTERNS = [
-  { glob: /(^|\/)Stepper\.(t|j)sx?$/, shared: '@sentinel/auth-ui' },
+  { glob: /(^|\/)Stepper\.(t|j)sx?$/, shared: '@sentinel/ui' },
   { glob: /(^|\/)AuthScreen\.(t|j)sx?$/, shared: '@sentinel/auth-ui' },
   { glob: /(^|\/)(nmeaParser|aisParser|geo-utils|navigation)\.(t|j)s$/, shared: '@sentinel/marine' },
   { glob: /(^|\/)shared\/weather\//, shared: '@sentinel/weather-ui' },

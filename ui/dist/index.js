@@ -6,3 +6,8 @@ export { Modal, ConfirmDialog, MODAL_Z } from './Modal';
 export { ToastProvider, useToast, toast, confirm } from './Toast';
 export { StatusPill, STATUS_CLASS } from './StatusPill';
 export { EmptyState } from './EmptyState';
+export { Stepper } from './Stepper';
+export { useAppUpdater } from './useAppUpdater';
+export { UpdatePanel } from './UpdatePanel';
+export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
+export { AppShell, HeaderButton, HeaderGroup } from './AppShell';

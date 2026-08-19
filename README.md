@@ -73,8 +73,12 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
 | `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) | ad-hoc emerald/amber/rose/cyan status dots |
 | `EmptyState` (`panel` / `inline`) | bare italic sentences in one place, illustrated blocks in another |
+| `Stepper` (moved here from `auth-ui`; token defaults, so wrappers are no longer needed) | three per-app 14-line wrappers |
+| `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |
+| `<SettingsShell>` + `SettingsSection`/`SettingsRow` — Display (night, brightness, keep-awake) → app sections → Updates → About | three differently-organised settings modals; no About surface existed |
+| `<AppShell>` + `HeaderButton`/`HeaderGroup` — glass header, left dock ≥ lg, bottom bar < lg, safe-area aware, night-mode + brightness applied on `<html>` so portals follow | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
 
-The package is built with `tsc` and its `dist/` is committed, like `auth-ui`. It
+`@sentinel/theme` gains `shell.css` (AppShell layout variables) and `motion.css`. The package is built with `tsc` and its `dist/` is committed, like `auth-ui`. It
 imports only `react`, `react-dom` and `lucide-react`, which every app already
 aliases in its Vite config. The drift checker fails an app that depends on it
 without the `@source` line.

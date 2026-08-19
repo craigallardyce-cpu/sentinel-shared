@@ -1,0 +1,31 @@
+/*
+ * Layout variables and responsive paddings for @sentinel/ui's AppShell.
+ * Kept in CSS because the edge offset and the bottom-nav allowance change at
+ * breakpoints, which inline styles cannot express.
+ */
+.sentinel-shell {
+  --shell-edge: 0.5rem;        /* gap between viewport edge and the floating header */
+  --shell-header: 3.5rem;      /* header height (h-14) */
+  --shell-gap: 0.75rem;        /* gap under the header */
+  --shell-bottom-nav: 4rem;    /* bottom bar height below lg */
+}
+@media (min-width: 640px) {
+  .sentinel-shell { --shell-edge: 1.5rem; }
+}
+
+.sentinel-shell-content {
+  padding-top: calc(var(--shell-edge) + var(--shell-header) + var(--shell-gap) + var(--safe-area-top, 0px));
+  padding-bottom: calc(var(--shell-bottom-nav) + 0.5rem + var(--safe-area-bottom, 0px));
+  padding-left: calc(0.75rem + var(--safe-area-left, 0px));
+  padding-right: calc(0.75rem + var(--safe-area-right, 0px));
+}
+.sentinel-shell-content.sentinel-shell-content--no-tabs {
+  padding-bottom: calc(0.75rem + var(--safe-area-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .sentinel-shell-content {
+    padding-bottom: calc(0.75rem + var(--safe-area-bottom, 0px));
+    padding-left: calc(1.5rem + var(--safe-area-left, 0px));
+    padding-right: calc(1.5rem + var(--safe-area-right, 0px));
+  }
+}
