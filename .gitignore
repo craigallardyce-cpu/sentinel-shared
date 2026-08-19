@@ -1,1 +1,4 @@
 node_modules
+
+# Local Supabase MCP config (points at production project; token via env var)
+.mcp.json
