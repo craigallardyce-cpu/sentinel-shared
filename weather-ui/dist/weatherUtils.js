@@ -45,27 +45,27 @@ export function getWindColor(speed) {
 export function getWeatherIcon(reasonText, theme) {
     const text = (reasonText || '').toLowerCase();
     if (text.includes('thunderstorm') || text.includes('lightning') || text.includes('squall')) {
-        return { Icon: CloudLightning, color: theme?.thunderstorm || 'text-amber-500' };
+        return { Icon: CloudLightning, color: theme?.thunderstorm || 'text-warning' };
     }
     if (text.includes('rain') || text.includes('shower') || text.includes('drizzle') || text.includes('wet')) {
-        return { Icon: CloudRain, color: theme?.rain || 'text-blue-400' };
+        return { Icon: CloudRain, color: theme?.rain || 'text-cyan' };
     }
     if (text.includes('snow') || text.includes('sleet') || text.includes('ice') || text.includes('hail')) {
-        return { Icon: CloudSnow, color: theme?.snow || 'text-sky-200' };
+        return { Icon: CloudSnow, color: theme?.snow || 'text-cyan' };
     }
     if (text.includes('fog') || text.includes('mist') || text.includes('haze')) {
-        return { Icon: CloudFog, color: theme?.fog || 'text-slate-400' };
+        return { Icon: CloudFog, color: theme?.fog || 'text-text-secondary' };
     }
     if (text.includes('mostly sunny') || text.includes('partly cloudy') || text.includes('partly sunny') || text.includes('mostly clear')) {
-        return { Icon: CloudSun, color: theme?.cloudySun || 'text-yellow-500' };
+        return { Icon: CloudSun, color: theme?.cloudySun || 'text-warning' };
     }
     if (text.includes('sunny') || text.includes('clear') || text.includes('fair')) {
-        return { Icon: Sun, color: theme?.sunny || 'text-yellow-400' };
+        return { Icon: Sun, color: theme?.sunny || 'text-warning' };
     }
     if (text.includes('cloudy') || text.includes('overcast')) {
-        return { Icon: Cloud, color: theme?.cloudy || 'text-slate-300' };
+        return { Icon: Cloud, color: theme?.cloudy || 'text-text-secondary' };
     }
-    return { Icon: CloudRain, color: theme?.default || 'text-blue-400' };
+    return { Icon: CloudRain, color: theme?.default || 'text-cyan' };
 }
 export function formatSyncDateTime(timestamp) {
     if (!timestamp)

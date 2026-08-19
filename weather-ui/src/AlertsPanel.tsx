@@ -91,21 +91,21 @@ export default function AlertsPanel({
       <div className={`${alertsCardClass} ${hasAlerts ? alertsCardAlertsActive : alertsCardAlertsClear}`}>
         <div className={`flex flex-col gap-1.5 border-b pb-2 ${borderDividerClass}`}>
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-mono uppercase tracking-widest ${textColorMuted}`}>Marine Warnings</span>
+            <span className={`text-[11px] font-mono uppercase tracking-widest ${textColorMuted}`}>Marine Warnings</span>
             <div className="flex items-center gap-1.5">
               {hasAlerts ? (
-                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border animate-pulse ${badgeActiveAlerts}`}>
+                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border animate-pulse ${badgeActiveAlerts}`}>
                   <ShieldAlert size={10} className={textColorRed} />
-                  <span className="text-[8px] font-black font-mono uppercase">{weatherData.alerts!.length} ACTIVE</span>
+                  <span className="text-[11px] font-black font-mono uppercase">{weatherData.alerts!.length} ACTIVE</span>
                 </div>
               ) : (
-                <span className={`text-[8px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded border ${badgeClearAlerts}`}>
+                <span className={`text-[11px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeClearAlerts}`}>
                   Clear
                 </span>
               )}
             </div>
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono">
+          <div className="flex items-center justify-between text-[11px] font-mono">
             <span className={textColorMuted}>REPORT AREA:</span>
             <span className={`font-bold uppercase tracking-tight truncate max-w-[200px] ${textColorCyan}`} title={weatherData.locName || 'Coastal Area'}>
               {weatherData.locName || 'Coastal Area'}
@@ -113,7 +113,7 @@ export default function AlertsPanel({
           </div>
         </div>
 
-        <div className={`text-[10px] font-mono leading-tight ${hasAlerts ? textColorRed : textColorMuted}`}>
+        <div className={`text-[11px] font-mono leading-tight ${hasAlerts ? textColorRed : textColorMuted}`}>
           {hasAlerts ? (
             <div className="space-y-1">
               {weatherData.alerts!.slice(0, 2).map((alert, i) => (
@@ -123,24 +123,24 @@ export default function AlertsPanel({
                 </div>
               ))}
               {weatherData.alerts!.length > 2 && (
-                <span className={`text-[8px] block ${textColorMuted}`}>+{weatherData.alerts!.length - 2} more warnings active</span>
+                <span className={`text-[11px] block ${textColorMuted}`}>+{weatherData.alerts!.length - 2} more warnings active</span>
               )}
             </div>
           ) : (
-            <p className={`${textColorMuted} text-[9px] italic text-left`}>No active weather warnings or advisories posted for this region.</p>
+            <p className={`${textColorMuted} text-[11px] italic text-left`}>No active weather warnings or advisories posted for this region.</p>
           )}
         </div>
 
         <div className={`flex items-center justify-between mt-2 pt-2 border-t ${borderDividerClassThick}`}>
           <div className="flex flex-col min-w-0 text-left">
-            <span className={`text-[8px] font-mono uppercase tracking-widest truncate max-w-[160px] ${textColorMuted}`}>{weatherData.source}</span>
-            <span className={`text-[9px] font-mono font-bold mt-0.5 ${
+            <span className={`text-[11px] font-mono uppercase tracking-widest truncate max-w-[160px] ${textColorMuted}`}>{weatherData.source}</span>
+            <span className={`text-[11px] font-mono font-bold mt-0.5 ${
               hasAlerts ? textColorRed : textColorMuted
             }`}>Sync: {formatSyncDateTime(lastSync)}</span>
           </div>
           <button 
             onClick={() => { setSelectedAlertIndex(0); setShowBulletin(true); }}
-            className={`text-[9px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded transition-all cursor-pointer active:scale-95 ${bulletinBtnClass}`}
+            className={`text-[11px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md transition-all cursor-pointer active:scale-95 ${bulletinBtnClass}`}
           >
             Bulletin
           </button>
@@ -167,7 +167,7 @@ export default function AlertsPanel({
                   </div>
                   <div className="flex flex-col text-left">
                     <h2 className="text-sm font-extrabold uppercase tracking-wider">National Weather Bulletin</h2>
-                    <span className={`text-[8px] font-mono uppercase tracking-widest ${textColorMuted}`}>
+                    <span className={`text-[11px] font-mono uppercase tracking-widest ${textColorMuted}`}>
                       {weatherData.locName || 'US Coastal Waters'} // Sync Integrity: Pass
                     </span>
                   </div>
@@ -213,7 +213,7 @@ export default function AlertsPanel({
                                 selectedAlertIndex === i ? textColorRed : 'text-text-muted/20 group-hover:text-text-secondary'
                               }`} size={16} />
                             </div>
-                            <span className="text-[8px] font-mono uppercase tracking-wider block mt-1 opacity-60 truncate">
+                            <span className="text-[11px] font-mono uppercase tracking-wider block mt-1 opacity-60 truncate">
                               Severity: {alert.severity || 'Moderate'}
                             </span>
                           </button>
@@ -234,14 +234,14 @@ export default function AlertsPanel({
                                 <h4 className={`text-base font-black uppercase tracking-wider ${textColorRed}`}>
                                   {weatherData.alerts![selectedAlertIndex].event}
                                 </h4>
-                                <span className={`text-[9px] font-mono uppercase tracking-widest ${textColorMuted}`}>
+                                <span className={`text-[11px] font-mono uppercase tracking-widest ${textColorMuted}`}>
                                   {weatherData.alerts![selectedAlertIndex].headline}
                                 </span>
                               </div>
 
                               <div className="space-y-4 font-mono text-xs leading-relaxed uppercase">
                                 <div className="space-y-1.5">
-                                  <span className={`text-[8.5px] font-black tracking-widest block ${textColorMuted}`}>Detailed Description:</span>
+                                  <span className={`text-[11px] font-black tracking-widest block ${textColorMuted}`}>Detailed Description:</span>
                                   <p className={`p-4 bg-bg-card/40 rounded-xl border border-border-color/10 select-text overflow-y-auto max-h-[160px] custom-scrollbar ${textColorSecondary}`}>
                                     {weatherData.alerts![selectedAlertIndex].description || 'No description provided.'}
                                   </p>
@@ -249,8 +249,8 @@ export default function AlertsPanel({
 
                                 {weatherData.alerts![selectedAlertIndex].instruction && (
                                   <div className="space-y-1.5">
-                                    <span className={`text-[8.5px] font-black tracking-widest block ${textColorMuted}`}>Precautionary Actions:</span>
-                                    <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 text-yellow-400 rounded-xl">
+                                    <span className={`text-[11px] font-black tracking-widest block ${textColorMuted}`}>Precautionary Actions:</span>
+                                    <div className="p-4 bg-warning/5 border border-warning/20 text-warning rounded-xl">
                                       {weatherData.alerts![selectedAlertIndex].instruction}
                                     </div>
                                   </div>
@@ -258,7 +258,7 @@ export default function AlertsPanel({
                               </div>
                             </div>
 
-                            <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 pt-6 border-t mt-6 text-[9px] font-mono ${borderDividerClass}`}>
+                            <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 pt-6 border-t mt-6 text-[11px] font-mono ${borderDividerClass}`}>
                               <div>
                                 <span className={`block opacity-50 ${textColorMuted}`}>Severity</span>
                                 <span className={`font-bold uppercase ${textColorRed}`}>{weatherData.alerts![selectedAlertIndex].severity || 'Moderate'}</span>
@@ -282,10 +282,10 @@ export default function AlertsPanel({
 
                     </div>
                   ) : (
-                    <div className="p-10 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl text-center space-y-2 select-none">
+                    <div className="p-10 bg-green/5 border border-green/10 rounded-2xl text-center space-y-2 select-none">
                       <Waves className="w-8 h-8 mx-auto text-green animate-pulse" />
                       <h4 className="text-xs font-black uppercase tracking-widest text-green">All Regional Hazards Clear</h4>
-                      <p className={`text-[9px] font-mono uppercase tracking-widest ${textColorMuted}`}>
+                      <p className={`text-[11px] font-mono uppercase tracking-widest ${textColorMuted}`}>
                         No active small craft advisories, gale warnings, or storm alerts are currently posted for this area.
                       </p>
                     </div>
@@ -311,9 +311,9 @@ export default function AlertsPanel({
                 <div className={`p-6 bg-bg-card/20 rounded-xl border border-dashed flex flex-col md:flex-row items-center justify-between gap-4 text-left border-border-color/25`}>
                   <div className={`flex items-center gap-3 ${textColorMuted}`}>
                     <Info size={16} />
-                    <span className="font-mono text-[10px] uppercase tracking-widest">Verification: {weatherData.source} // Raw Data Relay</span>
+                    <span className="font-mono text-[11px] uppercase tracking-widest">Verification: {weatherData.source} // Raw Data Relay</span>
                   </div>
-                  <div className={`flex items-center gap-4 font-mono text-[9px] uppercase ${textColorMuted}`}>
+                  <div className={`flex items-center gap-4 font-mono text-[11px] uppercase ${textColorMuted}`}>
                     <span>Last Report Sync: {new Date(lastSync || Date.now()).toISOString().split('T')[0]}</span>
                     <span>INTEGRITY CHECK: PASS</span>
                   </div>
@@ -322,7 +322,7 @@ export default function AlertsPanel({
               </main>
 
               {/* Floating Footer Clock */}
-              <footer className={`px-6 py-4 border-t flex items-center justify-end shrink-0 font-mono text-[9px] tracking-widest select-none bg-bg-panel/40 ${borderDividerClass} ${textColorMuted}`}>
+              <footer className={`px-6 py-4 border-t flex items-center justify-end shrink-0 font-mono text-[11px] tracking-widest select-none bg-bg-panel/40 ${borderDividerClass} ${textColorMuted}`}>
                 <span className="animate-pulse">{bulletinTime.toLocaleTimeString([], { hour12: false })} UTC</span>
               </footer>
             </motion.div>

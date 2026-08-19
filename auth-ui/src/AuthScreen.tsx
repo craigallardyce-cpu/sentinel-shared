@@ -328,15 +328,15 @@ export function AuthScreen({
 
   if (!isConfigured) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-200 p-4">
-        <div className="max-w-md w-full bg-slate-800 rounded-xl border border-slate-700 shadow-2xl p-8 space-y-4 text-center">
-          <div className="mx-auto bg-red-500/20 w-16 h-16 rounded-full flex items-center justify-center border border-red-500/50">
-            <AlertTriangle className="w-8 h-8 text-red-400" />
+      <div className="min-h-screen bg-bg-panel flex items-center justify-center text-text-primary p-4">
+        <div className="max-w-md w-full bg-bg-card rounded-xl border border-border-color shadow-2xl p-8 space-y-4 text-center">
+          <div className="mx-auto bg-red/20 w-16 h-16 rounded-full flex items-center justify-center border border-red/50">
+            <AlertTriangle className="w-8 h-8 text-red" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-wide">Sign-In Unavailable</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-text-primary tracking-wide">Sign-In Unavailable</h1>
+          <p className="text-sm text-text-secondary">
             {appId} isn't connected to Supabase, so sign-in and licensing can't be verified.
-            Set <code className="text-slate-300">SUPABASE_URL</code> and <code className="text-slate-300">SUPABASE_ANON_KEY</code> (see <code className="text-slate-300">.env.example</code>) and restart the app.
+            Set <code className="text-text-secondary">SUPABASE_URL</code> and <code className="text-text-secondary">SUPABASE_ANON_KEY</code> (see <code className="text-text-secondary">.env.example</code>) and restart the app.
           </p>
         </div>
       </div>
@@ -345,9 +345,9 @@ export function AuthScreen({
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
+      <div className="min-h-screen bg-bg-panel flex items-center justify-center text-text-primary">
         <div className="flex flex-col items-center gap-4">
-          <Anchor className="w-12 h-12 text-blue-500 animate-pulse" />
+          <Anchor className="w-12 h-12 text-cyan animate-pulse" />
           <h2 className="text-xl font-bold">Verifying Sentinel License...</h2>
         </div>
       </div>
@@ -357,24 +357,24 @@ export function AuthScreen({
   // Render friendly block screen if account exists but lacks subscription
   if (hasNoSubscription) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-200 p-4">
-        <div className="max-w-md w-full bg-slate-800 rounded-xl border border-slate-700 shadow-2xl p-8 space-y-6">
+      <div className="min-h-screen bg-bg-panel flex items-center justify-center text-text-primary p-4">
+        <div className="max-w-md w-full bg-bg-card rounded-xl border border-border-color shadow-2xl p-8 space-y-6">
           <div className="text-center">
-            <div className="mx-auto bg-amber-500/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-              <AlertTriangle className="w-8 h-8 text-amber-400" />
+            <div className="mx-auto bg-warning/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-warning/50 shadow-[0_0_15px_var(--color-warning-glow)]">
+              <AlertTriangle className="w-8 h-8 text-warning" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-wide">Account Active</h1>
-            <p className="text-sm text-slate-400 mt-2">No active {appName} subscription found.</p>
+            <h1 className="text-2xl font-bold text-text-primary tracking-wide">Account Active</h1>
+            <p className="text-sm text-text-secondary mt-2">No active {appName} subscription found.</p>
           </div>
 
-          <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50 text-xs text-slate-300 leading-relaxed space-y-3">
-            <p className="font-semibold text-white">To activate this device and unlock access:</p>
+          <div className="bg-bg-panel/60 p-4 rounded-xl border border-border-color/50 text-xs text-text-secondary leading-relaxed space-y-3">
+            <p className="font-semibold text-text-primary">To activate this device and unlock access:</p>
             <ol className="list-decimal pl-4 space-y-2">
-              <li>Open your web browser and visit <strong className="text-blue-400">marinersentinel.com</strong>.</li>
+              <li>Open your web browser and visit <strong className="text-cyan">marinersentinel.com</strong>.</li>
               <li>Sign in using your registered email: <strong>{email}</strong>.</li>
               <li>Choose a subscription plan and complete checkout.</li>
             </ol>
-            <p className="text-[10px] text-slate-500 italic mt-2 animate-pulse">
+            <p className="text-[11px] text-text-muted italic mt-2 animate-pulse">
               This app will detect your payment and unlock automatically in the background...
             </p>
           </div>
@@ -384,7 +384,7 @@ export function AuthScreen({
               <button
                 onClick={triggerManualCheck}
                 disabled={loading}
-                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 bg-cyan hover:bg-cyan text-bg-app font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 {loading ? 'Checking...' : 'Check Again'}
@@ -392,7 +392,7 @@ export function AuthScreen({
               <button
                 onClick={handleSignOut}
                 disabled={loading}
-                className="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                className="px-4 py-3 bg-bg-card-hover hover:bg-bg-highest text-text-primary font-bold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
@@ -402,14 +402,14 @@ export function AuthScreen({
             {allowOfflineMode && (
               <>
                 <div className="relative flex py-1 items-center">
-                  <div className="flex-grow border-t border-slate-700"></div>
-                  <span className="flex-shrink mx-4 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">or</span>
-                  <div className="flex-grow border-t border-slate-700"></div>
+                  <div className="flex-grow border-t border-border-color"></div>
+                  <span className="flex-shrink mx-4 text-text-muted text-[11px] font-semibold uppercase tracking-wider">or</span>
+                  <div className="flex-grow border-t border-border-color"></div>
                 </div>
 
                 <button
                   onClick={onAuthenticated}
-                  className="w-full bg-slate-750 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 px-4 rounded-lg transition-all border border-slate-700 text-xs"
+                  className="w-full bg-bg-card-hover hover:bg-bg-card-hover text-text-secondary font-semibold py-2.5 px-4 rounded-lg transition-all border border-border-color text-xs"
                 >
                   Run Offline (Local-Only Mode)
                 </button>
@@ -422,45 +422,45 @@ export function AuthScreen({
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-200 p-4">
-      <div className="max-w-md w-full bg-slate-800 rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
-        <div className="p-8 text-center bg-slate-800 border-b border-slate-700">
-          <div className="mx-auto bg-blue-500/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-            <ShieldCheck className="w-8 h-8 text-blue-400" />
+    <div className="min-h-screen bg-bg-panel flex items-center justify-center text-text-primary p-4">
+      <div className="max-w-md w-full bg-bg-card rounded-xl border border-border-color shadow-2xl overflow-hidden">
+        <div className="p-8 text-center bg-bg-card border-b border-border-color">
+          <div className="mx-auto bg-cyan/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-cyan/50 shadow-[0_0_15px_var(--color-cyan-glow)]">
+            <ShieldCheck className="w-8 h-8 text-cyan" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-wide">Mariner Sentinel Suite</h1>
-          <p className="text-sm text-slate-400 mt-2">
-            {isRegistering ? 'Create your credentials for free' : `Sign in to access ${appName}`}
+          <h1 className="text-2xl font-heading font-semibold text-text-primary">{appName}</h1>
+          <p className="text-sm text-text-secondary mt-2">
+            {isRegistering ? 'Create your credentials for free' : 'Sign in to continue'}
           </p>
         </div>
 
         <form onSubmit={isRegistering ? handleSignUp : handleLogin} className="p-8 space-y-6">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-lg flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-              <p className="text-sm text-red-200">{error}</p>
+            <div className="bg-red/10 border border-red/50 p-4 rounded-lg flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red shrink-0 mt-0.5" />
+              <p className="text-sm text-red">{error}</p>
             </div>
           )}
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Email</label>
+              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                className="w-full bg-bg-panel border border-border-color rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-colors"
                 placeholder="captain@vessel.com"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                className="w-full bg-bg-panel border border-border-color rounded-lg px-4 py-3 text-text-primary focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-colors"
                 placeholder="••••••••"
                 required
               />
@@ -471,13 +471,13 @@ export function AuthScreen({
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_25px_rgba(59,130,246,0.6)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-cyan hover:bg-cyan text-bg-app font-bold py-3 px-4 rounded-lg transition-all shadow-[0_0_20px_var(--color-cyan-glow)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Processing...' : isRegistering ? 'Register Account' : 'Sign In'}
             </button>
 
             {isRegistering && (
-              <p className="text-[10px] text-slate-400 text-center leading-relaxed px-4">
+              <p className="text-[11px] text-text-secondary text-center leading-relaxed px-4">
                 Billing setup is handled externally on our website. Creating an account registers your credentials.
               </p>
             )}
@@ -489,7 +489,7 @@ export function AuthScreen({
                   setIsRegistering(!isRegistering);
                   setError('');
                 }}
-                className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+                className="text-xs font-semibold text-cyan hover:text-cyan transition-colors"
               >
                 {isRegistering ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
               </button>
@@ -498,15 +498,15 @@ export function AuthScreen({
             {allowOfflineMode && (
               <>
                 <div className="relative flex py-2 items-center">
-                  <div className="flex-grow border-t border-slate-700"></div>
-                  <span className="flex-shrink mx-4 text-slate-500 text-xs font-semibold uppercase tracking-wider">or</span>
-                  <div className="flex-grow border-t border-slate-700"></div>
+                  <div className="flex-grow border-t border-border-color"></div>
+                  <span className="flex-shrink mx-4 text-text-muted text-xs font-semibold uppercase tracking-wider">or</span>
+                  <div className="flex-grow border-t border-border-color"></div>
                 </div>
 
                 <button
                   type="button"
                   onClick={onAuthenticated}
-                  className="w-full bg-slate-700 hover:bg-slate-650 text-slate-200 font-semibold py-2.5 px-4 rounded-lg transition-all border border-slate-600 cursor-pointer text-sm"
+                  className="w-full bg-bg-card-hover hover:bg-bg-highest text-text-primary font-semibold py-2.5 px-4 rounded-lg transition-all border border-border-color cursor-pointer text-sm"
                 >
                   Run Offline (Local-Only Mode)
                 </button>
