@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { applyLinuxGpuCompatibility, setupAutoUpdater } from '../src/index.js';
+import { applyLinuxGpuCompatibility, claimSingleInstanceLock, setupAutoUpdater } from '../src/index.js';
 
 function fakeApp() {
   return {
@@ -124,5 +124,85 @@ describe('setupAutoUpdater', () => {
     autoUpdater.checkForUpdates = vi.fn(async () => { throw new Error('network down'); });
     const failed = await ipcMain.invoke('updater:check');
     expect(failed).toBeNull();
+  });
+});
+
+describe('claimSingleInstanceLock', () => {
+  function lockableApp(gotLock) {
+    const handlers = {};
+    return {
+      requestSingleInstanceLock: vi.fn(() => gotLock),
+      quit: vi.fn(),
+      on: vi.fn((event, fn) => { handlers[event] = fn; }),
+      emit: (event) => handlers[event] && handlers[event]()
+    };
+  }
+
+  function fakeWindow(overrides = {}) {
+    return {
+      isDestroyed: vi.fn(() => false),
+      isMinimized: vi.fn(() => false),
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn(),
+      ...overrides
+    };
+  }
+
+  it('returns true and does not quit when the lock is acquired', () => {
+    const app = lockableApp(true);
+    expect(claimSingleInstanceLock(app)).toBe(true);
+    expect(app.quit).not.toHaveBeenCalled();
+  });
+
+  it('quits and returns false when another instance holds the lock', () => {
+    const app = lockableApp(false);
+    expect(claimSingleInstanceLock(app)).toBe(false);
+    expect(app.quit).toHaveBeenCalled();
+  });
+
+  it('does not register a second-instance handler when it lost the lock', () => {
+    const app = lockableApp(false);
+    claimSingleInstanceLock(app, { getMainWindow: () => fakeWindow() });
+    expect(app.on).not.toHaveBeenCalled();
+  });
+
+  it('shows and focuses the existing window on a second launch', () => {
+    const app = lockableApp(true);
+    const window = fakeWindow();
+    claimSingleInstanceLock(app, { getMainWindow: () => window });
+    app.emit('second-instance');
+    expect(window.show).toHaveBeenCalled();
+    expect(window.focus).toHaveBeenCalled();
+    expect(window.restore).not.toHaveBeenCalled();
+  });
+
+  it('restores a minimized window before showing it', () => {
+    const app = lockableApp(true);
+    const window = fakeWindow({ isMinimized: vi.fn(() => true) });
+    claimSingleInstanceLock(app, { getMainWindow: () => window });
+    app.emit('second-instance');
+    expect(window.restore).toHaveBeenCalled();
+    expect(window.show).toHaveBeenCalled();
+  });
+
+  // The window is created on a timer after ready, so a second launch can land
+  // before it exists; and it may already be gone during shutdown.
+  it('tolerates a missing or destroyed window', () => {
+    const noWindow = lockableApp(true);
+    claimSingleInstanceLock(noWindow, { getMainWindow: () => null });
+    expect(() => noWindow.emit('second-instance')).not.toThrow();
+
+    const destroyed = lockableApp(true);
+    const window = fakeWindow({ isDestroyed: vi.fn(() => true) });
+    claimSingleInstanceLock(destroyed, { getMainWindow: () => window });
+    destroyed.emit('second-instance');
+    expect(window.show).not.toHaveBeenCalled();
+  });
+
+  it('tolerates being called without options at all', () => {
+    const app = lockableApp(true);
+    claimSingleInstanceLock(app);
+    expect(() => app.emit('second-instance')).not.toThrow();
   });
 });

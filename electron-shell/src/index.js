@@ -6,8 +6,8 @@
  * in-process require() vs. forked+supervised backend) that aren't safe to force
  * into one function. What's extracted here is genuinely identical across all
  * three apps: the auto-updater IPC wiring, the Linux GPU compatibility guard,
- * window diagnostic logging, the DevTools toggle, tray creation, and the power
- * save blocker.
+ * the single-instance lock, window diagnostic logging, the DevTools toggle,
+ * tray creation, and the power save blocker.
  */
 
 /**
@@ -25,6 +25,51 @@ function applyLinuxGpuCompatibility(app) {
   app.commandLine.appendSwitch('disable-gpu-compositing');
   app.commandLine.appendSwitch('disable-dev-shm-usage');
   app.commandLine.appendSwitch('ozone-platform', 'x11');
+}
+
+/**
+ * Claims the single-instance lock, returning false if another instance already
+ * holds it. The caller is expected to stop immediately when it returns false:
+ *
+ *   if (!claimSingleInstanceLock(app, { getMainWindow: () => mainWindow })) return;
+ *
+ * All three apps start a backend on a fixed port and load their window from it
+ * (5001 / 3000 / 3001). A duplicate instance therefore cannot work: it fails to
+ * bind, silently attaches to the first instance's server and renders THAT build,
+ * while both processes contend for the same Chromium profile under userData --
+ * "Unable to move the cache: Access is denied", "Failed to delete the database".
+ * The visible result is a blank white window rather than any actionable error,
+ * and it is easy to hit by running a dev build while the installed app is up.
+ *
+ * Claim this BEFORE starting the backend, so the losing instance exits without
+ * opening a database pool or reaching for the port.
+ *
+ * Launching again is also how someone gets back to a window closed to the tray,
+ * so a second launch shows and focuses the existing window.
+ *
+ * Note this only protects against instances that also call it -- an installed
+ * build predating its adoption holds no lock to lose.
+ *
+ * @param {import('electron').App} app
+ * @param {object} [opts]
+ * @param {() => import('electron').BrowserWindow | null} [opts.getMainWindow]
+ * @returns {boolean} true if this process owns the lock and should continue.
+ */
+function claimSingleInstanceLock(app, { getMainWindow } = {}) {
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return false;
+  }
+
+  app.on('second-instance', () => {
+    const window = getMainWindow ? getMainWindow() : null;
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  });
+
+  return true;
 }
 
 /** Attaches standard diagnostic logging to a BrowserWindow's webContents. */
@@ -183,6 +228,7 @@ function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeIn
 
 module.exports = {
   applyLinuxGpuCompatibility,
+  claimSingleInstanceLock,
   attachWindowDiagnostics,
   enableDevToolsToggle,
   startPowerSaveBlocker,
