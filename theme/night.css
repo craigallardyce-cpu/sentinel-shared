@@ -1,0 +1,57 @@
+/*
+ * Red-shifted night mode for the fleet. Applied by adding `.theme-night`
+ * (OceanSentinel, VesselKeeper) or `.night-mode` (HarborSentinel) to a root
+ * element; every token-driven utility follows automatically.
+ *
+ * Status colours keep three distinct luminances so a watchkeeper can still tell
+ * ok / warning / alarm apart with night vision preserved:
+ *   ok      -> dim muted red      (--color-green)
+ *   warning -> amber              (--color-amber / --color-warning)
+ *   alarm   -> bright saturated   (--color-red)
+ * The cyan accent becomes a lighter salmon so it does not read as an alarm.
+ * (Until v2.8.x cyan, green and red all collapsed to the same #ff3838.)
+ */
+.theme-night,
+.night-mode {
+  --bg-lowest: #050101;
+  --bg-app: #090202;
+  --bg-panel: #130505;
+  --bg-panel-header: #130505;
+  --bg-card: #130505;
+  --bg-card-hover: #1e0808;
+  --bg-highest: #2a0c0c;
+
+  --border-color: #4a1515;
+  --border-focus: #ff3838;
+
+  --text-primary: #ff9e9e;
+  --text-secondary: #d67a7a;
+  --text-muted: #9c4e4e;
+
+  /* Accent: lighter and less saturated than alarm */
+  --color-cyan: #ff7b7b;
+  --color-cyan-dim: #5c0d0d;
+  --color-cyan-glow: rgba(255, 123, 123, 0.15);
+
+  /* ok: dim, muted */
+  --color-green: #b85a5a;
+  --color-green-dim: #3a0f0f;
+  --color-green-glow: rgba(184, 90, 90, 0.15);
+
+  --color-orange: #ff7300;
+  --color-orange-dim: #7a3000;
+  --color-orange-glow: rgba(255, 115, 0, 0.15);
+
+  /* warning: amber */
+  --color-amber: #ffaa00;
+  --color-amber-dim: #7a5500;
+  --color-amber-glow: rgba(255, 170, 0, 0.15);
+
+  /* alarm: bright, saturated */
+  --color-red: #ff3838;
+  --color-red-dim: #93000a;
+  --color-red-glow: rgba(255, 56, 56, 0.15);
+
+  --bg-panel-glass: rgba(19, 5, 5, 0.75);
+  --border-color-glass: rgba(255, 56, 56, 0.25);
+}

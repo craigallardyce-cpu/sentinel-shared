@@ -1,0 +1,74 @@
+/*
+ * Glass surfaces for the fleet header, dock and floating panels.
+ *
+ * `.glass-panel` lives in @layer components (no !important) so a Tailwind
+ * utility on the same element — `border-red-500/40` on an alarm modal,
+ * `shadow-2xl` on the dock — still wins. Both previous per-app copies forced
+ * every property with !important, which silently discarded exactly those
+ * intentional overrides.
+ *
+ * `.glass-btn` / `.glass-btn-active` are interaction-state classes and must
+ * beat the static colour utilities on the same button, so they stay unlayered
+ * (and `-active` keeps its !important), exactly as the apps relied on before.
+ */
+@layer components {
+  .glass-panel {
+    background: var(--bg-panel-glass);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border-color-glass);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  }
+
+  .glass-divider {
+    width: 60%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border-color-glass) 50%, transparent);
+    margin: 0.25rem 0;
+    opacity: 0.7;
+  }
+
+  /* Thin, token-coloured scrollbars. Applied in ~30 places across the fleet
+     but was defined in none of the apps. */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+}
+
+.glass-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.glass-btn:hover:not(:disabled) {
+  color: var(--color-cyan);
+  background: color-mix(in srgb, var(--color-cyan) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-cyan) 25%, transparent);
+  box-shadow: 0 0 10px var(--color-cyan-glow);
+}
+
+.glass-btn-active {
+  background: var(--color-cyan-dim) !important;
+  border-color: var(--color-cyan) !important;
+  color: var(--color-cyan) !important;
+  box-shadow: 0 0 12px var(--color-cyan-glow) !important;
+}

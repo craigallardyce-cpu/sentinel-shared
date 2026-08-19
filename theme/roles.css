@@ -1,0 +1,111 @@
+/*
+ * Tailwind v4 role map for the Mariner Sentinel fleet.
+ *
+ * Turns the raw tokens in tokens.css into utility names (`bg-bg-card`,
+ * `text-cyan`, `bg-primary`, `font-heading`…). Import it after tokens.css in
+ * each app's index.css:
+ *
+ *   @import "tailwindcss";
+ *   @import "@sentinel/theme/index.css";   (tokens + roles + night + glass)
+ *
+ * `@theme inline reference` is used deliberately: utilities reference the token
+ * variables directly (so `.theme-night` and any other runtime override of a token
+ * flows through), and Tailwind does not emit self-referential
+ * `--color-cyan: var(--color-cyan)` declarations at :root. Consequently the role
+ * names (`--color-primary`, `--color-surface`…) exist only as utility classes —
+ * use the raw tokens from tokens.css in hand-written CSS.
+ *
+ * Role meanings are fixed fleet-wide:
+ *   primary   = cyan accent      secondary = orange      tertiary = warning (amber)
+ *   error     = red (alarm)      surface-* = the navy surface ladder
+ * Do not rotate these per app — HarborSentinel did, and `text-secondary` meant
+ * cyan there and orange everywhere else.
+ */
+@theme inline reference {
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
+  --font-mono: var(--font-mono);
+
+  /* Direct token names */
+  --color-bg-app: var(--bg-app);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-header: var(--bg-panel-header);
+  --color-bg-card: var(--bg-card);
+  --color-bg-card-hover: var(--bg-card-hover);
+  --color-bg-lowest: var(--bg-lowest);
+  --color-bg-highest: var(--bg-highest);
+  --color-border-color: var(--border-color);
+  --color-border-focus: var(--border-focus);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-cyan: var(--color-cyan);
+  --color-cyan-dim: var(--color-cyan-dim);
+  --color-green: var(--color-green);
+  --color-green-dim: var(--color-green-dim);
+  --color-orange: var(--color-orange);
+  --color-orange-dim: var(--color-orange-dim);
+  --color-amber: var(--color-amber);
+  --color-amber-dim: var(--color-amber-dim);
+  --color-warning: var(--color-warning);
+  --color-warning-dim: var(--color-warning-dim);
+  --color-red: var(--color-red);
+  --color-red-dim: var(--color-red-dim);
+
+  /* Material-style surface roles */
+  --color-surface: var(--bg-lowest);
+  --color-surface-dim: var(--bg-app);
+  --color-surface-bright: var(--bg-card-hover);
+  --color-surface-variant: var(--bg-highest);
+  --color-surface-container-lowest: var(--bg-lowest);
+  --color-surface-container-low: var(--bg-panel);
+  --color-surface-container: var(--bg-card);
+  --color-surface-container-high: var(--bg-card-hover);
+  --color-surface-container-highest: var(--bg-highest);
+  --color-surface-tint: var(--color-cyan);
+  --color-background: var(--bg-app);
+  --color-on-background: var(--text-primary);
+  --color-on-surface: var(--text-primary);
+  --color-on-surface-variant: var(--text-secondary);
+  --color-inverse-surface: var(--text-primary);
+  --color-inverse-on-surface: var(--bg-card);
+  --color-outline: var(--text-muted);
+  --color-outline-variant: var(--border-color);
+
+  /* primary = cyan accent */
+  --color-primary: var(--color-cyan);
+  --color-primary-container: var(--color-cyan-dim);
+  --color-primary-fixed-dim: var(--color-cyan);
+  --color-primary-fixed: var(--color-cyan);
+  --color-on-primary-fixed-variant: var(--color-cyan-dim);
+  --color-on-primary-fixed: var(--bg-app);
+  --color-on-primary-container: var(--text-primary);
+  --color-on-primary: var(--bg-app);
+  --color-inverse-primary: var(--color-cyan-dim);
+
+  /* secondary = orange */
+  --color-secondary: var(--color-orange);
+  --color-secondary-container: var(--color-orange-dim);
+  --color-secondary-fixed: var(--color-orange);
+  --color-secondary-fixed-dim: var(--color-orange);
+  --color-on-secondary-fixed-variant: var(--color-orange-dim);
+  --color-on-secondary-fixed: var(--bg-app);
+  --color-on-secondary-container: var(--text-primary);
+  --color-on-secondary: var(--bg-app);
+
+  /* tertiary = warning */
+  --color-tertiary: var(--color-warning);
+  --color-tertiary-container: var(--color-warning-dim);
+  --color-tertiary-fixed: var(--color-warning);
+  --color-tertiary-fixed-dim: var(--color-warning);
+  --color-on-tertiary-fixed-variant: var(--color-warning-dim);
+  --color-on-tertiary-fixed: var(--bg-app);
+  --color-on-tertiary-container: var(--text-primary);
+  --color-on-tertiary: var(--bg-app);
+
+  /* error = alarm */
+  --color-error: var(--color-red);
+  --color-error-container: var(--color-red-dim);
+  --color-on-error: var(--bg-app);
+  --color-on-error-container: var(--text-primary);
+}

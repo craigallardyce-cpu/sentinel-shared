@@ -23,8 +23,31 @@ Projects/
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers | OceanSentinel, HarborSentinel |
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
-| `@sentinel/theme` | The fleet colour palette and font tokens | OceanSentinel, VesselKeeper |
+| `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 
+
+## `@sentinel/theme`
+
+One import gives an app the whole fleet look:
+
+```css
+@import "tailwindcss";
+@import "@sentinel/theme/index.css";
+@source "./";
+```
+
+| File | What it is |
+|---|---|
+| `tokens.css` | Raw values — surfaces, text, border, accent and status colours, fonts, glass, safe-area insets. The only place a hex should live. |
+| `roles.css` | `@theme inline reference` map from tokens to Tailwind utilities: `bg-bg-card`, `text-cyan`, `bg-primary`, `font-heading`… Role meanings are fixed: **primary = cyan accent, secondary = orange, tertiary = warning (amber), error = red (alarm)**. |
+| `night.css` | `.theme-night` / `.night-mode` red-shifted overrides. ok / warning / alarm keep three distinct luminances. |
+| `glass.css` | `.glass-panel`, `.glass-divider`, `.glass-btn[-active]`, `.custom-scrollbar`. |
+
+Status colours carry meaning and must come from the tokens, never the Tailwind
+palette: `green` = ok, `warning`/`amber` = warning, `red` = alarm, `text-muted` =
+offline. Cyan is the accent and is never a status colour. Apps may add their own
+layout tokens in a local `@theme`, but the drift checker fails any app that declares
+a literal-hex `--color-*` role or redefines a shared token at `:root`.
 
 ## Review finding H6: investigated, then parked
 

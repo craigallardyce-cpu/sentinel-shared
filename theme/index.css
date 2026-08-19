@@ -1,0 +1,13 @@
+/*
+ * @sentinel/theme — one import for the whole fleet visual foundation.
+ *
+ *   @import "tailwindcss";
+ *   @import "@sentinel/theme/index.css";
+ *
+ * Order matters: tokens first (raw values), then the Tailwind role map, then
+ * the night-mode overrides and shared component classes.
+ */
+@import "./tokens.css";
+@import "./roles.css";
+@import "./night.css";
+@import "./glass.css";
