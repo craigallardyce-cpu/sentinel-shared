@@ -327,6 +327,12 @@ if (exists(tokensFile)) {
         fail('theme', `${app.name}: local @theme declares ${m[1]} as a literal hex — colour roles come from @sentinel/theme/roles.css`);
       }
     }
+    // @sentinel/ui ships Tailwind class names in its dist; each consuming app must
+    // point Tailwind at it or the primitives render unstyled.
+    const appPkg = path.join(ROOT, app.name, app.name === 'OceanSentinel' ? 'frontend/package.json' : 'package.json');
+    if (exists(appPkg) && /"@sentinel\/ui"/.test(readText(appPkg)) && !/@source\s+"[^"]*@sentinel\/ui\/dist"/.test(src)) {
+      fail('theme', `${app.name}: depends on @sentinel/ui but ${rel} has no @source for @sentinel/ui/dist — its classes will be missing`);
+    }
     if (/^\s*\.(theme-night|night-mode)\s*\{/m.test(src)) {
       warn('theme', `${app.name}: declares its own .theme-night/.night-mode token block — @sentinel/theme/night.css already provides it`);
     }

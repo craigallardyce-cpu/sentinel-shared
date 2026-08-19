@@ -24,6 +24,7 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
+| `@sentinel/ui` | UI primitives built on the theme: `Button`, `Input`/`Select`/`Textarea`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
 
 
 ## `@sentinel/theme`
@@ -48,6 +49,35 @@ palette: `green` = ok, `warning`/`amber` = warning, `red` = alarm, `text-muted` 
 offline. Cyan is the accent and is never a status colour. Apps may add their own
 layout tokens in a local `@theme`, but the drift checker fails any app that declares
 a literal-hex `--color-*` role or redefines a shared token at `:root`.
+
+## `@sentinel/ui`
+
+The primitives every app was re-implementing by hand. Consuming it takes three lines:
+
+```json
+"@sentinel/ui": "file:../sentinel-shared/ui"
+```
+```css
+@source "../node_modules/@sentinel/ui/dist";   /* after @import "tailwindcss"; path relative to the CSS file */
+```
+```tsx
+<ToastProvider><App /></ToastProvider>           /* once, at the root */
+```
+
+| Primitive | Replaces |
+|---|---|
+| `Button` (`primary` / `secondary` / `danger` / `ghost`, `sm` / `md`, `icon`, `loading`) | bespoke Tailwind buttons; ALL-CAPS labels — use sentence case |
+| `Input`, `Select`, `Textarea` (`label`, `hint`, `error`, `required`) | 20+ hand-assembled input class strings; toast-as-validation |
+| `Toggle` | copy-pasted iOS switches |
+| `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
+| `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
+| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) | ad-hoc emerald/amber/rose/cyan status dots |
+| `EmptyState` (`panel` / `inline`) | bare italic sentences in one place, illustrated blocks in another |
+
+The package is built with `tsc` and its `dist/` is committed, like `auth-ui`. It
+imports only `react`, `react-dom` and `lucide-react`, which every app already
+aliases in its Vite config. The drift checker fails an app that depends on it
+without the `@source` line.
 
 ## Review finding H6: investigated, then parked
 

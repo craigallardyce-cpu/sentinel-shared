@@ -1,0 +1,18 @@
+/*
+ * Shared motion for @sentinel/ui (modal scrim, panel rise, toasts). Used via
+ * Tailwind arbitrary animations, e.g. `animate-[sentinel-rise_200ms_cubic-bezier(0.16,1,0.3,1)]`.
+ */
+@keyframes sentinel-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sentinel-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[sentinel-fade_150ms_ease-out\],
+  .animate-\[sentinel-rise_200ms_cubic-bezier\(0\.16\,1\,0\.3\,1\)\] {
+    animation: none;
+  }
+}
