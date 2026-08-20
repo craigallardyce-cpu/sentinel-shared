@@ -88,6 +88,16 @@ describe('tile URL construction', () => {
     expect(metres).toContain('"DisplayDepthUnits","value":1');
   });
 
+  it('leaves light sector arcs off unless asked for', () => {
+    const noaa = createChartRegistry().getProvider('noaa_enc')!;
+    const plain = decodeURIComponent(noaa.build!(12, 1206, 1539));
+    const sectors = decodeURIComponent(noaa.build!(12, 1206, 1539, { fullLightSectors: true }));
+    // The service's own default is 2 (full arcs), which buries a passage-scale chart under
+    // overlapping nominal-range circles — the parameter has to be sent, not omitted.
+    expect(plain).toContain('"DisplayLightSectors","value":1');
+    expect(sectors).toContain('"DisplayLightSectors","value":2');
+  });
+
   it('embeds the key in MapTiler URLs but nowhere else', () => {
     const registry = createChartRegistry({ maptilerKey: 'abc123' });
     expect(registry.getProvider('maptiler_satellite')!.build!(5, 1, 1)).toContain('key=abc123');
