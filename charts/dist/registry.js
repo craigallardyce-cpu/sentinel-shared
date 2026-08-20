@@ -119,7 +119,9 @@ function buildProviders(options) {
         },
         {
             id: 'maptiler_streets',
-            label: 'Street',
+            // "Street" is a road-atlas word on a chart plotter. What a mariner opens this for is the
+            // shore: the marina, the town, the road to the chandlery — so name it for that.
+            label: 'Shore',
             kind: 'base',
             authority: 'reference',
             background: 'light',
@@ -142,7 +144,7 @@ function buildProviders(options) {
         },
         {
             id: 'osm',
-            label: 'Street',
+            label: 'Shore',
             kind: 'base',
             authority: 'reference',
             background: 'light',
