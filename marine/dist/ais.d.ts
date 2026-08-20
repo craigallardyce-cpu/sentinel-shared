@@ -43,7 +43,15 @@ export declare const SEED_TARGET_DEFINITIONS: {
     sog: number;
 }[];
 /** Generates or updates the target list, recalculating relative motion against own ship. */
-export declare function getUpdatedAisTargets(currentTargetsMap: Map<string, any>, ownShipLat: number, ownShipLon: number, ownShipSog?: number, ownShipCog?: number, ownMmsi?: string | null): {
+export declare function getUpdatedAisTargets(currentTargetsMap: Map<string, any>, ownShipLat: number, ownShipLon: number, ownShipSog?: number, ownShipCog?: number, ownMmsi?: string | null, options?: {
+    /**
+     * Whether this vessel carries a transmitting transponder. Receive-only
+     * installations never appear in their own feed, so there is no own-ship echo
+     * to guard against and the proximity fallback below would only blind them.
+     * Defaults to true, which keeps the previous behaviour for every caller.
+     */
+    ownShipTransmits?: boolean;
+}): {
     targetsList: any[];
     targetsMap: Map<string, any>;
 };

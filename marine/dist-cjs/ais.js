@@ -303,7 +303,7 @@ exports.SEED_TARGET_DEFINITIONS = [
     }
 ];
 /** Generates or updates the target list, recalculating relative motion against own ship. */
-function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShipSog = 0, ownShipCog = 0, ownMmsi) {
+function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShipSog = 0, ownShipCog = 0, ownMmsi, options) {
     const updatedMap = new Map(currentTargetsMap);
     // Ensure baseline seed targets exist if not present
     exports.SEED_TARGET_DEFINITIONS.forEach(seed => {
@@ -350,11 +350,21 @@ function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShip
         // Proximity-based own vessel suppression: if a target is within ~55 meters
         // (0.03 NM) of own GPS position, it's almost certainly the vessel's own
         // AIS transponder being rebroadcast as AIVDM by the NMEA multiplexer.
-        const dLatNM = (target.lat - ownShipLat) * 60;
-        const dLonNM = (target.lon - ownShipLon) * 60 * Math.cos(((ownShipLat + target.lat) / 2) * Math.PI / 180);
-        const proximityNM = Math.sqrt(dLatNM * dLatNM + dLonNM * dLonNM);
-        if (proximityNM < 0.03 && !isSeed) {
-            continue;
+        //
+        // This is a fallback for not knowing which MMSI is ours. When the caller
+        // supplies ownMmsi, the exact check above has already removed own ship, and
+        // keeping this radius would only blind the caller to genuine close-quarters
+        // targets — a boat anchoring 50 m away is exactly what a proximity alarm is
+        // for. It is skipped entirely for receive-only vessels, which cannot echo
+        // themselves. Callers that pass neither keep the old behaviour unchanged.
+        const ownShipTransmits = options?.ownShipTransmits !== false;
+        if (!ownMmsi && ownShipTransmits) {
+            const dLatNM = (target.lat - ownShipLat) * 60;
+            const dLonNM = (target.lon - ownShipLon) * 60 * Math.cos(((ownShipLat + target.lat) / 2) * Math.PI / 180);
+            const proximityNM = Math.sqrt(dLatNM * dLatNM + dLonNM * dLonNM);
+            if (proximityNM < 0.03 && !isSeed) {
+                continue;
+            }
         }
         const safeSog = typeof target.sog === 'number' && !isNaN(target.sog) ? target.sog : 0;
         const safeCog = typeof target.cog === 'number' && !isNaN(target.cog) ? target.cog : 0;
