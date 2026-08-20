@@ -83,7 +83,6 @@ answers the question.
 | `satellite` | base | reference | worldwide (unlicensed, dev only) |
 | `osm` | base | reference | worldwide (unlicensed, dev only) |
 | `seamarks` | overlay | reference | worldwide |
-| `bathymetry` | overlay | reference | worldwide |
 | `none` | base | — | renders nothing |
 
 NOAA and CHS run the same Esri Maritime Chart Service extension with identical S-52 layer

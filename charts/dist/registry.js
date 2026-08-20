@@ -165,18 +165,6 @@ function buildProviders(options) {
             build: (z, x, y) => `https://tiles.openseamap.org/seamark/${z}/${x}/${y}.png`
         },
         {
-            id: 'bathymetry',
-            label: 'Depth',
-            kind: 'overlay',
-            authority: 'reference',
-            background: 'transparent',
-            coverage: null,
-            attribution: 'EMODnet Bathymetry / GEBCO',
-            maxZoom: 12,
-            referer: 'https://emodnet.ec.europa.eu/',
-            build: (z, x, y) => `https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/${z}/${x}/${y}.png`
-        },
-        {
             id: 'none',
             label: 'None',
             kind: 'base',
