@@ -21,6 +21,16 @@ export interface CoverageBox {
 export interface TileOptions {
     /** Render soundings in metres rather than feet. Only meaningful for chart services. */
     useMetric?: boolean;
+    /**
+     * Draw the full light sector arcs (S-52 "full sectors"), off by default.
+     *
+     * The arcs are drawn at each light's nominal range, so on a passage-scale view a dozen major
+     * lights cover the chart in overlapping 15-mile circles and hide the water underneath. With
+     * them off the lights, their characteristics and their names all still render — only the
+     * range arcs go. Turn them back on where they are actually read: closing a coast at night,
+     * checking which sector you are in.
+     */
+    fullLightSectors?: boolean;
 }
 /**
  * An exact coverage test, used where a bounding box is too coarse to be trusted.

@@ -51,7 +51,10 @@ export function maritimeChartService(baseUrl: string) {
         DynamicParameters: {
           Parameter: [
             { name: 'DisplayCategory', value: '1,2,4' },
-            { name: 'DisplayDepthUnits', value: opts.useMetric ? 1 : 2 }
+            { name: 'DisplayDepthUnits', value: opts.useMetric ? 1 : 2 },
+            // 1 = light symbols only, 2 = full sector arcs. The service defaults to 2, which
+            // is why a passage-scale chart came back covered in overlapping range circles.
+            { name: 'DisplayLightSectors', value: opts.fullLightSectors ? 2 : 1 }
           ]
         }
       }
