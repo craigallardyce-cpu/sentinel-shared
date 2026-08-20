@@ -23,6 +23,11 @@ export interface AlertsPanelProps {
     weatherData: WeatherData;
     lastSync: number | null | undefined;
     tempUnit: string;
+    /**
+     * Whether to offer the full-screen bulletin. Set false where the host already shows the
+     * forecast in full — a button that opens a copy of what is on screen is just noise.
+     */
+    showBulletinButton?: boolean;
     theme?: {
         alertsCardClass?: string;
         alertsCardAlertsActive?: string;
@@ -40,4 +45,4 @@ export interface AlertsPanelProps {
         timelineTheme?: any;
     };
 }
-export default function AlertsPanel({ weatherData, lastSync, tempUnit, theme }: AlertsPanelProps): React.JSX.Element | null;
+export default function AlertsPanel({ weatherData, lastSync, tempUnit, showBulletinButton, theme }: AlertsPanelProps): React.JSX.Element | null;

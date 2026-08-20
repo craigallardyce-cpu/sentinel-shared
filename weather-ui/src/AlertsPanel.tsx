@@ -30,6 +30,11 @@ export interface AlertsPanelProps {
   weatherData: WeatherData;
   lastSync: number | null | undefined;
   tempUnit: string;
+  /**
+   * Whether to offer the full-screen bulletin. Set false where the host already shows the
+   * forecast in full — a button that opens a copy of what is on screen is just noise.
+   */
+  showBulletinButton?: boolean;
   theme?: {
     alertsCardClass?: string;
     alertsCardAlertsActive?: string;
@@ -52,6 +57,7 @@ export default function AlertsPanel({
   weatherData, 
   lastSync, 
   tempUnit,
+  showBulletinButton = true,
   theme
 }: AlertsPanelProps) {
   const [showBulletin, setShowBulletin] = useState(false);
@@ -138,12 +144,14 @@ export default function AlertsPanel({
               hasAlerts ? textColorRed : textColorMuted
             }`}>Sync: {formatSyncDateTime(lastSync)}</span>
           </div>
-          <button 
-            onClick={() => { setSelectedAlertIndex(0); setShowBulletin(true); }}
-            className={`text-[11px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md transition-all cursor-pointer active:scale-95 ${bulletinBtnClass}`}
-          >
-            Bulletin
-          </button>
+          {showBulletinButton && (
+            <button 
+              onClick={() => { setSelectedAlertIndex(0); setShowBulletin(true); }}
+              className={`text-[11px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md transition-all cursor-pointer active:scale-95 ${bulletinBtnClass}`}
+            >
+              Bulletin
+            </button>
+          )}
         </div>
       </div>
 
