@@ -102,6 +102,22 @@ export function AuthScreen({ appName, appId, accessStorageKey, productId, supaba
             setChecking(false);
             return;
         }
+        // Fast path: the browser already knows there is no network, and this device holds a
+        // grant that has not lapsed. getSession() would spend a DNS or connect timeout
+        // failing before reaching the same conclusion, which is dead time on the splash
+        // screen every launch at sea. Admit now and let the session resolve behind the UI.
+        //
+        // navigator.onLine only ever short-circuits the wait -- it is not trusted as proof
+        // of anything. It reports true on a LAN with no internet, and that case still falls
+        // through to the real getSession() check below.
+        if (offlineGraceDays > 0 && typeof navigator !== 'undefined' && !navigator.onLine) {
+            const grant = readOfflineGrant(accessStorageKey);
+            const verifiedBefore = localStorage.getItem(accessStorageKey) === 'true';
+            if (grant && verifiedBefore && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS) {
+                onAuthenticated();
+                return;
+            }
+        }
         // Check active session on mount
         supabase.auth.getSession().then(({ data: { session }, error }) => {
             if (session) {
