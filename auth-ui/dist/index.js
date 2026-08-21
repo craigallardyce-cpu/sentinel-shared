@@ -1,2 +1,2 @@
 export { Stepper } from './Stepper';
-export { AuthScreen } from './AuthScreen';
+export { AuthScreen, offlineGraceRemaining } from './AuthScreen';

@@ -11,7 +11,10 @@ import { Device } from '@capacitor/device';
  */
 export interface SupabaseClientLike {
   auth: {
-    getSession(): Promise<{ data: { session: any } }>;
+    // `error` is surfaced so callers can tell "offline, try later" (a retryable fetch
+    // error, session left in storage) from "this session is gone" (non-retryable,
+    // storage cleared). The offline grace path below depends on that distinction.
+    getSession(): Promise<{ data: { session: any }; error?: any }>;
     onAuthStateChange(
       callback: (event: string, session: any) => void
     ): { data: { subscription: { unsubscribe: () => void } } };
@@ -41,6 +44,93 @@ export interface AuthScreenProps {
   legacyStorageKey?: string;
   /** If true, shows "Run Offline (Local-Only Mode)" buttons that bypass auth entirely by calling onAuthenticated. */
   allowOfflineMode?: boolean;
+  /**
+   * How many days a device that has already verified online may keep running with no
+   * reachable Supabase. 0 (the default) preserves the previous behaviour: once the
+   * access token expires offline, the sign-in screen comes back.
+   *
+   * These are boat apps, and that default is wrong for them. `getSession()` returns the
+   * stored session only while the access token is inside its lifetime; past that it
+   * attempts a refresh, which offline fails, so it returns `session: null` and the user
+   * is locked out of data sitting on their own disk. A passage outlasts any token
+   * Supabase will issue -- 7 days is the ceiling.
+   *
+   * Safe to grant because offline reads come from the local cache and writes go to the
+   * outbox: nothing reaches the database without a live token, so RLS is untouched.
+   * This gate is a licensing decision, not a security boundary.
+   */
+  offlineGraceDays?: number;
+}
+
+/** Shape stored under `${accessStorageKey}_offline_grant`. */
+interface OfflineGrant {
+  userId: string;
+  grantedAt: number;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function readOfflineGrant(accessStorageKey: string): OfflineGrant | null {
+  try {
+    const raw = localStorage.getItem(`${accessStorageKey}_offline_grant`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.userId !== 'string' || typeof parsed?.grantedAt !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeOfflineGrant(accessStorageKey: string, userId: string): void {
+  try {
+    localStorage.setItem(
+      `${accessStorageKey}_offline_grant`,
+      JSON.stringify({ userId, grantedAt: Date.now() })
+    );
+  } catch {
+    // Storage unavailable or full. The grant is an optimisation; losing it only means
+    // the user must be online next launch.
+  }
+}
+
+function clearOfflineGrant(accessStorageKey: string): void {
+  try {
+    localStorage.removeItem(`${accessStorageKey}_offline_grant`);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
+ * Exported so apps can show the remaining allowance alongside their offline indicator.
+ */
+export function offlineGraceRemaining(accessStorageKey: string, offlineGraceDays: number): number {
+  if (offlineGraceDays <= 0) return 0;
+  const grant = readOfflineGrant(accessStorageKey);
+  if (!grant) return 0;
+  const elapsedDays = (Date.now() - grant.grantedAt) / DAY_MS;
+  return Math.max(0, Math.ceil(offlineGraceDays - elapsedDays));
+}
+
+/**
+ * True when getSession() came back empty because the network was unreachable, rather
+ * than because the session is genuinely gone.
+ *
+ * auth-js reports a network failure as AuthRetryableFetchError and deliberately leaves
+ * the stored session -- refresh token included -- in place, so reconnecting recovers it.
+ * A revoked or invalid refresh token is a different, non-retryable error and clears
+ * storage; that user signs in again, grant or no grant. Conflating the two would let a
+ * revoked device keep working for the whole grace period.
+ */
+function isOfflineFailure(error: any): boolean {
+  if (!error) return false;
+  return (
+    error.name === 'AuthRetryableFetchError' ||
+    error.status === 0 ||
+    /failed to fetch|network|offline/i.test(String(error.message || ''))
+  );
 }
 
 async function resolveDeviceIdentity(fetchMachineId: () => Promise<{ machineId: string }>) {
@@ -64,7 +154,8 @@ export function AuthScreen({
   fetchMachineId,
   onAuthenticated,
   legacyStorageKey,
-  allowOfflineMode = false
+  allowOfflineMode = false,
+  offlineGraceDays = 0
 }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -95,19 +186,44 @@ export function AuthScreen({
     }
 
     // Check active session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (session) {
         checkAccess(session.user.id);
-      } else {
-        setChecking(false);
+        return;
       }
+
+      // No session. Offline that is expected rather than meaningful: the access token
+      // has outlived its lifetime and the refresh could not reach Supabase. The stored
+      // refresh token is still on disk and still valid server-side, so this device is
+      // not signed out -- it is merely unable to say so right now.
+      if (offlineGraceDays > 0 && isOfflineFailure(error)) {
+        const grant = readOfflineGrant(accessStorageKey);
+        const verifiedBefore = localStorage.getItem(accessStorageKey) === 'true';
+        const withinGrace = !!grant && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS;
+
+        if (grant && verifiedBefore && withinGrace) {
+          onAuthenticated();
+          return;
+        }
+        if (grant && !withinGrace) {
+          clearOfflineGrant(accessStorageKey);
+          setError(
+            `This device has been offline for more than ${offlineGraceDays} days. Connect to the internet once to continue.`
+          );
+        }
+      }
+
+      setChecking(false);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
         checkAccess(session.user.id);
       } else if (event === 'SIGNED_OUT') {
+        // A real sign-out, or a refresh token the server rejected. Either way this
+        // device has to prove itself again -- drop the offline allowance with it.
         localStorage.removeItem(accessStorageKey);
+        clearOfflineGrant(accessStorageKey);
         setHasNoSubscription(false);
         setChecking(false);
       }
@@ -245,6 +361,11 @@ export function AuthScreen({
         }
 
         localStorage.setItem(accessStorageKey, 'true');
+        // Re-stamp on every online verification, so the clock runs from the last time
+        // this device actually reached Supabase rather than from first sign-in.
+        if (offlineGraceDays > 0) {
+          writeOfflineGrant(accessStorageKey, userId);
+        }
         onAuthenticated();
       } else {
         setHasNoSubscription(true);

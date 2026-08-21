@@ -11,6 +11,7 @@ export interface SupabaseClientLike {
             data: {
                 session: any;
             };
+            error?: any;
         }>;
         onAuthStateChange(callback: (event: string, session: any) => void): {
             data: {
@@ -59,5 +60,26 @@ export interface AuthScreenProps {
     legacyStorageKey?: string;
     /** If true, shows "Run Offline (Local-Only Mode)" buttons that bypass auth entirely by calling onAuthenticated. */
     allowOfflineMode?: boolean;
+    /**
+     * How many days a device that has already verified online may keep running with no
+     * reachable Supabase. 0 (the default) preserves the previous behaviour: once the
+     * access token expires offline, the sign-in screen comes back.
+     *
+     * These are boat apps, and that default is wrong for them. `getSession()` returns the
+     * stored session only while the access token is inside its lifetime; past that it
+     * attempts a refresh, which offline fails, so it returns `session: null` and the user
+     * is locked out of data sitting on their own disk. A passage outlasts any token
+     * Supabase will issue -- 7 days is the ceiling.
+     *
+     * Safe to grant because offline reads come from the local cache and writes go to the
+     * outbox: nothing reaches the database without a live token, so RLS is untouched.
+     * This gate is a licensing decision, not a security boundary.
+     */
+    offlineGraceDays?: number;
 }
-export declare function AuthScreen({ appName, appId, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, legacyStorageKey, allowOfflineMode }: AuthScreenProps): React.JSX.Element;
+/**
+ * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
+ * Exported so apps can show the remaining allowance alongside their offline indicator.
+ */
+export declare function offlineGraceRemaining(accessStorageKey: string, offlineGraceDays: number): number;
+export declare function AuthScreen({ appName, appId, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, legacyStorageKey, allowOfflineMode, offlineGraceDays }: AuthScreenProps): React.JSX.Element;
