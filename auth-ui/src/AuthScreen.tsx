@@ -11,9 +11,9 @@ import { Device } from '@capacitor/device';
  */
 export interface SupabaseClientLike {
   auth: {
-    // `error` is surfaced so callers can tell "offline, try later" (a retryable fetch
-    // error, session left in storage) from "this session is gone" (non-retryable,
-    // storage cleared). The offline grace path below depends on that distinction.
+    // `error` is surfaced so callers can separate two cases: offline-try-later (a
+    // retryable fetch error, session left in storage) versus session-is-gone
+    // (non-retryable, storage cleared). The offline grace path depends on that.
     getSession(): Promise<{ data: { session: any }; error?: any }>;
     onAuthStateChange(
       callback: (event: string, session: any) => void
@@ -272,32 +272,57 @@ export function AuthScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasNoSubscription]);
 
+  /**
+   * Throws if the entitlement cannot be determined; returns false only when it was
+   * genuinely checked and found absent.
+   *
+   * This previously destructured `data` alone and discarded every `error`. A failed
+   * lookup -- no network, a timeout, a permissions problem -- left `data` null, fell
+   * past the guards, and returned false, which the caller cannot distinguish it from an
+   * account that genuinely holds no subscription. The user was then told to go and buy
+   * one.
+   *
+   * Worse, it defeated the offline fallback below: checkAccess only consults the cached
+   * accessStorageKey flag from its catch block, and a function that returns false
+   * instead of throwing never reaches it. A boat with a valid subscription and a
+   * previously-verified device was shown a billing screen it could not act on, because
+   * acting on it required the internet it did not have.
+   *
+   * Distinguishing the two is the whole point: "we could not check" keeps you working,
+   * "you do not have one" does not.
+   */
   const hasActiveSubscription = async (userId: string): Promise<boolean> => {
     let hasAccess = false;
 
-    const { data: subs } = await supabase
+    const { data: subs, error: subsError } = await supabase
       .from('user_subscriptions')
       .select('*, tiers(product_id)')
       .eq('user_id', userId)
       .eq('status', 'active');
+
+    if (subsError) throw subsError;
 
     if (subs) {
       hasAccess = subs.some((s: any) => s.tiers?.product_id === productId);
     }
 
     if (!hasAccess) {
-      const { data: userBundles } = await supabase
+      const { data: userBundles, error: bundlesError } = await supabase
         .from('user_bundles')
         .select('bundle_tier_id')
         .eq('user_id', userId)
         .eq('status', 'active');
 
+      if (bundlesError) throw bundlesError;
+
       if (userBundles && userBundles.length > 0) {
         const bundleTierIds = userBundles.map((b: any) => b.bundle_tier_id);
-        const { data: mappings } = await supabase
+        const { data: mappings, error: mappingsError } = await supabase
           .from('bundle_tier_mappings')
           .select('product_tier_id, tiers!inner(product_id)')
           .in('bundle_tier_id', bundleTierIds);
+
+        if (mappingsError) throw mappingsError;
 
         if (mappings) {
           hasAccess = mappings.some((m: any) => m.tiers?.product_id === productId);
@@ -390,10 +415,22 @@ export function AuthScreen({
       }
     } catch (err) {
       console.error(err);
-      if (localStorage.getItem(accessStorageKey) === 'true') {
+      // The entitlement could not be checked -- not the same as not having one. A device
+      // that has verified before keeps working, bounded by its grant when one is in use.
+      const verifiedBefore = localStorage.getItem(accessStorageKey) === 'true';
+      const grant = readOfflineGrant(accessStorageKey);
+      const withinGrace =
+        offlineGraceDays > 0 && !!grant && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS;
+
+      if (verifiedBefore && (offlineGraceDays === 0 || withinGrace)) {
         onAuthenticated();
+      } else if (verifiedBefore && grant) {
+        setError(
+          `This device has been offline for more than ${offlineGraceDays} days. Connect to the internet once to continue.`
+        );
+        setChecking(false);
       } else {
-        setError('Network error checking subscription status. Please connect to internet to verify your license.');
+        setError('Could not verify your licence. Connect to the internet and try again.');
         setChecking(false);
       }
     }
