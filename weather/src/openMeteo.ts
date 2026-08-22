@@ -72,16 +72,41 @@ export interface MarineForecast {
   locName: string;
   synopsis: string;
   provider: 'open-meteo';
+  /**
+   * Marks the forecast as coming from the global model rather than NWS, which
+   * HarborSentinel's panel surfaces as an "outside NOAA coverage" note.
+   */
+  isFallback: true;
+  /**
+   * Why the primary source was not used, when the caller knows. Set by the app
+   * after a failed NWS attempt so the panel can explain itself.
+   */
+  errorNote?: string;
 }
 
 export interface ForecastOptions {
   /**
    * Also probe NWS alerts. For positions inside US coverage where only the grid
    * forecast failed — the warnings may still be live and are worth one request.
+   *
+   * Worth doing even well outside the grid forecast area: a vessel can sit
+   * outside the gridpoint forecast while remaining inside a zone that carries
+   * active warnings.
    */
   probeNwsAlerts?: boolean;
   /** Contact string NWS asks API clients to identify themselves with. */
   nwsUserAgent?: string;
+  /**
+   * Units must match what the consuming app's NWS path emits, or the forecast
+   * silently changes meaning as a vessel crosses the coverage boundary.
+   * OceanSentinel emits °C; HarborSentinel emits °F.
+   */
+  temperatureUnit?: 'celsius' | 'fahrenheit';
+  /**
+   * How to express precipitation. 'probability' reports the chance of rain as a
+   * percentage, matching the NWS path; 'accumulation' reports total millimetres.
+   */
+  precipitation?: 'accumulation' | 'probability';
 }
 
 /**
@@ -307,7 +332,14 @@ export async function getOpenMeteoForecast(
   lon: number,
   options: ForecastOptions = {}
 ): Promise<MarineForecast> {
-  const { probeNwsAlerts = false, nwsUserAgent = '(mariner-sentinel)' } = options;
+  const {
+    probeNwsAlerts = false,
+    nwsUserAgent = '(mariner-sentinel)',
+    temperatureUnit = 'celsius',
+    precipitation: precipMode = 'accumulation'
+  } = options;
+  const tempSymbol = temperatureUnit === 'fahrenheit' ? '°F' : '°C';
+  const precipVariable = precipMode === 'probability' ? 'precipitation_probability' : 'precipitation';
   const key = cacheKey(lat, lon);
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
@@ -316,8 +348,8 @@ export async function getOpenMeteoForecast(
 
   const forecastUrl =
     `${FORECAST_URL}?latitude=${lat}&longitude=${lon}` +
-    '&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,pressure_msl' +
-    '&wind_speed_unit=kn&forecast_days=3&models=best_match';
+    `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,${precipVariable},pressure_msl` +
+    `&wind_speed_unit=kn&temperature_unit=${temperatureUnit}&forecast_days=3&models=best_match`;
 
   const [forecastData, marine] = await Promise.all([
     fetchJson(forecastUrl, FORECAST_TIMEOUT_MS),
@@ -334,7 +366,7 @@ export async function getOpenMeteoForecast(
   const winds: unknown[] = hourly.wind_speed_10m ?? [];
   const dirs: unknown[] = hourly.wind_direction_10m ?? [];
   const gusts: unknown[] = hourly.wind_gusts_10m ?? [];
-  const precips: unknown[] = hourly.precipitation ?? [];
+  const precips: unknown[] = hourly[precipVariable] ?? [];
   const pressures: unknown[] = hourly.pressure_msl ?? [];
 
   // The marine endpoint is a separate request on its own grid, so align it by
@@ -367,7 +399,13 @@ export async function getOpenMeteoForecast(
     const maxWind = maxOf(winds.slice(start, end));
     const maxGust = maxOf(gusts.slice(start, end));
     const direction = meanDirection(finiteOnly(dirs.slice(start, end)));
-    const totalPrecip = finiteOnly(precips.slice(start, end)).reduce((a, b) => a + b, 0);
+    const precipSlice = finiteOnly(precips.slice(start, end));
+    // A probability is the worst chance across the period; an accumulation is
+    // the total fallen across it.
+    const precipValue =
+      precipMode === 'probability'
+        ? (precipSlice.length ? Math.max(...precipSlice) : 0)
+        : precipSlice.reduce((a, b) => a + b, 0);
     const pressureTrend = describePressureTrend(pressures.slice(start, end));
 
     const waves = pTimes.map((t) => marineByTime.get(t)).filter(Boolean) as Array<{
@@ -384,9 +422,14 @@ export async function getOpenMeteoForecast(
     const windRange = maxWind !== null ? `${Math.round(maxWind)} kts` : 'n/a';
     const tempRange =
       minTemp !== null && maxTemp !== null
-        ? `${Math.round(minTemp)}°C to ${Math.round(maxTemp)}°C`
+        ? `${Math.round(minTemp)}${tempSymbol} to ${Math.round(maxTemp)}${tempSymbol}`
         : 'n/a';
-    const precipChance = totalPrecip > 0.5 ? `${Math.round(totalPrecip)}mm` : 'None';
+    const precipChance =
+      precipMode === 'probability'
+        ? `${Math.round(precipValue)}%`
+        : precipValue > 0.5
+          ? `${Math.round(precipValue)}mm`
+          : 'None';
 
     // A bulletin sentence in the order a mariner reads one: wind, then sea,
     // then barometer, then the comfort details.
@@ -406,7 +449,9 @@ export async function getOpenMeteoForecast(
       );
     }
     if (pressureTrend) sentences.push(`Pressure ${pressureTrend}.`);
-    if (tempRange !== 'n/a') sentences.push(`Temperature ${tempRange}.`);
+    // Deliberately no temperature in this prose. Only the tempRange field is run
+    // through the panel's unit conversion, so a temperature repeated here would
+    // still read in the fetched unit after the field had been converted.
     sentences.push(`Precipitation ${precipChance}.`);
 
     periods.push({
@@ -447,7 +492,8 @@ export async function getOpenMeteoForecast(
     marineZone: null,
     locName: position,
     synopsis: '',
-    provider: 'open-meteo'
+    provider: 'open-meteo',
+    isFallback: true
   };
 
   cache.set(key, { at: Date.now(), value });

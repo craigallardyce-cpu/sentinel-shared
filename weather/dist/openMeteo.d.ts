@@ -59,15 +59,40 @@ export interface MarineForecast {
     locName: string;
     synopsis: string;
     provider: 'open-meteo';
+    /**
+     * Marks the forecast as coming from the global model rather than NWS, which
+     * HarborSentinel's panel surfaces as an "outside NOAA coverage" note.
+     */
+    isFallback: true;
+    /**
+     * Why the primary source was not used, when the caller knows. Set by the app
+     * after a failed NWS attempt so the panel can explain itself.
+     */
+    errorNote?: string;
 }
 export interface ForecastOptions {
     /**
      * Also probe NWS alerts. For positions inside US coverage where only the grid
      * forecast failed — the warnings may still be live and are worth one request.
+     *
+     * Worth doing even well outside the grid forecast area: a vessel can sit
+     * outside the gridpoint forecast while remaining inside a zone that carries
+     * active warnings.
      */
     probeNwsAlerts?: boolean;
     /** Contact string NWS asks API clients to identify themselves with. */
     nwsUserAgent?: string;
+    /**
+     * Units must match what the consuming app's NWS path emits, or the forecast
+     * silently changes meaning as a vessel crosses the coverage boundary.
+     * OceanSentinel emits °C; HarborSentinel emits °F.
+     */
+    temperatureUnit?: 'celsius' | 'fahrenheit';
+    /**
+     * How to express precipitation. 'probability' reports the chance of rain as a
+     * percentage, matching the NWS path; 'accumulation' reports total millimetres.
+     */
+    precipitation?: 'accumulation' | 'probability';
 }
 /** True when NWS is expected to have a forecast, so it stays authoritative. */
 export declare function isInsideNwsCoverage(lat: number, lon: number): boolean;

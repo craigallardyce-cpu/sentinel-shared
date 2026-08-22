@@ -124,8 +124,11 @@ describe('getOpenMeteoForecast', () => {
     expect(fc.provider).toBe('open-meteo');
     expect(fc.source).toMatch(/marine sea state/);
     expect(fc.periods[0].reason).toBe(
-      'Wind SW up to 14 kts, gusting 20 kts. Seas to 1.2 m at 7 s. Pressure 1010 hPa falling. Temperature 18°C to 22°C. Precipitation None.'
+      'Wind SW up to 14 kts, gusting 20 kts. Seas to 1.2 m at 7 s. Pressure 1010 hPa falling. Precipitation None.'
     );
+    // Temperature belongs only in tempRange, which the panel converts by unit.
+    expect(fc.periods[0].reason).not.toMatch(/Temperature/);
+    expect(fc.periods[0].tempRange).toBe('18°C to 22°C');
   });
 
   it('requests gusts and pressure from upstream', async () => {
@@ -223,6 +226,42 @@ describe('getOpenMeteoForecast', () => {
       await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
       expect(calls.some((u) => u.includes('api.weather.gov/alerts'))).toBe(true);
     });
+  });
+
+  describe('units', () => {
+    it('defaults to Celsius with accumulation, as OceanSentinel expects', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      const fc = await getOpenMeteoForecast(43.55, 7.02);
+      expect(calls[0]).toContain('temperature_unit=celsius');
+      expect(calls[0]).toMatch(/hourly=[^&]*,precipitation,/);
+      expect(fc.periods[0].tempRange).toMatch(/°C to .*°C/);
+    });
+
+    it('emits Fahrenheit and rain probability when asked, as HarborSentinel expects', async () => {
+      const forecast = buildForecast();
+      // Harbor's NWS path reports a chance of rain, not millimetres.
+      forecast.hourly.precipitation_probability = forecast.hourly.time.map((_: any, i: number) => (i < 12 ? 40 : 10));
+      forecast.hourly.temperature_2m = forecast.hourly.time.map(() => 68);
+      stubFetch({ forecast, marine: buildMarine() });
+
+      const fc = await getOpenMeteoForecast(41.5, -71.3, {
+        temperatureUnit: 'fahrenheit',
+        precipitation: 'probability'
+      });
+
+      expect(calls[0]).toContain('temperature_unit=fahrenheit');
+      expect(calls[0]).toContain('precipitation_probability');
+      expect(fc.periods[0].tempRange).toBe('68°F to 68°F');
+      // The worst chance across the period, not a sum of percentages.
+      expect(fc.periods[0].precipChance).toBe('40%');
+      expect(fc.periods[0].reason).toMatch(/Precipitation 40%\./);
+    });
+  });
+
+  it('marks the forecast as coming from the global model', async () => {
+    stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+    const fc = await getOpenMeteoForecast(43.55, 7.02);
+    expect(fc.isFallback).toBe(true);
   });
 
   it('serves a repeat request from cache', async () => {

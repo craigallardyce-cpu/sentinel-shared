@@ -248,15 +248,17 @@ async function fetchNwsAlerts(lat, lon, userAgent) {
  * return value so the UI cannot tell which source answered.
  */
 export async function getOpenMeteoForecast(lat, lon, options = {}) {
-    const { probeNwsAlerts = false, nwsUserAgent = '(mariner-sentinel)' } = options;
+    const { probeNwsAlerts = false, nwsUserAgent = '(mariner-sentinel)', temperatureUnit = 'celsius', precipitation: precipMode = 'accumulation' } = options;
+    const tempSymbol = temperatureUnit === 'fahrenheit' ? '°F' : '°C';
+    const precipVariable = precipMode === 'probability' ? 'precipitation_probability' : 'precipitation';
     const key = cacheKey(lat, lon);
     const cached = cache.get(key);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
         return cached.value;
     }
     const forecastUrl = `${FORECAST_URL}?latitude=${lat}&longitude=${lon}` +
-        '&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,pressure_msl' +
-        '&wind_speed_unit=kn&forecast_days=3&models=best_match';
+        `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,${precipVariable},pressure_msl` +
+        `&wind_speed_unit=kn&temperature_unit=${temperatureUnit}&forecast_days=3&models=best_match`;
     const [forecastData, marine] = await Promise.all([
         fetchJson(forecastUrl, FORECAST_TIMEOUT_MS),
         fetchMarineHourly(lat, lon)
@@ -270,7 +272,7 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
     const winds = hourly.wind_speed_10m ?? [];
     const dirs = hourly.wind_direction_10m ?? [];
     const gusts = hourly.wind_gusts_10m ?? [];
-    const precips = hourly.precipitation ?? [];
+    const precips = hourly[precipVariable] ?? [];
     const pressures = hourly.pressure_msl ?? [];
     // The marine endpoint is a separate request on its own grid, so align it by
     // timestamp rather than trusting the two arrays to share an index.
@@ -299,7 +301,12 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
         const maxWind = maxOf(winds.slice(start, end));
         const maxGust = maxOf(gusts.slice(start, end));
         const direction = meanDirection(finiteOnly(dirs.slice(start, end)));
-        const totalPrecip = finiteOnly(precips.slice(start, end)).reduce((a, b) => a + b, 0);
+        const precipSlice = finiteOnly(precips.slice(start, end));
+        // A probability is the worst chance across the period; an accumulation is
+        // the total fallen across it.
+        const precipValue = precipMode === 'probability'
+            ? (precipSlice.length ? Math.max(...precipSlice) : 0)
+            : precipSlice.reduce((a, b) => a + b, 0);
         const pressureTrend = describePressureTrend(pressures.slice(start, end));
         const waves = pTimes.map((t) => marineByTime.get(t)).filter(Boolean);
         const maxWave = maxOf(waves.map((w) => w.height));
@@ -309,9 +316,13 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
         const windDirection = compassPoint(direction);
         const windRange = maxWind !== null ? `${Math.round(maxWind)} kts` : 'n/a';
         const tempRange = minTemp !== null && maxTemp !== null
-            ? `${Math.round(minTemp)}°C to ${Math.round(maxTemp)}°C`
+            ? `${Math.round(minTemp)}${tempSymbol} to ${Math.round(maxTemp)}${tempSymbol}`
             : 'n/a';
-        const precipChance = totalPrecip > 0.5 ? `${Math.round(totalPrecip)}mm` : 'None';
+        const precipChance = precipMode === 'probability'
+            ? `${Math.round(precipValue)}%`
+            : precipValue > 0.5
+                ? `${Math.round(precipValue)}mm`
+                : 'None';
         // A bulletin sentence in the order a mariner reads one: wind, then sea,
         // then barometer, then the comfort details.
         const sentences = [];
@@ -327,8 +338,9 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
         }
         if (pressureTrend)
             sentences.push(`Pressure ${pressureTrend}.`);
-        if (tempRange !== 'n/a')
-            sentences.push(`Temperature ${tempRange}.`);
+        // Deliberately no temperature in this prose. Only the tempRange field is run
+        // through the panel's unit conversion, so a temperature repeated here would
+        // still read in the fetched unit after the field had been converted.
         sentences.push(`Precipitation ${precipChance}.`);
         periods.push({
             periodName: `Vessel Vicinity (${start}h - ${start + PERIOD_HOURS}h)`,
@@ -365,7 +377,8 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
         marineZone: null,
         locName: position,
         synopsis: '',
-        provider: 'open-meteo'
+        provider: 'open-meteo',
+        isFallback: true
     };
     cache.set(key, { at: Date.now(), value });
     return value;
