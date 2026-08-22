@@ -111,6 +111,8 @@ export function routeIsochrone(options) {
         warnings.push(`Timings come from a generic polar (${polar.name}), not this boat's measured performance — ` +
             'treat the ETA as a comparison between departure times, not a promise.');
     }
+    if (polar.note)
+        warnings.push(polar.note);
     const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
     const stepHours = stepMinutes / 60;
     const maxSteps = Math.max(1, Math.floor(maxHours / stepHours));

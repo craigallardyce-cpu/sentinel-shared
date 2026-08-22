@@ -232,6 +232,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     );
   }
 
+  if (polar.note) warnings.push(polar.note);
+
   const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
   const stepHours = stepMinutes / 60;
   const maxSteps = Math.max(1, Math.floor(maxHours / stepHours));

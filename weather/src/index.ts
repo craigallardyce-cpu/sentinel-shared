@@ -32,3 +32,26 @@ export {
   fromComponents
 } from './windField.js';
 export type { WindField, WindFieldOptions, Bounds } from './windField.js';
+
+export {
+  createPolarAccumulator,
+  addSample,
+  derivePolar,
+  mergeAccumulators,
+  trueWindAngle,
+  toPolFile,
+  serializeAccumulator,
+  deserializeAccumulator
+} from './polarLearning.js';
+export type {
+  PolarAccumulator,
+  PolarBin,
+  TelemetrySample,
+  AddSampleResult,
+  RejectionReason,
+  LearningOptions,
+  DeriveOptions,
+  DerivedPolar,
+  PolarCoverage,
+  CoverageCell
+} from './polarLearning.js';

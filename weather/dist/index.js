@@ -2,3 +2,4 @@ export { isInsideNwsCoverage, formatPosition, getOpenMeteoForecast, clearForecas
 export { boatSpeed, foldTwa, bestVmg, parsePolarFile, GENERIC_POLARS } from './polars.js';
 export { routeIsochrone, distanceNm, bearingDeg, destinationPoint, angleBetween } from './routing.js';
 export { fetchWindField, createWindSampler, boundsForPassage, toComponents, fromComponents } from './windField.js';
+export { createPolarAccumulator, addSample, derivePolar, mergeAccumulators, trueWindAngle, toPolFile, serializeAccumulator, deserializeAccumulator } from './polarLearning.js';

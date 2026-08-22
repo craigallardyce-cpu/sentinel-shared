@@ -21,6 +21,11 @@ export interface PolarDiagram {
      * performance, so callers can say so rather than implying precision.
      */
     generic?: boolean;
+    /**
+     * A caveat to carry into anything planned with this polar — for example how
+     * much of a measured diagram is actually measured. Surfaced by the router.
+     */
+    note?: string;
 }
 /** Fold any angle into 0-180: a polar is symmetric about the wind axis. */
 export declare function foldTwa(twaDeg: number): number;
