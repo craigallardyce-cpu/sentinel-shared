@@ -257,3 +257,37 @@ describe('a season of sailing', () => {
     }
   });
 });
+
+describe('diagnosing an empty polar', () => {
+  it('counts refusals by reason, so a boat can see why nothing is filling in', () => {
+    const acc = createPolarAccumulator();
+    // A boat whose RPM sensor idles at 600: everything looks like motoring.
+    feed(acc, 30, { stw: 6, tws: 12, twd: 0, heading: 90, engineRpm: 600 });
+    feed(acc, 4, { stw: 6, tws: 0.5, twd: 0, heading: 90 }, T0 + 3_600_000);
+
+    const { coverage } = derivePolar(acc);
+    expect(coverage.accepted).toBe(0);
+    expect(coverage.rejections.motoring).toBe(30);
+    expect(coverage.rejections.becalmed).toBe(4);
+    expect(coverage.rejected).toBe(34);
+  });
+
+  it('carries the tally through a merge', () => {
+    const a = createPolarAccumulator();
+    const b = createPolarAccumulator();
+    feed(a, 3, { stw: 6, tws: 12, twd: 0, heading: 90, engineRpm: 1500 });
+    feed(b, 2, { stw: 6, tws: 12, twd: 0, heading: 90, engineRpm: 1500 });
+    expect(mergeAccumulators(a, b).rejections.motoring).toBe(5);
+  });
+
+  it('reads an accumulator saved before rejections were tallied', () => {
+    const acc = createPolarAccumulator();
+    feed(acc, 40, { stw: 7, tws: 14, twd: 0, heading: 90 });
+    const old = JSON.parse(serializeAccumulator(acc));
+    delete old.rejections;
+    const restored = deserializeAccumulator(JSON.stringify(old));
+    expect(() => addSample(restored, { t: T0, stw: 6, tws: 12, twd: 0, heading: 90, engineRpm: 2000 }))
+      .not.toThrow();
+    expect(derivePolar(restored).coverage.measuredNodes).toBe(1);
+  });
+});

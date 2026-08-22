@@ -15,6 +15,13 @@ export interface PolarAccumulator {
     bins: Record<string, PolarBin>;
     accepted: number;
     rejected: number;
+    /**
+     * Why samples were refused, by reason. The point of keeping this is
+     * diagnostic: a boat whose polar is not filling in should be able to see
+     * that every sample is being thrown away as motoring because the RPM sensor
+     * reads 600 at idle, rather than concluding the feature is broken.
+     */
+    rejections: Partial<Record<RejectionReason, number>>;
     firstSampleAt: number | null;
     lastSampleAt: number | null;
 }
@@ -87,6 +94,8 @@ export interface PolarCoverage {
     sailableNodes: number;
     accepted: number;
     rejected: number;
+    /** Why samples were refused — the diagnostic behind an empty polar. */
+    rejections: Partial<Record<RejectionReason, number>>;
     firstSampleAt: number | null;
     lastSampleAt: number | null;
 }

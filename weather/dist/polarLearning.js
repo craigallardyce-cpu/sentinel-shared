@@ -36,6 +36,7 @@ export function createPolarAccumulator(twaValues = DEFAULT_TWA, twsValues = DEFA
         bins: {},
         accepted: 0,
         rejected: 0,
+        rejections: {},
         firstSampleAt: null,
         lastSampleAt: null
     };
@@ -72,6 +73,8 @@ export function addSample(accumulator, sample, options = {}) {
     const { motoringRpm = 400, minTwsKts = 2, minStwKts = 0.3, maxHeadingChangeDeg = 12, maxTwsChangeKts = 6, steadyWindowMs = 60000 } = options;
     const reject = (reason) => {
         accumulator.rejected++;
+        accumulator.rejections = accumulator.rejections ?? {};
+        accumulator.rejections[reason] = (accumulator.rejections[reason] ?? 0) + 1;
         // Still the most recent thing seen, so the next sample is judged against
         // where the boat actually is rather than the last good state.
         lastSampleByAccumulator.set(accumulator, sample);
@@ -80,6 +83,8 @@ export function addSample(accumulator, sample, options = {}) {
     const { t, stw, tws, twd, heading, engineRpm } = sample;
     if (![t, stw, tws, twd, heading].every((v) => Number.isFinite(v))) {
         accumulator.rejected++;
+        accumulator.rejections = accumulator.rejections ?? {};
+        accumulator.rejections.incomplete = (accumulator.rejections.incomplete ?? 0) + 1;
         return { accepted: false, reason: 'incomplete' };
     }
     if (stw < 0 || stw > MAX_PLAUSIBLE_STW || tws < 0)
@@ -146,6 +151,10 @@ export function mergeAccumulators(a, b) {
         }
         merged.accepted += source.accepted;
         merged.rejected += source.rejected;
+        for (const [reason, n] of Object.entries(source.rejections ?? {})) {
+            const key = reason;
+            merged.rejections[key] = (merged.rejections[key] ?? 0) + n;
+        }
     }
     const firsts = [a.firstSampleAt, b.firstSampleAt].filter((v) => v !== null);
     const lasts = [a.lastSampleAt, b.lastSampleAt].filter((v) => v !== null);
@@ -212,6 +221,7 @@ export function derivePolar(accumulator, options = {}) {
             sailableNodes,
             accepted: accumulator.accepted,
             rejected: accumulator.rejected,
+            rejections: accumulator.rejections ?? {},
             firstSampleAt: accumulator.firstSampleAt,
             lastSampleAt: accumulator.lastSampleAt
         }

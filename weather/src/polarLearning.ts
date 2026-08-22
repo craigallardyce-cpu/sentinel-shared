@@ -44,6 +44,13 @@ export interface PolarAccumulator {
   bins: Record<string, PolarBin>;
   accepted: number;
   rejected: number;
+  /**
+   * Why samples were refused, by reason. The point of keeping this is
+   * diagnostic: a boat whose polar is not filling in should be able to see
+   * that every sample is being thrown away as motoring because the RPM sensor
+   * reads 600 at idle, rather than concluding the feature is broken.
+   */
+  rejections: Partial<Record<RejectionReason, number>>;
   firstSampleAt: number | null;
   lastSampleAt: number | null;
 }
@@ -117,6 +124,7 @@ export function createPolarAccumulator(
     bins: {},
     accepted: 0,
     rejected: 0,
+    rejections: {},
     firstSampleAt: null,
     lastSampleAt: null
   };
@@ -169,6 +177,8 @@ export function addSample(
 
   const reject = (reason: RejectionReason): AddSampleResult => {
     accumulator.rejected++;
+    accumulator.rejections = accumulator.rejections ?? {};
+    accumulator.rejections[reason] = (accumulator.rejections[reason] ?? 0) + 1;
     // Still the most recent thing seen, so the next sample is judged against
     // where the boat actually is rather than the last good state.
     lastSampleByAccumulator.set(accumulator, sample);
@@ -178,6 +188,8 @@ export function addSample(
   const { t, stw, tws, twd, heading, engineRpm } = sample;
   if (![t, stw, tws, twd, heading].every((v) => Number.isFinite(v))) {
     accumulator.rejected++;
+    accumulator.rejections = accumulator.rejections ?? {};
+    accumulator.rejections.incomplete = (accumulator.rejections.incomplete ?? 0) + 1;
     return { accepted: false, reason: 'incomplete' };
   }
   if (stw < 0 || stw > MAX_PLAUSIBLE_STW || tws < 0) return reject('implausible');
@@ -243,6 +255,10 @@ export function mergeAccumulators(a: PolarAccumulator, b: PolarAccumulator): Pol
     }
     merged.accepted += source.accepted;
     merged.rejected += source.rejected;
+    for (const [reason, n] of Object.entries(source.rejections ?? {})) {
+      const key = reason as RejectionReason;
+      merged.rejections[key] = (merged.rejections[key] ?? 0) + (n as number);
+    }
   }
   const firsts = [a.firstSampleAt, b.firstSampleAt].filter((v): v is number => v !== null);
   const lasts = [a.lastSampleAt, b.lastSampleAt].filter((v): v is number => v !== null);
@@ -267,6 +283,8 @@ export interface PolarCoverage {
   sailableNodes: number;
   accepted: number;
   rejected: number;
+  /** Why samples were refused — the diagnostic behind an empty polar. */
+  rejections: Partial<Record<RejectionReason, number>>;
   firstSampleAt: number | null;
   lastSampleAt: number | null;
 }
@@ -359,6 +377,7 @@ export function derivePolar(
       sailableNodes,
       accepted: accumulator.accepted,
       rejected: accumulator.rejected,
+      rejections: accumulator.rejections ?? {},
       firstSampleAt: accumulator.firstSampleAt,
       lastSampleAt: accumulator.lastSampleAt
     }
