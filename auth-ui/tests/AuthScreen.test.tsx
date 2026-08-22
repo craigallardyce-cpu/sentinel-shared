@@ -120,7 +120,8 @@ describe('AuthScreen — login form', () => {
       />
     );
 
-    expect(await screen.findByText('Sign in to access Harbor Sentinel')).toBeInTheDocument();
+    expect(await screen.findByText('Sign in to continue')).toBeInTheDocument();
+    expect(screen.getByText('Harbor Sentinel')).toBeInTheDocument();
   });
 
   it('submits email/password via supabase.auth.signInWithPassword', async () => {
@@ -138,7 +139,7 @@ describe('AuthScreen — login form', () => {
       />
     );
 
-    await screen.findByText('Sign in to access Harbor Sentinel');
+    await screen.findByText('Sign in to continue');
     fireEvent.change(screen.getByPlaceholderText('captain@vessel.com'), { target: { value: 'cap@ship.com' } });
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'hunter2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
@@ -163,7 +164,7 @@ describe('AuthScreen — login form', () => {
       />
     );
 
-    await screen.findByText('Sign in to access Harbor Sentinel');
+    await screen.findByText('Sign in to continue');
     fireEvent.change(screen.getByPlaceholderText('captain@vessel.com'), { target: { value: 'cap@ship.com' } });
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'wrong' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
@@ -185,7 +186,7 @@ describe('AuthScreen — login form', () => {
         onAuthenticated={vi.fn()}
       />
     );
-    await screen.findByText('Sign in to access Harbor Sentinel');
+    await screen.findByText('Sign in to continue');
     expect(screen.queryByText('Run Offline (Local-Only Mode)')).not.toBeInTheDocument();
   });
 
@@ -205,7 +206,7 @@ describe('AuthScreen — login form', () => {
         allowOfflineMode={true}
       />
     );
-    await screen.findByText('Sign in to access Ocean Sentinel');
+    await screen.findByText('Sign in to continue');
     fireEvent.click(screen.getByText('Run Offline (Local-Only Mode)'));
     expect(onAuthenticated).toHaveBeenCalled();
   });
@@ -322,7 +323,7 @@ describe('AuthScreen — legacy storage migration', () => {
         onAuthenticated={vi.fn()}
       />
     );
-    await screen.findByText('Sign in to access Harbor Sentinel');
+    await screen.findByText('Sign in to continue');
     expect(localStorage.getItem('harborsentinel_access')).toBeNull();
   });
 });

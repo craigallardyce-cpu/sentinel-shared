@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
+import { refreshEntitlements, clearEntitlements } from './entitlements';
 
 /**
  * Structural (not imported) subset of Supabase's SupabaseClient — avoids a
@@ -241,6 +242,7 @@ export function AuthScreen({
         // device has to prove itself again -- drop the offline allowance with it.
         localStorage.removeItem(accessStorageKey);
         clearOfflineGrant(accessStorageKey);
+        clearEntitlements(accessStorageKey);
         setHasNoSubscription(false);
         setChecking(false);
       }
@@ -403,6 +405,10 @@ export function AuthScreen({
         }
 
         localStorage.setItem(accessStorageKey, 'true');
+        // Refresh the cached tier entitlements alongside every online
+        // verification. A failed refresh keeps the previous cache — features
+        // are never taken away because a lookup did not complete.
+        await refreshEntitlements(supabase, userId, productId, accessStorageKey);
         // Re-stamp on every online verification, so the clock runs from the last time
         // this device actually reached Supabase rather than from first sign-in.
         if (offlineGraceDays > 0) {
@@ -486,6 +492,7 @@ export function AuthScreen({
     setLoading(true);
     await supabase.auth.signOut();
     localStorage.removeItem(accessStorageKey);
+    clearEntitlements(accessStorageKey);
     setHasNoSubscription(false);
     setError('');
     setLoading(false);
