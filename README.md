@@ -20,6 +20,7 @@ Projects/
 | Package | What it is | Consumed by |
 |---|---|---|
 | `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing, AIS/AIVDM decoding | all three |
+| `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global model used everywhere NWS has no data | OceanSentinel (server + client) |
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers | OceanSentinel, HarborSentinel |
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
