@@ -139,7 +139,13 @@ for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
   const imports = new Set();
   for (const f of walk(distDir)) {
     if (!f.endsWith('.js')) continue;
-    for (const m of readText(f).matchAll(/from\s+['"]([^'".][^'"]*)['"]/g)) imports.add(m[1]);
+    // Anchored to an import/export statement: a bare `from "..."` also matches
+    // prose in comments, and auth-ui's dist has one ("distinct from "could not
+    // check"") that reported a phantom dependency on every run.
+    const src = readText(f);
+    const statements = /(?:^|[;}\s])(?:import|export)\b[^;'"]*?\bfrom\s+['"]([^'".][^'"]*)['"]/g;
+    for (const m of src.matchAll(statements)) imports.add(m[1]);
+    for (const m of src.matchAll(/\bimport\s+['"]([^'".][^'"]*)['"]/g)) imports.add(m[1]);
   }
   sharedImports.set(`@sentinel/${dir.name}`, imports);
 }
