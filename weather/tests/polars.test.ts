@@ -89,7 +89,7 @@ describe('parsePolarFile', () => {
     const p = parsePolarFile(sample, 'Test boat');
     expect(p.name).toBe('Test boat');
     expect(p.twsValues).toEqual([6, 10, 14]);
-    expect(p.twaValues).toEqual([40, 90, 150]);
+    expect(p.twaValues).toEqual([0, 35, 40, 90, 150]);
     expect(boatSpeed(p, 90, 10)).toBeCloseTo(6.8, 5);
   });
 
@@ -103,12 +103,54 @@ describe('parsePolarFile', () => {
 
   it('sorts rows given in descending order', () => {
     const reversed = ['twa/tws\t6\t10', '150\t3.9\t5.4', '40\t3.8\t5.2'].join('\n');
-    expect(parsePolarFile(reversed).twaValues).toEqual([40, 150]);
+    expect(parsePolarFile(reversed).twaValues).toEqual([0, 35, 40, 150]);
   });
 
   it('ignores comments and blank lines', () => {
     const messy = `# my boat\n\n${sample}\n\n`;
-    expect(parsePolarFile(messy).twaValues).toEqual([40, 90, 150]);
+    expect(parsePolarFile(messy).twaValues).toEqual([0, 35, 40, 90, 150]);
+  });
+
+  it('closes the upwind end, so a router tacks instead of sailing at the wind', () => {
+    const p = parsePolarFile(sample);
+    // Without a zero row the interpolator clamps below 40 degrees and hands
+    // back the close-hauled speed for a heading straight into the wind.
+    expect(boatSpeed(p, 0, 10)).toBe(0);
+    expect(boatSpeed(p, 20, 10)).toBeLessThan(boatSpeed(p, 40, 10));
+    expect(boatSpeed(p, 40, 10)).toBeCloseTo(5.2, 5);
+  });
+
+  it('leaves best upwind VMG at an angle the file says the boat can sail', () => {
+    const best = bestVmg(parsePolarFile(sample), 10, 'upwind');
+    // A single zero row at 0 would ramp all the way to 40 and put the best VMG
+    // a few degrees inside the boat's real pointing angle.
+    expect(best.twaDeg).toBeGreaterThanOrEqual(40);
+    expect(best.twaDeg).toBeLessThan(90);
+  });
+
+  it('puts the no-sail edge just inside the pointing angle, not at 0', () => {
+    const p = parsePolarFile(sample);
+    expect(boatSpeed(p, 35, 10)).toBe(0);
+    // With the zero row only at 0 the ramp would span the whole 40 degrees and
+    // this would come back around 2.6 knots.
+    expect(boatSpeed(p, 20, 10)).toBe(0);
+    expect(boatSpeed(p, 38, 10)).toBeLessThan(boatSpeed(p, 40, 10));
+    expect(boatSpeed(p, 38, 10)).toBeGreaterThan(0);
+  });
+
+  it('does not create a negative angle for a file that points very high', () => {
+    const high = ['twa/tws\t6\t10', '3\t2.0\t3.0', '90\t5.3\t6.8'].join('\n');
+    expect(parsePolarFile(high).twaValues).toEqual([0, 3, 90]);
+  });
+
+  it('does not add a zero row to a file that already starts at zero', () => {
+    const withZero = ['twa/tws\t6\t10', '0\t0\t0', '40\t3.8\t5.2'].join('\n');
+    expect(parsePolarFile(withZero).twaValues).toEqual([0, 40]);
+  });
+
+  it('leaves the downwind end clamped rather than inventing a speed at 180', () => {
+    const p = parsePolarFile(sample);
+    expect(boatSpeed(p, 180, 10)).toBeCloseTo(boatSpeed(p, 150, 10), 5);
   });
 
   it.each([

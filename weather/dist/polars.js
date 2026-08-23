@@ -114,12 +114,37 @@ export function parsePolarFile(text, name = 'Imported polar') {
     // Interpolation assumes ascending axes; sort rows rather than rejecting a
     // file that simply lists its angles the other way round.
     const order = twaValues.map((twa, i) => i).sort((x, y) => twaValues[x] - twaValues[y]);
-    return {
-        name,
-        twsValues,
-        twaValues: order.map((i) => twaValues[i]),
-        speeds: order.map((i) => speeds[i])
-    };
+    const sortedTwa = order.map((i) => twaValues[i]);
+    const sortedSpeeds = order.map((i) => speeds[i]);
+    // Close the upwind end. A .pol file starts at the boat's pointing angle —
+    // 52 degrees is typical — because there is nothing to record closer than
+    // that. But the interpolator clamps below its lowest angle, so without a zero
+    // row the file claims the boat makes its close-hauled speed dead upwind, and
+    // a router reading it sails straight at the wind and never tacks. The generic
+    // and learned diagrams both carry an explicit zero row for this reason; an
+    // imported one has to be given the same.
+    //
+    // The downwind end is left alone. Clamping a file that stops at 150 degrees
+    // to its 150-degree speed at 180 is optimistic, but a boat does sail dead
+    // downwind — inventing a slower number there would be making data up, while
+    // the zero row upwind is only writing down what the file already means.
+    // The zero row goes just inside the pointing angle rather than only at 0, the
+    // same way the generic diagrams place theirs: a single zero at 0 would ramp
+    // linearly all the way up to the first real row, so a boat whose file starts
+    // at 52 would appear to point at 49. Five degrees keeps the no-sail zone
+    // where the file says it is.
+    const NO_SAIL_MARGIN_DEG = 5;
+    if (sortedTwa[0] > 0) {
+        const zeros = () => twsValues.map(() => 0);
+        const edge = sortedTwa[0] - NO_SAIL_MARGIN_DEG;
+        if (edge > 0) {
+            sortedTwa.unshift(edge);
+            sortedSpeeds.unshift(zeros());
+        }
+        sortedTwa.unshift(0);
+        sortedSpeeds.unshift(zeros());
+    }
+    return { name, twsValues, twaValues: sortedTwa, speeds: sortedSpeeds };
 }
 const TWS = [6, 8, 10, 12, 14, 16, 20, 25];
 const TWA = [0, 35, 40, 50, 60, 75, 90, 110, 120, 135, 150, 165, 180];
