@@ -24,6 +24,9 @@ export {
 } from './routing.js';
 export type { RouteOptions, RouteResult, RouteLeg, WindSample, WindSampler } from './routing.js';
 
+export { createObstacleField, userZone, landZones } from './obstacles.js';
+export type { ObstacleField, ObstacleZone, ObstacleRing } from './obstacles.js';
+
 export {
   fetchWindField,
   createWindSampler,

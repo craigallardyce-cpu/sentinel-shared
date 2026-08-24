@@ -1,4 +1,5 @@
 import { type PolarDiagram } from './polars.js';
+import type { ObstacleField } from './obstacles.js';
 /** Great-circle distance in nautical miles. */
 export declare function distanceNm(lat1: number, lon1: number, lat2: number, lon2: number): number;
 /** Initial great-circle bearing in degrees. */
@@ -76,6 +77,17 @@ export interface RouteOptions {
      * away from where it is going. Default 110°.
      */
     maxOffCourseDeg?: number;
+    /**
+     * Polygons the route may not cross: the coastline, and any zone the skipper
+     * has put off limits. A leg that would cross one is discarded during the
+     * search rather than trimmed afterwards, so the boat sails around an
+     * obstruction the way it actually would instead of being handed a route
+     * with a corner cut off it.
+     *
+     * Clearing these polygons is NOT navigational safety — see obstacles.ts.
+     * The warnings this returns keep saying so.
+     */
+    obstacles?: ObstacleField;
 }
 /**
  * Compute a weather-optimal route.

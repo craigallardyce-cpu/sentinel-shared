@@ -60,6 +60,19 @@ export function angleBetween(a, b) {
 }
 const NO_LAND_WARNING = 'This route is computed from wind and boat polar only. It does not know where land, ' +
     'shallows, or traffic schemes are — check every leg against your chart before sailing it.';
+/**
+ * Used instead when an obstacle field is supplied.
+ *
+ * The wording is deliberate and should not be softened. Steering around the
+ * coastline outline is a coarse, shape-level check: it says the route does not
+ * run overland, and says nothing whatever about whether the water it does run
+ * through is deep enough or clear. A skipper who reads "avoids land" as
+ * "checked" is in more danger than one who knows nothing was checked at all,
+ * which is why the sentence leads with what is still unknown.
+ */
+const COARSE_LAND_WARNING = 'This route was kept clear of the coastline outline and any zones you have marked, but that ' +
+    'is a shape check at roughly half a kilometre of detail — it knows nothing of depths, rocks, ' +
+    'reefs, buoyage or traffic schemes. Check every leg against your chart before sailing it.';
 function relativeSide(headingDeg, windFromDeg) {
     const delta = ((headingDeg - windFromDeg + 540) % 360) - 180;
     if (Math.abs(delta) < 1e-6 || Math.abs(Math.abs(delta) - 180) < 1e-6)
@@ -105,8 +118,9 @@ function totalDistance(legs) {
  * useful about the passage, and `reachedDestination` reports which happened.
  */
 export function routeIsochrone(options) {
-    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2 } = options;
-    const warnings = [NO_LAND_WARNING];
+    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, obstacles } = options;
+    const avoiding = Boolean(obstacles && obstacles.count > 0);
+    const warnings = [avoiding ? COARSE_LAND_WARNING : NO_LAND_WARNING];
     if (polar.generic) {
         warnings.push(`Timings come from a generic polar (${polar.name}), not this boat's measured performance — ` +
             'treat the ETA as a comparison between departure times, not a promise.');
@@ -116,6 +130,34 @@ export function routeIsochrone(options) {
     const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
     const stepHours = stepMinutes / 60;
     const maxSteps = Math.max(1, Math.floor(maxHours / stepHours));
+    // Say so immediately when an end of the passage is inside an obstacle.
+    //
+    // Without this the search behaves badly in a way that reads as a bug: a
+    // destination a few hundred metres inland is approachable but never
+    // arrivable, so the frontier crowds the shore and then wanders for the whole
+    // time limit — ten simulated days to say nothing. It is also the single most
+    // likely mistake a user can make here, since a place name means the town and
+    // towns are on land. Naming the problem is worth more than any route.
+    if (avoiding) {
+        const startZone = obstacles.contains(start.lat, start.lon);
+        const destZone = obstacles.contains(destination.lat, destination.lon);
+        const describe = (z) => z.kind === 'land' ? 'is on land' : `is inside the zone you marked${z.name ? ` — ${z.name}` : ''}`;
+        if (startZone || destZone) {
+            if (startZone)
+                warnings.push(`The starting position ${describe(startZone)}, so no passage could be started from it.`);
+            if (destZone)
+                warnings.push(`The destination ${describe(destZone)}, so no passage could reach it. Pick a position in open water — the place search offers approaches offshore of each port.`);
+            return {
+                reachedDestination: false,
+                legs: [],
+                etaHours: 0,
+                distanceNm: 0,
+                directDistanceNm: Math.round(directDistanceNm * 100) / 100,
+                warnings,
+                polarName: polar.name
+            };
+        }
+    }
     const root = {
         lat: start.lat,
         lon: start.lon,
@@ -160,7 +202,8 @@ export function routeIsochrone(options) {
                     closingTwa = twa;
                 }
             }
-            if (closingVmg > 0 && remaining <= closingVmg * stepHours) {
+            const arrivalBlocked = avoiding && obstacles.blocks(node.lat, node.lon, destination.lat, destination.lon) !== null;
+            if (closingVmg > 0 && remaining <= closingVmg * stepHours && !arrivalBlocked) {
                 const arrivalMs = node.timeMs + (remaining / closingVmg) * 3600000;
                 const arrival = {
                     lat: destination.lat,
@@ -203,6 +246,11 @@ export function routeIsochrone(options) {
                 if (legDistance <= 0)
                     continue;
                 const point = destinationPoint(node.lat, node.lon, heading, legDistance);
+                // Discard during the search, not after it: a leg pruned here lets the
+                // frontier find its way around the obstruction, whereas trimming a
+                // finished route would just cut a corner off it.
+                if (avoiding && obstacles.blocks(node.lat, node.lon, point.lat, point.lon))
+                    continue;
                 candidates.push({
                     lat: point.lat,
                     lon: point.lon,
