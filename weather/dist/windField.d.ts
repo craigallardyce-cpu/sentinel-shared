@@ -6,6 +6,8 @@ export interface Bounds {
     west: number;
 }
 export interface WindField {
+    /** The model this field came from, as Open-Meteo names it. */
+    model: string;
     lats: number[];
     lons: number[];
     /** Epoch ms for each forecast hour. */
@@ -22,6 +24,19 @@ export interface WindFieldOptions {
     days?: number;
     /** Degrees of margin around the passage, so a detour stays inside the grid. Default 2°. */
     marginDeg?: number;
+    /**
+     * Which forecast model to ask for, as Open-Meteo names it. Default
+     * 'best_match', which is what the app has always used.
+     *
+     * Requested one model per call rather than several in one, which the API
+     * also allows. That is deliberate: a multi-model response renames every
+     * variable to carry the model as a suffix, and this code has been bitten
+     * before by parsing a response shape nobody had ever seen. One model per
+     * request keeps the shape identical to the one already verified against the
+     * live API, and lets a second model fail on its own without taking the
+     * first down with it.
+     */
+    model?: string;
     /** Injectable for tests. */
     fetchImpl?: typeof fetch;
 }

@@ -24,6 +24,8 @@ export interface Bounds {
 }
 
 export interface WindField {
+  /** The model this field came from, as Open-Meteo names it. */
+  model: string;
   lats: number[];
   lons: number[];
   /** Epoch ms for each forecast hour. */
@@ -41,6 +43,19 @@ export interface WindFieldOptions {
   days?: number;
   /** Degrees of margin around the passage, so a detour stays inside the grid. Default 2°. */
   marginDeg?: number;
+  /**
+   * Which forecast model to ask for, as Open-Meteo names it. Default
+   * 'best_match', which is what the app has always used.
+   *
+   * Requested one model per call rather than several in one, which the API
+   * also allows. That is deliberate: a multi-model response renames every
+   * variable to carry the model as a suffix, and this code has been bitten
+   * before by parsing a response shape nobody had ever seen. One model per
+   * request keeps the shape identical to the one already verified against the
+   * live API, and lets a second model fail on its own without taking the
+   * first down with it.
+   */
+  model?: string;
   /** Injectable for tests. */
   fetchImpl?: typeof fetch;
 }
@@ -92,7 +107,7 @@ export async function fetchWindField(
   bounds: Bounds,
   options: WindFieldOptions = {}
 ): Promise<WindField> {
-  const { resolutionDeg = 1, days = 7, fetchImpl = fetch } = options;
+  const { resolutionDeg = 1, days = 7, model = 'best_match', fetchImpl = fetch } = options;
 
   const lats = axis(bounds.south, bounds.north, resolutionDeg);
   const lons = axis(bounds.west, bounds.east, resolutionDeg);
@@ -104,7 +119,8 @@ export async function fetchWindField(
   const url =
     `${FORECAST_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
     '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn' +
-    `&forecast_days=${Math.min(16, Math.max(1, Math.round(days)))}&models=best_match`;
+    `&forecast_days=${Math.min(16, Math.max(1, Math.round(days)))}` +
+    `&models=${encodeURIComponent(model)}`;
 
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Open-Meteo wind field returned HTTP ${res.status}`);
@@ -151,7 +167,7 @@ export async function fetchWindField(
     v.push(vPlane);
   }
 
-  return { lats, lons, times, u, v };
+  return { model, lats, lons, times, u, v };
 }
 
 function slot(values: number[], target: number): { lo: number; hi: number; frac: number } | null {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deserializeAccumulator = exports.serializeAccumulator = exports.toPolFile = exports.trueWindAngle = exports.mergeAccumulators = exports.derivePolar = exports.addSample = exports.createPolarAccumulator = exports.fromComponents = exports.toComponents = exports.boundsForPassage = exports.createWindSampler = exports.fetchWindField = exports.landZones = exports.userZone = exports.createObstacleField = exports.angleBetween = exports.destinationPoint = exports.bearingDeg = exports.distanceNm = exports.routeIsochrone = exports.GENERIC_POLARS = exports.parsePolarFile = exports.bestVmg = exports.foldTwa = exports.boatSpeed = exports.clearForecastCache = exports.getOpenMeteoForecast = exports.formatPosition = exports.isInsideNwsCoverage = void 0;
+exports.deserializeAccumulator = exports.serializeAccumulator = exports.toPolFile = exports.trueWindAngle = exports.mergeAccumulators = exports.derivePolar = exports.addSample = exports.createPolarAccumulator = exports.fromComponents = exports.toComponents = exports.boundsForPassage = exports.createWindSampler = exports.fetchWindField = exports.landZones = exports.userZone = exports.createObstacleField = exports.compareSecondOpinion = exports.angleBetween = exports.destinationPoint = exports.bearingDeg = exports.distanceNm = exports.routeIsochrone = exports.GENERIC_POLARS = exports.parsePolarFile = exports.bestVmg = exports.foldTwa = exports.boatSpeed = exports.clearForecastCache = exports.getOpenMeteoForecast = exports.formatPosition = exports.isInsideNwsCoverage = void 0;
 var openMeteo_js_1 = require("./openMeteo.js");
 Object.defineProperty(exports, "isInsideNwsCoverage", { enumerable: true, get: function () { return openMeteo_js_1.isInsideNwsCoverage; } });
 Object.defineProperty(exports, "formatPosition", { enumerable: true, get: function () { return openMeteo_js_1.formatPosition; } });
@@ -18,6 +18,8 @@ Object.defineProperty(exports, "distanceNm", { enumerable: true, get: function (
 Object.defineProperty(exports, "bearingDeg", { enumerable: true, get: function () { return routing_js_1.bearingDeg; } });
 Object.defineProperty(exports, "destinationPoint", { enumerable: true, get: function () { return routing_js_1.destinationPoint; } });
 Object.defineProperty(exports, "angleBetween", { enumerable: true, get: function () { return routing_js_1.angleBetween; } });
+var secondOpinion_js_1 = require("./secondOpinion.js");
+Object.defineProperty(exports, "compareSecondOpinion", { enumerable: true, get: function () { return secondOpinion_js_1.compareSecondOpinion; } });
 var obstacles_js_1 = require("./obstacles.js");
 Object.defineProperty(exports, "createObstacleField", { enumerable: true, get: function () { return obstacles_js_1.createObstacleField; } });
 Object.defineProperty(exports, "userZone", { enumerable: true, get: function () { return obstacles_js_1.userZone; } });

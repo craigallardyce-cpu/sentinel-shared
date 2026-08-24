@@ -13,10 +13,14 @@ import type { ObstacleField } from './obstacles.js';
  * Two deliberate boundaries, both from the fleet's decision not to license
  * navigation cartography:
  *
- *   - THERE IS NO LAND AVOIDANCE. Nothing here knows where the coast is, so a
- *     route may cross a headland, an island, or a traffic separation scheme.
- *     Every result says so in `warnings`, and callers must present it as a
- *     weather plan to lay over a chart, never as a course to steer.
+ *   - LAND AVOIDANCE IS COARSE, AND OPTIONAL. Given an `obstacles` field the
+ *     search discards any leg that crosses it, so a route will not run over
+ *     the coastline outline or a zone the skipper has marked. Without one it
+ *     knows nothing of the coast at all. Neither case is navigational safety:
+ *     the outline carries no depths, rocks, reefs, buoyage or traffic
+ *     schemes. Every result says which case it was in `warnings`, and callers
+ *     must present it as a weather plan to lay over a chart, never as a
+ *     course to steer.
  *   - No currents, no waves, no leeway. Wind and polar only.
  *
  * It runs client-side on cached forecast data, so a passage can be re-planned
@@ -316,10 +320,22 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
   for (let step = 0; step < maxSteps; step++) {
     const nextTime = departure + (step + 1) * stepMinutes * 60_000;
     const candidates: Node[] = [];
+    // Why each course was discarded, so an empty step can say what actually
+    // stopped it. "No wind" was the only explanation on offer, and it was
+    // usually the wrong one: a boat pinned in a bay by a headwind has plenty
+    // of wind and nowhere it is allowed to point.
+    let blockedByLand = 0;
+    let unsailable = 0;
+    let noWind = 0;
+    let calm = 0;
 
     for (const node of frontier) {
       const sample = wind(node.lat, node.lon, node.timeMs);
-      if (!sample || !Number.isFinite(sample.speedKts)) continue;
+      if (!sample || !Number.isFinite(sample.speedKts)) { noWind++; continue; }
+      // A calm is not a headwind. Both leave the boat going nowhere, but only
+      // one of them is fixed by waiting for a shift, so they must not share a
+      // message.
+      if (sample.speedKts <= 0) { calm++; continue; }
 
       const toDestination = bearingDeg(node.lat, node.lon, destination.lat, destination.lon);
       const remaining = distanceNm(node.lat, node.lon, destination.lat, destination.lon);
@@ -378,7 +394,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
 
         const twa = angleBetween(heading, sample.directionDeg);
         const speed = boatSpeed(polar, twa, sample.speedKts);
-        if (speed <= 0) continue;
+        if (speed <= 0) { unsailable++; continue; }
 
         // A manoeuvre eats into the step: the boat is slow through the turn and
         // the crew is busy, so the same hour covers less ground.
@@ -393,7 +409,10 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         // Discard during the search, not after it: a leg pruned here lets the
         // frontier find its way around the obstruction, whereas trimming a
         // finished route would just cut a corner off it.
-        if (avoiding && obstacles!.blocks(node.lat, node.lon, point.lat, point.lon)) continue;
+        if (avoiding && obstacles!.blocks(node.lat, node.lon, point.lat, point.lon)) {
+          blockedByLand++;
+          continue;
+        }
         candidates.push({
           lat: point.lat,
           lon: point.lon,
@@ -410,11 +429,34 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     }
 
     if (!candidates.length) {
-      warnings.push(
-        step === 0
-          ? 'No forecast wind at the departure point and time, so no route could be started.'
-          : 'The route stalled: no usable wind was forecast ahead of the last position reached.'
-      );
+      const where = step === 0 ? 'from the starting position' : 'from the last position reached';
+      if ((noWind || calm) && !blockedByLand && !unsailable) {
+        warnings.push(
+          step === 0
+            ? 'No forecast wind at the departure point and time, so no route could be started.'
+            : 'The route stalled: no usable wind was forecast ahead of the last position reached.'
+        );
+      } else if (blockedByLand && !unsailable) {
+        warnings.push(
+          `Every course ${where} runs into land within one step of the search. ` +
+            'Start further offshore, where a passage plan is the right tool.'
+        );
+      } else if (unsailable && !blockedByLand) {
+        warnings.push(
+          `The wind is dead against this passage ${where}: every course open to the search is ` +
+            'inside the angle this boat cannot sail. Try a later departure.'
+        );
+      } else {
+        // Both, which is the boxed-in case: what land leaves open, the wind
+        // forbids. Naming both is the whole point — either alone reads as a
+        // different and fixable problem.
+        warnings.push(
+          `There is no way out ${where}: the courses that clear the land are ones this boat ` +
+            'cannot sail against the forecast wind, and the courses it could sail run ashore. ' +
+            'Beating out of somewhere this tight is pilotage, which this planner does not do — ' +
+            'start from open water, or wait for a shift.'
+        );
+      }
       break;
     }
 

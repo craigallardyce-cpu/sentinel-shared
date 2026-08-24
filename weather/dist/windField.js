@@ -50,7 +50,7 @@ export function fromComponents(u, v) {
  * over a satellite link.
  */
 export async function fetchWindField(bounds, options = {}) {
-    const { resolutionDeg = 1, days = 7, fetchImpl = fetch } = options;
+    const { resolutionDeg = 1, days = 7, model = 'best_match', fetchImpl = fetch } = options;
     const lats = axis(bounds.south, bounds.north, resolutionDeg);
     const lons = axis(bounds.west, bounds.east, resolutionDeg);
     const latParam = [];
@@ -62,7 +62,8 @@ export async function fetchWindField(bounds, options = {}) {
         }
     const url = `${FORECAST_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
         '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn' +
-        `&forecast_days=${Math.min(16, Math.max(1, Math.round(days)))}&models=best_match`;
+        `&forecast_days=${Math.min(16, Math.max(1, Math.round(days)))}` +
+        `&models=${encodeURIComponent(model)}`;
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok)
         throw new Error(`Open-Meteo wind field returned HTTP ${res.status}`);
@@ -105,7 +106,7 @@ export async function fetchWindField(bounds, options = {}) {
         u.push(uPlane);
         v.push(vPlane);
     }
-    return { lats, lons, times, u, v };
+    return { model, lats, lons, times, u, v };
 }
 function slot(values, target) {
     if (!values.length)

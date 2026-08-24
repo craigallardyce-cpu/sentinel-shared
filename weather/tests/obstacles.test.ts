@@ -191,3 +191,63 @@ describe('routeIsochrone with an end inside an obstacle', () => {
     expect(route.warnings.join(' ')).toMatch(/starting position is on land/);
   });
 });
+
+describe('why a blocked search stopped', () => {
+  const polar = GENERIC_POLARS.cruisingMonohull;
+  const departure = Date.UTC(2026, 0, 1);
+  const base = {
+    start: { lat: 0, lon: 0 },
+    destination: { lat: 0, lon: 3 },
+    departure, polar, maxHours: 48
+  };
+  // Walls a step away on three sides, leaving only west — which is behind the
+  // boat and outside the search's off-course window.
+  const boxedIn = createObstacleField([
+    // A band, not a half-plane: a wall extending past lon 3 would contain the
+    // destination, and the router would rightly refuse before sampling wind.
+    island('east', 0.02, -5, 0.5, 5),
+    island('north', -5, 0.02, 5, 5),
+    island('south', -5, -5, 5, -0.02)
+  ]);
+
+  it('names land when every course the boat could sail runs ashore', () => {
+    // Wind from the west, so east is dead downwind and north/south are beam
+    // reaches: everything in the window is sailable, and all of it is walled.
+    const r = routeIsochrone({ ...base, wind: () => ({ speedKts: 15, directionDeg: 270 }), obstacles: boxedIn });
+    expect(r.reachedDestination).toBe(false);
+    expect(r.warnings.join(' ')).toMatch(/runs into land within one step/);
+  });
+
+  it('names the wind when land is not the problem', () => {
+    // Dead headwind with the search held close to the rhumb line, so the
+    // tacking angles it would normally use are out of bounds. No obstacles.
+    const r = routeIsochrone({
+      ...base,
+      wind: () => ({ speedKts: 15, directionDeg: 90 }),
+      maxOffCourseDeg: 20
+    });
+    expect(r.reachedDestination).toBe(false);
+    expect(r.warnings.join(' ')).toMatch(/dead against this passage/);
+  });
+
+  it('names both when what the land leaves open, the wind forbids', () => {
+    // Headwind from the east; land north and south. What is sailable (the
+    // tacks) is walled, and what is open (due east) is dead upwind.
+    const r = routeIsochrone({
+      ...base,
+      wind: () => ({ speedKts: 15, directionDeg: 90 }),
+      obstacles: createObstacleField([
+        island('north', -5, 0.02, 5, 5),
+        island('south', -5, -5, 5, -0.02)
+      ])
+    });
+    expect(r.reachedDestination).toBe(false);
+    expect(r.warnings.join(' ')).toMatch(/no way out/);
+    expect(r.warnings.join(' ')).toMatch(/pilotage/);
+  });
+
+  it('still calls a calm a calm', () => {
+    const r = routeIsochrone({ ...base, wind: () => ({ speedKts: 0, directionDeg: 0 }), obstacles: boxedIn });
+    expect(r.warnings.join(' ')).toMatch(/no route could be started/);
+  });
+});
