@@ -186,9 +186,10 @@ const NO_LAND_WARNING =
  * which is why the sentence leads with what is still unknown.
  */
 const COARSE_LAND_WARNING =
-  'This route was kept clear of the coastline outline and any zones you have marked, but that ' +
-  'is a shape check at roughly half a kilometre of detail — it knows nothing of depths, rocks, ' +
-  'reefs, buoyage or traffic schemes. Check every leg against your chart before sailing it.';
+  'This route was kept clear of the coastline outline and any zones you have marked, but that is ' +
+  'a check against a coarse outline of the shape of the land — it knows nothing of depths, rocks, ' +
+  'reefs, buoyage or traffic schemes, and a strait it leaves open may not be. Check every leg ' +
+  'against your chart before sailing it.';
 
 function relativeSide(headingDeg: number, windFromDeg: number): number {
   const delta = ((headingDeg - windFromDeg + 540) % 360) - 180;

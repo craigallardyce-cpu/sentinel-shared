@@ -135,6 +135,7 @@ describe('routeIsochrone with obstacles', () => {
     const route = routeIsochrone({ ...base, obstacles });
     const warning = route.warnings[0];
     expect(warning).toMatch(/depths, rocks/);
+    expect(warning).not.toMatch(/kilometre/); // no precision claim that can drift from the build
     expect(warning).toMatch(/check every leg against your chart/i);
   });
 
