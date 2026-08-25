@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  fetchWaveField,
+  fetchMarineField,
   createWaveSampler,
   waveToComponents,
   waveFromComponents,
-  type WaveField
-} from '../src/waveField.js';
+  type MarineField
+} from '../src/marineField.js';
 import { routeIsochrone, seaStateFactor, type WindSampler, type WaveSampler } from '../src/routing.js';
 import { GENERIC_POLARS } from '../src/polars.js';
 
@@ -61,7 +61,7 @@ function stubMarine(
 
 const jsonResponse = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response;
 
-describe('fetchWaveField', () => {
+describe('fetchMarineField', () => {
   it('asks the marine endpoint for the whole grid in one call', async () => {
     const lats = [30, 32, 34];
     const lons = [-66, -64];
@@ -69,7 +69,7 @@ describe('fetchWaveField', () => {
       jsonResponse(stubMarine(lats, lons, 6, 2.5, 180, 8))
     ) as unknown as typeof fetch;
 
-    const field = await fetchWaveField(
+    const field = await fetchMarineField(
       { south: 30, north: 34, west: -66, east: -64 },
       { resolutionDeg: 2, fetchImpl }
     );
@@ -88,7 +88,7 @@ describe('fetchWaveField', () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(stubMarine([40], [-70], 3, 1, 270, 6))
     ) as unknown as typeof fetch;
-    await fetchWaveField({ south: 40, north: 40, west: -70, east: -70 }, { days: 16, fetchImpl });
+    await fetchMarineField({ south: 40, north: 40, west: -70, east: -70 }, { days: 16, fetchImpl });
     expect((fetchImpl as any).mock.calls[0][0]).toContain('forecast_days=8');
   });
 
@@ -96,7 +96,7 @@ describe('fetchWaveField', () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(stubMarine([40], [-70], 3, 1.2, 90, 5)[0])
     ) as unknown as typeof fetch;
-    const field = await fetchWaveField(
+    const field = await fetchMarineField(
       { south: 40, north: 40, west: -70, east: -70 },
       { fetchImpl }
     );
@@ -108,7 +108,7 @@ describe('fetchWaveField', () => {
       jsonResponse(stubMarine([30], [-66], 3, 1, 0, 5))
     ) as unknown as typeof fetch;
     await expect(
-      fetchWaveField({ south: 30, north: 34, west: -66, east: -64 }, { resolutionDeg: 2, fetchImpl })
+      fetchMarineField({ south: 30, north: 34, west: -66, east: -64 }, { resolutionDeg: 2, fetchImpl })
     ).rejects.toThrow(/wave points/);
   });
 
@@ -118,7 +118,7 @@ describe('fetchWaveField', () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(stubMarine(lats, lons, 4, 3, 180, 9, (lat, lon) => lat === 40 && lon === -70))
     ) as unknown as typeof fetch;
-    const field = await fetchWaveField(
+    const field = await fetchMarineField(
       { south: 40, north: 42, west: -70, east: -68 },
       { resolutionDeg: 2, fetchImpl }
     );
@@ -133,7 +133,7 @@ function field(
   lons: number[],
   hours: number,
   at: (lat: number, lon: number, t: number) => { h: number; dir: number; period: number } | null
-): WaveField {
+): MarineField {
   const times = Array.from({ length: hours }, (_, i) => T0 + i * 3600_000);
   const plane = (pick: (v: { h: number; dir: number; period: number }) => number) =>
     times.map((_, t) =>
@@ -151,7 +151,11 @@ function field(
     height: plane((v) => v.h),
     u: plane((v) => waveToComponents(v.dir).u),
     v: plane((v) => waveToComponents(v.dir).v),
-    period: plane((v) => v.period)
+    period: plane((v) => v.period),
+    // Slack water everywhere: these cases are about the sea, and a current
+    // left undefined would be a differently shaped object, not an empty one.
+    currentU: plane(() => 0),
+    currentV: plane(() => 0)
   };
 }
 

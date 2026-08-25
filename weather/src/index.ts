@@ -31,6 +31,8 @@ export type {
   WindSampler,
   WaveSample,
   WaveSampler,
+  CurrentSample,
+  CurrentSampler,
   SeaStateOptions,
   MotoringOptions
 } from './routing.js';
@@ -51,16 +53,22 @@ export {
 export type { WindField, WindFieldOptions, Bounds } from './windField.js';
 
 export {
-  fetchWaveField,
+  fetchMarineField,
   createWaveSampler,
+  createCurrentSampler,
   waveToComponents,
-  waveFromComponents
-} from './waveField.js';
-export type { WaveField, WaveFieldOptions } from './waveField.js';
+  waveFromComponents,
+  currentToComponents,
+  currentFromComponents,
+  speedToKnots
+} from './marineField.js';
+export type { MarineField, MarineFieldOptions } from './marineField.js';
 
 export {
   summarisePassage,
   encounterPeriodS,
+  solarElevationDeg,
+  isNightAt,
   WIND_BANDS_KTS,
   WAVE_BANDS_M
 } from './passageSummary.js';

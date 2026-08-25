@@ -35,6 +35,13 @@ export interface WaveSample {
 }
 /** Sea state at a place and moment, or null where the forecast does not reach. */
 export type WaveSampler = (lat: number, lon: number, timeMs: number) => WaveSample | null;
+export interface CurrentSample {
+    speedKts: number;
+    /** The SET: the direction the water is going TO, in degrees true. */
+    setDeg: number;
+}
+/** Current at a place and moment, or null where the model does not reach. */
+export type CurrentSampler = (lat: number, lon: number, timeMs: number) => CurrentSample | null;
 export interface SeaStateOptions {
     /**
      * Waterline length the penalty is scaled against, in metres. Speed lost to
@@ -162,6 +169,21 @@ export interface RouteLeg {
     wavePeriodS: number | null;
     /** True where this leg was run under power rather than sail. */
     motoring: boolean;
+    /** Current here, in knots, or null where none was known. */
+    currentKts: number | null;
+    /** The set: where the current is going, degrees true. */
+    currentSetDeg: number | null;
+    /** Speed over the ground, which differs from boat speed wherever there is current. */
+    groundSpeedKts: number;
+    /**
+     * True where a real wind blows against a real current.
+     *
+     * Wind over tide is where an ordinary sea turns into a dangerous one: the
+     * waves stand up, shorten and break, and a forecast wave height on its own
+     * says none of that. It takes both to be worth naming, which is why this is
+     * a flag rather than two numbers a reader is left to combine.
+     */
+    windAgainstCurrent: boolean;
 }
 export interface RouteResult {
     reachedDestination: boolean;
@@ -186,6 +208,8 @@ export interface RouteResult {
     motoringHours: number | null;
     /** Litres burned, where a burn rate was given. */
     fuelLitres: number | null;
+    /** Strongest current met anywhere on the route, or null if none was known. */
+    maxCurrentKts: number | null;
 }
 export interface RouteOptions {
     start: {
@@ -254,6 +278,21 @@ export interface RouteOptions {
     maxWaveHeightM?: number;
     /** How the sea is turned into lost speed. See `seaStateFactor`. */
     seaState?: SeaStateOptions;
+    /**
+     * Ocean current over the passage. Optional, like the sea.
+     *
+     * Unlike the wave penalty this is not an approximation of anything: it is
+     * vector arithmetic. The boat sails through water, the water moves over the
+     * ground, and the track is the sum of the two. That makes it the most
+     * trustworthy physics in this file — all the uncertainty lives in the
+     * current model, none of it in what the router does with it.
+     *
+     * It also changes the wind the sails feel, which is a correction people
+     * forget: a boat is a body in the water, so the wind that drives it is the
+     * wind relative to the water, not the wind relative to the ground the
+     * forecast is referenced to.
+     */
+    currents?: CurrentSampler;
     /**
      * The engine, if the boat is willing to use it.
      *

@@ -1,9 +1,9 @@
-import type { WaveSample, WaveSampler } from './routing.js';
+import type { WaveSample, WaveSampler, CurrentSample, CurrentSampler } from './routing.js';
 import type { Bounds } from './windField.js';
 
 /**
- * The sea the router sails through: a grid of wave forecasts over the passage
- * area, sampled continuously in space and time.
+ * The sea the router sails through: a grid of wave AND current forecasts over
+ * the passage area, sampled continuously in space and time.
  *
  * The companion to `windField.ts`, and deliberately shaped like it — fetched
  * once for the whole passage, held in memory, and reused by every departure
@@ -21,6 +21,20 @@ import type { Bounds } from './windField.js';
  *     as one grid corner that is not sea rather than as a failed forecast,
  *     which is what keeps coastal passages from losing their sea state
  *     entirely.
+ *
+ * Currents ride along on the same request, and that is the only reason they
+ * are affordable: Open-Meteo meters coordinates rather than variables, so a
+ * grid already paid for carries them free. They are the last thing the roadmap
+ * wanted from this endpoint.
+ *
+ * THE TWO DIRECTIONS HERE USE OPPOSITE CONVENTIONS, which is a trap worth
+ * naming loudly. `wave_direction` is where the sea comes FROM, like the wind.
+ * `ocean_current_direction` is where the current flows TO — the set, in the
+ * ordinary marine sense. That is not an assumption: it was checked against the
+ * Florida Straits on 2026-08-25, where the Gulf Stream runs hard north and the
+ * endpoint answered 002-005 degrees at 4.2 km/h. Had it been a FROM
+ * convention it would have said 180. Get this backwards and every wind-over-
+ * tide warning in the app inverts.
  *
  * Direction is interpolated as vectors, never as degrees, for the same reason
  * the wind is: averaging 350° and 10° arithmetically gives 180°, and a router
@@ -41,7 +55,7 @@ const FETCH_TIMEOUT_MS = 20_000;
  */
 const MAX_MARINE_DAYS = 8;
 
-export interface WaveField {
+export interface MarineField {
   lats: number[];
   lons: number[];
   /** Epoch ms for each forecast hour. */
@@ -54,9 +68,13 @@ export interface WaveField {
   v: number[][][];
   /** period[timeIndex][latIndex][lonIndex] — mean wave period, seconds. NaN where unknown. */
   period: number[][][];
+  /** currentU[t][lat][lon] — eastward current component, knots. NaN where unknown. */
+  currentU: number[][][];
+  /** currentV[t][lat][lon] — northward current component, knots. NaN where unknown. */
+  currentV: number[][][];
 }
 
-export interface WaveFieldOptions {
+export interface MarineFieldOptions {
   /** Grid spacing in degrees. Default 2°, about 120 nm. */
   resolutionDeg?: number;
   /** Forecast horizon in days, capped at what the marine models publish. Default 7. */
@@ -93,6 +111,55 @@ export function waveFromComponents(u: number, v: number): number {
 }
 
 /**
+ * A current speed and set to eastward/northward components, in knots.
+ *
+ * The set is where the water is GOING, so unlike wind and waves there is no
+ * sign flip — a current setting 090 flows east, and its eastward component is
+ * positive.
+ */
+export function currentToComponents(speedKts: number, setDeg: number): { u: number; v: number } {
+  const rad = (setDeg * Math.PI) / 180;
+  return { u: speedKts * Math.sin(rad), v: speedKts * Math.cos(rad) };
+}
+
+/** Components back to a speed and the set the current runs TO. */
+export function currentFromComponents(u: number, v: number): CurrentSample {
+  return {
+    speedKts: Math.hypot(u, v),
+    setDeg: (((Math.atan2(u, v) * 180) / Math.PI) + 360) % 360
+  };
+}
+
+/**
+ * Convert whatever speed unit the endpoint reported into knots.
+ *
+ * Read from `hourly_units` rather than assumed. Open-Meteo answers km/h today
+ * — confirmed against the live API on 2026-08-25 — but a default that changes
+ * under us would otherwise be a silent factor of 3.6 in every current, and a
+ * silently wrong current is worse than none. An unrecognised unit is refused
+ * rather than guessed at.
+ */
+export function speedToKnots(value: number, unit: string | undefined): number {
+  switch ((unit ?? 'km/h').trim().toLowerCase()) {
+    case 'kn':
+    case 'kt':
+    case 'kts':
+    case 'knots':
+      return value;
+    case 'km/h':
+    case 'kmh':
+      return value / 1.852;
+    case 'm/s':
+    case 'ms':
+      return value * 1.943844;
+    case 'mph':
+      return value * 0.868976;
+    default:
+      return NaN;
+  }
+}
+
+/**
  * Fetch the wave grid for a passage.
  *
  * The request is shaped exactly like the wind field's — many coordinates in
@@ -101,10 +168,10 @@ export function waveFromComponents(u: number, v: number): number {
  * single-point case still comes back as a bare object rather than an array of
  * one, which is why both are accepted.
  */
-export async function fetchWaveField(
+export async function fetchMarineField(
   bounds: Bounds,
-  options: WaveFieldOptions = {}
-): Promise<WaveField> {
+  options: MarineFieldOptions = {}
+): Promise<MarineField> {
   const { resolutionDeg = 2, days = 7, fetchImpl = fetch } = options;
 
   const lats = axis(bounds.south, bounds.north, resolutionDeg);
@@ -116,7 +183,7 @@ export async function fetchWaveField(
 
   const url =
     `${MARINE_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
-    '&hourly=wave_height,wave_direction,wave_period' +
+    '&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction' +
     `&forecast_days=${Math.min(MAX_MARINE_DAYS, Math.max(1, Math.round(days)))}`;
 
   const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -136,21 +203,29 @@ export async function fetchWaveField(
   // Upstream times carry no zone suffix and default to GMT.
   const times = timeStrings.map((t) => Date.parse(/[Zz+]/.test(t) ? t : `${t}Z`));
 
+  const currentUnit: string | undefined = points[0]?.hourly_units?.ocean_current_velocity;
+
   const height: number[][][] = [];
   const u: number[][][] = [];
   const v: number[][][] = [];
   const period: number[][][] = [];
+  const currentU: number[][][] = [];
+  const currentV: number[][][] = [];
 
   for (let t = 0; t < times.length; t++) {
     const hPlane: number[][] = [];
     const uPlane: number[][] = [];
     const vPlane: number[][] = [];
     const pPlane: number[][] = [];
+    const cuPlane: number[][] = [];
+    const cvPlane: number[][] = [];
     for (let i = 0; i < lats.length; i++) {
       const hRow: number[] = [];
       const uRow: number[] = [];
       const vRow: number[] = [];
       const pRow: number[] = [];
+      const cuRow: number[] = [];
+      const cvRow: number[] = [];
       for (let j = 0; j < lons.length; j++) {
         const point = points[i * lons.length + j];
         const h = point?.hourly?.wave_height?.[t];
@@ -171,19 +246,43 @@ export async function fetchWaveField(
           vRow.push(NaN);
           pRow.push(NaN);
         }
+
+        // Currents are their own measurement and their own holes: a point can
+        // have a sea state and no current, or the reverse, and neither should
+        // cost the other.
+        const cv = point?.hourly?.ocean_current_velocity?.[t];
+        const cd = point?.hourly?.ocean_current_direction?.[t];
+        if (Number.isFinite(cv) && Number.isFinite(cd)) {
+          const kts = speedToKnots(cv as number, currentUnit);
+          if (Number.isFinite(kts)) {
+            const c = currentToComponents(kts, cd as number);
+            cuRow.push(c.u);
+            cvRow.push(c.v);
+          } else {
+            cuRow.push(NaN);
+            cvRow.push(NaN);
+          }
+        } else {
+          cuRow.push(NaN);
+          cvRow.push(NaN);
+        }
       }
       hPlane.push(hRow);
       uPlane.push(uRow);
       vPlane.push(vRow);
       pPlane.push(pRow);
+      cuPlane.push(cuRow);
+      cvPlane.push(cvRow);
     }
     height.push(hPlane);
     u.push(uPlane);
     v.push(vPlane);
     period.push(pPlane);
+    currentU.push(cuPlane);
+    currentV.push(cvPlane);
   }
 
-  return { lats, lons, times, height, u, v, period };
+  return { lats, lons, times, height, u, v, period, currentU, currentV };
 }
 
 function slot(values: number[], target: number): { lo: number; hi: number; frac: number } | null {
@@ -212,7 +311,7 @@ function slot(values: number[], target: number): { lo: number; hi: number; frac:
  * thing to say about it: not that a shore is smooth, but that this is the sea
  * running outside it.
  */
-export function createWaveSampler(field: WaveField): WaveSampler {
+export function createWaveSampler(field: MarineField): WaveSampler {
   return (lat: number, lon: number, timeMs: number): WaveSample | null => {
     const y = slot(field.lats, lat);
     const x = slot(field.lons, lon);
@@ -279,5 +378,62 @@ export function createWaveSampler(field: WaveField): WaveSampler {
       directionDeg: waveFromComponents(u, v),
       periodS
     };
+  };
+}
+
+/**
+ * A current sampler over the same fetched field.
+ *
+ * Kept separate from the wave sampler rather than folded into it because the
+ * two are independent measurements with independent holes: a grid cell can
+ * carry a sea state and no current, or a current and no sea state, and a
+ * combined sampler would have to throw away one to report the other.
+ *
+ * Currents interpolate as vectors for the same reason waves do, and with more
+ * at stake — a tidal gate that runs one way then the other has neighbouring
+ * cells 180 degrees apart, and averaging those as degrees produces a confident
+ * reading at right angles to both.
+ *
+ * Land corners are dropped and the remaining sea corners reweighted, as with
+ * waves. Unlike waves, a cell that resolves to almost no current returns a set
+ * of zero rather than null: "no current here" is a real and useful answer,
+ * where "a sea running from nowhere" is not.
+ */
+export function createCurrentSampler(field: MarineField): CurrentSampler {
+  return (lat: number, lon: number, timeMs: number): CurrentSample | null => {
+    const y = slot(field.lats, lat);
+    const x = slot(field.lons, lon);
+    const t = slot(field.times, timeMs);
+    if (!y || !x || !t) return null;
+
+    const blend = (ti: number) => {
+      const corners = [
+        { yi: y.lo, xi: x.lo, w: (1 - y.frac) * (1 - x.frac) },
+        { yi: y.lo, xi: x.hi, w: (1 - y.frac) * x.frac },
+        { yi: y.hi, xi: x.lo, w: y.frac * (1 - x.frac) },
+        { yi: y.hi, xi: x.hi, w: y.frac * x.frac }
+      ];
+      let weight = 0;
+      let u = 0;
+      let v = 0;
+      for (const c of corners) {
+        const cu = field.currentU[ti]?.[c.yi]?.[c.xi];
+        const cv = field.currentV[ti]?.[c.yi]?.[c.xi];
+        if (!Number.isFinite(cu) || !Number.isFinite(cv)) continue;
+        const w = c.w > 0 ? c.w : 1e-9;
+        weight += w;
+        u += cu * w;
+        v += cv * w;
+      }
+      if (weight <= 0) return null;
+      return { u: u / weight, v: v / weight };
+    };
+
+    const before = blend(t.lo);
+    const after = blend(t.hi);
+    if (!before || !after) return null;
+
+    const mix = (a: number, b: number) => a + (b - a) * t.frac;
+    return currentFromComponents(mix(before.u, after.u), mix(before.v, after.v));
   };
 }

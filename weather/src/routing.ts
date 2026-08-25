@@ -21,7 +21,11 @@ import type { ObstacleField } from './obstacles.js';
  *     schemes. Every result says which case it was in `warnings`, and callers
  *     must present it as a weather plan to lay over a chart, never as a
  *     course to steer.
- *   - No currents, no leeway. Sea state is used, but coarsely: wave height,
+ *   - Currents ARE used, as of 2026-08, and honestly: the ground track is the
+ *     water track plus the current, and the wind fed to the polar is the wind
+ *     relative to the moving water. The arithmetic is exact; the ocean-scale
+ *     model behind it knows nothing of tidal gates or headland races, which is
+ *     what the warnings say. No leeway. Sea state is used, but coarsely: wave height,
  *     the angle it meets the boat at and its period slow the polar down, and
  *     a wave height limit steers the search around water rougher than the
  *     skipper is willing to sail. Both are approximations of a boat nobody
@@ -121,6 +125,31 @@ export interface WaveSample {
 
 /** Sea state at a place and moment, or null where the forecast does not reach. */
 export type WaveSampler = (lat: number, lon: number, timeMs: number) => WaveSample | null;
+
+export interface CurrentSample {
+  speedKts: number;
+  /** The SET: the direction the water is going TO, in degrees true. */
+  setDeg: number;
+}
+
+/** Current at a place and moment, or null where the model does not reach. */
+export type CurrentSampler = (lat: number, lon: number, timeMs: number) => CurrentSample | null;
+
+/**
+ * Wind, waves and the boat live in the meteorological convention (direction
+ * FROM); currents live in the marine one (set, the direction TO). Both are
+ * right in their own worlds, and mixing them silently inverts a passage — so
+ * every conversion between them goes through these two helpers rather than an
+ * inline sign somebody has to remember to flip.
+ */
+function towardVector(speedKts: number, towardDeg: number): { u: number; v: number } {
+  const rad = toRad(towardDeg);
+  return { u: speedKts * Math.sin(rad), v: speedKts * Math.cos(rad) };
+}
+
+function vectorToward(u: number, v: number): { speedKts: number; towardDeg: number } {
+  return { speedKts: Math.hypot(u, v), towardDeg: (toDeg(Math.atan2(u, v)) + 360) % 360 };
+}
 
 export interface SeaStateOptions {
   /**
@@ -280,6 +309,21 @@ export interface RouteLeg {
   wavePeriodS: number | null;
   /** True where this leg was run under power rather than sail. */
   motoring: boolean;
+  /** Current here, in knots, or null where none was known. */
+  currentKts: number | null;
+  /** The set: where the current is going, degrees true. */
+  currentSetDeg: number | null;
+  /** Speed over the ground, which differs from boat speed wherever there is current. */
+  groundSpeedKts: number;
+  /**
+   * True where a real wind blows against a real current.
+   *
+   * Wind over tide is where an ordinary sea turns into a dangerous one: the
+   * waves stand up, shorten and break, and a forecast wave height on its own
+   * says none of that. It takes both to be worth naming, which is why this is
+   * a flag rather than two numbers a reader is left to combine.
+   */
+  windAgainstCurrent: boolean;
 }
 
 export interface RouteResult {
@@ -305,6 +349,8 @@ export interface RouteResult {
   motoringHours: number | null;
   /** Litres burned, where a burn rate was given. */
   fuelLitres: number | null;
+  /** Strongest current met anywhere on the route, or null if none was known. */
+  maxCurrentKts: number | null;
 }
 
 export interface RouteOptions {
@@ -369,6 +415,21 @@ export interface RouteOptions {
   /** How the sea is turned into lost speed. See `seaStateFactor`. */
   seaState?: SeaStateOptions;
   /**
+   * Ocean current over the passage. Optional, like the sea.
+   *
+   * Unlike the wave penalty this is not an approximation of anything: it is
+   * vector arithmetic. The boat sails through water, the water moves over the
+   * ground, and the track is the sum of the two. That makes it the most
+   * trustworthy physics in this file — all the uncertainty lives in the
+   * current model, none of it in what the router does with it.
+   *
+   * It also changes the wind the sails feel, which is a correction people
+   * forget: a boat is a body in the water, so the wind that drives it is the
+   * wind relative to the water, not the wind relative to the ground the
+   * forecast is referenced to.
+   */
+  currents?: CurrentSampler;
+  /**
    * The engine, if the boat is willing to use it.
    *
    * Off by default, and that default is not laziness: a delivery skipper and a
@@ -399,7 +460,25 @@ interface Node {
   motoring: boolean;
   /** Engine hours used getting here, so fuel is spent along a route not per leg. */
   motorHours: number;
+  currentKts: number | null;
+  currentSetDeg: number | null;
+  groundSpeedKts: number;
+  windAgainstCurrent: boolean;
 }
+
+/**
+ * What counts as wind over tide.
+ *
+ * Both sides have to be real. A knot of current under a gale is not what
+ * stands a sea up, and neither is four knots of stream in a flat calm — the
+ * effect needs the wind to be building waves and the water to be running the
+ * other way. The angle is a proper opposition rather than any crossing:
+ * anything inside 120 degrees is a current that shortens the fetch a bit, not
+ * one that turns a swell into breakers.
+ */
+const WIND_OVER_TIDE_CURRENT_KTS = 1;
+const WIND_OVER_TIDE_WIND_KTS = 12;
+const WIND_OVER_TIDE_ANGLE_DEG = 120;
 
 const NO_LAND_WARNING =
   'This route is computed from wind and boat polar only. It does not know where land, ' +
@@ -492,6 +571,43 @@ function motoringWarnings(motoring: MotoringOptions | undefined, legs: RouteLeg[
   return notes;
 }
 
+/**
+ * What a current-aware route is and is not claiming.
+ *
+ * The arithmetic here is the one honest piece of physics in this file — a
+ * boat's track really is its water track plus the current, with no fitted
+ * coefficient anywhere. So the warning is not about the method. It is about
+ * the model underneath it, which resolves an ocean at a scale that misses
+ * every tidal gate, headland race and eddy a coastal passage actually turns
+ * on, and which is the part a skipper might otherwise take on trust.
+ */
+function currentWarnings(
+  currents: CurrentSampler | undefined,
+  sampleCount: number,
+  legs: RouteLeg[]
+): string[] {
+  if (!currents) return [];
+  if (sampleCount === 0) {
+    return [
+      'No current data covered this passage, so the track is through the water only. Where a ' +
+        'stream runs, the ground track and the timings will both be out.'
+    ];
+  }
+  const notes = [
+    'Currents come from an ocean-scale model. It carries the great streams — the Gulf Stream, the ' +
+      'Kuroshio, the Agulhas — and it knows nothing whatever of tidal gates, headland races, ' +
+      'overfalls or the set inside a bay. Near a coast, the tide in your almanac beats this.'
+  ];
+  if (legs.some((l) => l.windAgainstCurrent)) {
+    notes.push(
+      'Part of this route has the wind blowing against the current. That is where a sea stands up, ' +
+        'shortens and breaks, and the forecast wave height above does not know it is happening — ' +
+        'the real water there will be worse than the number says.'
+    );
+  }
+  return notes;
+}
+
 function relativeSide(headingDeg: number, windFromDeg: number): number {
   const delta = ((headingDeg - windFromDeg + 540) % 360) - 180;
   if (Math.abs(delta) < 1e-6 || Math.abs(Math.abs(delta) - 180) < 1e-6) return 0;
@@ -526,7 +642,11 @@ function buildLegs(node: Node, polarName: string): RouteLeg[] {
       waveHeightM: n.waveHeightM === null ? null : Math.round(n.waveHeightM * 10) / 10,
       waveAngleDeg: n.waveAngleDeg === null ? null : Math.round(n.waveAngleDeg),
       wavePeriodS: n.wavePeriodS === null ? null : Math.round(n.wavePeriodS),
-      motoring: n.motoring
+      motoring: n.motoring,
+      currentKts: n.currentKts === null ? null : Math.round(n.currentKts * 100) / 100,
+      currentSetDeg: n.currentSetDeg === null ? null : Math.round(n.currentSetDeg),
+      groundSpeedKts: Math.round(n.groundSpeedKts * 100) / 100,
+      windAgainstCurrent: n.windAgainstCurrent
     });
   }
   return legs;
@@ -563,6 +683,15 @@ function engineUse(
   };
 }
 
+function worstCurrent(legs: RouteLeg[]): number | null {
+  let worst: number | null = null;
+  for (const leg of legs) {
+    if (leg.currentKts === null) continue;
+    if (worst === null || leg.currentKts > worst) worst = leg.currentKts;
+  }
+  return worst;
+}
+
 function worstSeas(legs: RouteLeg[]): number | null {
   let worst: number | null = null;
   for (const leg of legs) {
@@ -596,7 +725,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     waves,
     maxWaveHeightM,
     seaState,
-    motoring
+    motoring,
+    currents
   } = options;
 
   const avoiding = Boolean(obstacles && obstacles.count > 0);
@@ -615,6 +745,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
   // but had nothing for this passage must not leave the result looking like it
   // was routed through waves, so the count decides which warning is told.
   let waveSampleCount = 0;
+  let currentSampleCount = 0;
 
   const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
   const stepHours = stepMinutes / 60;
@@ -646,7 +777,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         polarName: polar.name,
         maxWaveHeightM: null,
         motoringHours: null,
-        fuelLitres: null
+        fuelLitres: null,
+        maxCurrentKts: null
       };
     }
   }
@@ -667,7 +799,11 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     waveAngleDeg: null,
     wavePeriodS: null,
     motoring: false,
-    motorHours: 0
+    motorHours: 0,
+    currentKts: null,
+    currentSetDeg: null,
+    groundSpeedKts: 0,
+    windAgainstCurrent: false
   };
 
   let frontier: Node[] = [root];
@@ -699,6 +835,48 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       // message. Neither stops a boat with fuel left.
       if (sample.speedKts <= 0 && !canMotor) { calm++; continue; }
 
+      // The current here, and the wind the sails actually feel because of it.
+      //
+      // A boat is a body in the water, so what drives it is the wind relative
+      // to the water — the forecast wind, which is referenced to the ground,
+      // minus the current. In two knots of stream that is a couple of degrees
+      // and a knot: small, free, and in the direction of the truth.
+      const stream = currents ? currents(node.lat, node.lon, node.timeMs) : null;
+      const streamVec =
+        stream && Number.isFinite(stream.speedKts) && stream.speedKts > 0
+          ? towardVector(stream.speedKts, stream.setDeg)
+          : null;
+      if (stream && Number.isFinite(stream.speedKts)) currentSampleCount++;
+
+      let windForSails = sample;
+      if (streamVec) {
+        const airOverGround = towardVector(sample.speedKts, (sample.directionDeg + 180) % 360);
+        const airOverWater = vectorToward(
+          airOverGround.u - streamVec.u,
+          airOverGround.v - streamVec.v
+        );
+        windForSails = {
+          speedKts: airOverWater.speedKts,
+          directionDeg: (airOverWater.towardDeg + 180) % 360,
+          gustKts: sample.gustKts
+        };
+      }
+
+      // Wind over tide: a real wind blowing against a real current. Judged on
+      // the ground-referenced wind, because that is the wind the sea itself is
+      // being built by.
+      const windOverTide = Boolean(
+        streamVec &&
+          stream!.speedKts >= WIND_OVER_TIDE_CURRENT_KTS &&
+          sample.speedKts >= WIND_OVER_TIDE_WIND_KTS &&
+          angleBetween((sample.directionDeg + 180) % 360, stream!.setDeg) > WIND_OVER_TIDE_ANGLE_DEG
+      );
+      const streamOf = () => ({
+        currentKts: stream && Number.isFinite(stream.speedKts) ? stream.speedKts : null,
+        currentSetDeg: stream && Number.isFinite(stream.speedKts) ? stream.setDeg : null,
+        windAgainstCurrent: windOverTide
+      });
+
       // The sea here, and what the boat keeps of its polar in it. Sampled once
       // per position: the height and the direction of the sea do not depend on
       // which course is being tried, only the angle between them does.
@@ -727,7 +905,21 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       };
 
       const sailedOn = (headingDeg: number, twaDeg: number) =>
-        inSea(boatSpeed(polar, twaDeg, sample.speedKts), headingDeg);
+        inSea(boatSpeed(polar, twaDeg, windForSails.speedKts), headingDeg);
+
+      /**
+       * Where the boat actually goes on a heading, and how fast.
+       *
+       * A heading is steered through the water; the ground track is that plus
+       * the current. With no current the two are identical and this costs a
+       * vector addition of zero.
+       */
+      const groundTrack = (headingDeg: number, throughWaterKts: number) => {
+        if (!streamVec) return { courseDeg: headingDeg, speedKts: throughWaterKts };
+        const water = towardVector(throughWaterKts, headingDeg);
+        const ground = vectorToward(water.u + streamVec.u, water.v + streamVec.v);
+        return { courseDeg: ground.towardDeg, speedKts: ground.speedKts };
+      };
 
       const toDest = bearingDeg(node.lat, node.lon, destination.lat, destination.lon);
 
@@ -757,9 +949,10 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       if (canMotor) {
         let bestSailVmg = 0;
         for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
-          const speed = sailedOn(heading, angleBetween(heading, sample.directionDeg));
+          const speed = sailedOn(heading, angleBetween(heading, windForSails.directionDeg));
           if (speed <= 0) continue;
-          const vmg = speed * Math.cos(toRad(angleBetween(heading, toDest)));
+          const ground = groundTrack(heading, speed);
+          const vmg = ground.speedKts * Math.cos(toRad(angleBetween(ground.courseDeg, toDest)));
           if (vmg > bestSailVmg) bestSailVmg = vmg;
         }
         engineOn = bestSailVmg < (motoring!.thresholdKts ?? 3);
@@ -794,18 +987,24 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       // a mile off a windward landfall, sailing in circles until it timed out.
       let closingVmg = 0;
       let closingHeading = toDestination;
-      let closingTwa = angleBetween(toDestination, sample.directionDeg);
+      let closingTwa = angleBetween(toDestination, windForSails.directionDeg);
       let closingMotoring = false;
+      let closingGround = 0;
       for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
-        const twa = angleBetween(heading, sample.directionDeg);
+        const twa = angleBetween(heading, windForSails.directionDeg);
         const { speed, motoring: underPower } = speedIn(heading, twa);
         if (speed <= 0) continue;
-        const vmg = speed * Math.cos(toRad(angleBetween(heading, toDestination)));
+        const ground = groundTrack(heading, speed);
+        // Closing speed is made good over the GROUND. A boat stemming a foul
+        // tide is not closing at its boat speed, and one carried by a fair one
+        // is closing at rather more.
+        const vmg = ground.speedKts * Math.cos(toRad(angleBetween(ground.courseDeg, toDestination)));
         if (vmg > closingVmg) {
           closingVmg = vmg;
           closingHeading = heading;
           closingTwa = twa;
           closingMotoring = underPower;
+          closingGround = ground.speedKts;
         }
       }
 
@@ -822,14 +1021,16 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           parent: node,
           headingDeg: closingHeading,
           twaDeg: closingTwa,
-          twsKts: sample.speedKts,
+          twsKts: windForSails.speedKts,
           gustKts: sample.gustKts ?? null,
           boatSpeedKts: speedIn(closingHeading, closingTwa).speed,
           distanceNm: remaining,
-          tackSide: relativeSide(closingHeading, sample.directionDeg),
+          tackSide: relativeSide(closingHeading, windForSails.directionDeg),
           ...seaOf(closingHeading),
           motoring: closingMotoring,
-          motorHours: node.motorHours + (closingMotoring ? arrivalHours : 0)
+          motorHours: node.motorHours + (closingMotoring ? arrivalHours : 0),
+          ...streamOf(),
+          groundSpeedKts: closingGround || closingVmg
         };
         const legs = buildLegs(arrival, polar.name);
         return {
@@ -841,10 +1042,12 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           warnings: [
             ...warnings,
             ...seaStateWarnings(waves, waveSampleCount, seaLimit),
+            ...currentWarnings(currents, currentSampleCount, legs),
             ...motoringWarnings(motoring, legs)
           ],
           polarName: polar.name,
           maxWaveHeightM: worstSeas(legs),
+          maxCurrentKts: worstCurrent(legs),
           ...engineUse(legs, motoring)
         };
       }
@@ -852,20 +1055,22 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
         if (angleBetween(heading, toDestination) > maxOffCourseDeg) continue;
 
-        const twa = angleBetween(heading, sample.directionDeg);
+        const twa = angleBetween(heading, windForSails.directionDeg);
         const { speed, motoring: underPower } = speedIn(heading, twa);
         if (speed <= 0) { unsailable++; continue; }
 
         // A manoeuvre eats into the step: the boat is slow through the turn and
         // the crew is busy, so the same hour covers less ground.
-        const side = relativeSide(heading, sample.directionDeg);
+        const side = relativeSide(heading, windForSails.directionDeg);
         const manoeuvring = node.tackSide !== 0 && side !== 0 && side !== node.tackSide;
         const usableHours = manoeuvring
           ? Math.max(0, stepHours - manoeuvrePenaltyMinutes / 60)
           : stepHours;
-        const legDistance = speed * usableHours;
+        // Steered through the water, carried over the ground.
+        const ground = groundTrack(heading, speed);
+        const legDistance = ground.speedKts * usableHours;
         if (legDistance <= 0) continue;
-        const point = destinationPoint(node.lat, node.lon, heading, legDistance);
+        const point = destinationPoint(node.lat, node.lon, ground.courseDeg, legDistance);
         // Discard during the search, not after it: a leg pruned here lets the
         // frontier find its way around the obstruction, whereas trimming a
         // finished route would just cut a corner off it.
@@ -880,14 +1085,16 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           parent: node,
           headingDeg: heading,
           twaDeg: twa,
-          twsKts: sample.speedKts,
+          twsKts: windForSails.speedKts,
           gustKts: sample.gustKts ?? null,
           boatSpeedKts: speed,
           distanceNm: legDistance,
           tackSide: side,
           ...seaOf(heading),
           motoring: underPower,
-          motorHours: node.motorHours + (underPower ? usableHours : 0)
+          motorHours: node.motorHours + (underPower ? usableHours : 0),
+          ...streamOf(),
+          groundSpeedKts: ground.speedKts
         });
       }
     }
@@ -999,10 +1206,12 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     warnings: [
       ...warnings,
       ...seaStateWarnings(waves, waveSampleCount, seaLimit),
+      ...currentWarnings(currents, currentSampleCount, legs),
       ...motoringWarnings(motoring, legs)
     ],
     polarName: polar.name,
     maxWaveHeightM: worstSeas(legs),
+    maxCurrentKts: worstCurrent(legs),
     ...engineUse(legs, motoring)
   };
 }

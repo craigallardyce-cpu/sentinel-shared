@@ -90,6 +90,41 @@ export interface PassageSummary {
     /** Hours the encounter period could not be computed — running with the sea. */
     unknownHours: number;
   } | null;
+  /**
+   * How much of the passage is sailed in the dark, and how much of the work.
+   *
+   * Nobody in the comparison this came from reports either, and for a
+   * short-handed crew they outrank half of what is reported instead. Hours of
+   * darkness set the watch bill. Manoeuvres in the dark are the ones that go
+   * wrong: a gybe at 0300 with one person awake is a different act from the
+   * same gybe at noon.
+   */
+  night: { fraction: number; hours: number; manoeuvres: number };
+  /**
+   * Wind against current, where both are real enough to matter.
+   *
+   * The compound metric that justifies fetching currents at all. Wind over
+   * tide is where an ordinary sea stands up, shortens and breaks, and the
+   * wave distribution above cannot show it — the forecast height does not know
+   * the water underneath it is running the other way.
+   */
+  windAgainstCurrent: { fraction: number; hours: number } | null;
+  /**
+   * What it is like where the passage ends, which is where the risk is.
+   *
+   * Arriving at an unfamiliar harbour at 0300 in twenty-five knots is the real
+   * hazard of most passages, and it is invisible in every average and every
+   * distribution — a summary can call a passage benign and still be describing
+   * one that finishes in the dark in a gale. Null for a route that never
+   * arrived, because a landfall that did not happen has no conditions.
+   */
+  landfall: {
+    atNight: boolean;
+    twsKts: number;
+    gustKts: number | null;
+    waveHeightM: number | null;
+    time: string;
+  } | null;
 }
 
 export interface SummaryOptions {
@@ -135,6 +170,57 @@ export function encounterPeriodS(
   const omegaE = omega - ((omega * omega * speedMs) / g) * Math.cos(mu);
   if (!Number.isFinite(omegaE) || omegaE <= 1e-6) return null;
   return (2 * Math.PI) / omegaE;
+}
+
+/**
+ * The sun's elevation above the horizon, in degrees.
+ *
+ * The low-precision solar position algorithm, good to about a hundredth of a
+ * degree — which is three or four orders of magnitude better than a passage
+ * plan needs, and worth having because it is arithmetic rather than a service.
+ * A boat mid-ocean can work out when it gets dark with no network at all,
+ * which is the same reason the routing itself runs client-side.
+ */
+export function solarElevationDeg(lat: number, lon: number, timeMs: number): number {
+  const rad = Math.PI / 180;
+  // Days since J2000.0.
+  const d = timeMs / 86_400_000 + 2440587.5 - 2451545.0;
+  const meanAnomaly = (357.529 + 0.98560028 * d) * rad;
+  const meanLongitude = (280.459 + 0.98564736 * d) * rad;
+  const eclipticLongitude =
+    meanLongitude + (1.915 * Math.sin(meanAnomaly) + 0.02 * Math.sin(2 * meanAnomaly)) * rad;
+  const obliquity = (23.439 - 0.00000036 * d) * rad;
+
+  const rightAscension = Math.atan2(
+    Math.cos(obliquity) * Math.sin(eclipticLongitude),
+    Math.cos(eclipticLongitude)
+  );
+  const declination = Math.asin(Math.sin(obliquity) * Math.sin(eclipticLongitude));
+
+  // Greenwich mean sidereal time, in degrees, then local hour angle.
+  const gmstHours = (18.697374558 + 24.06570982441908 * d) % 24;
+  const hourAngle = (gmstHours * 15 + lon) * rad - rightAscension;
+
+  const elevation = Math.asin(
+    Math.sin(lat * rad) * Math.sin(declination) +
+      Math.cos(lat * rad) * Math.cos(declination) * Math.cos(hourAngle)
+  );
+  return elevation / rad;
+}
+
+/**
+ * Dark, for a watch-keeping purpose.
+ *
+ * The threshold is the sun's upper limb on the horizon allowing for
+ * refraction, which is the same instant an almanac calls sunset. Civil
+ * twilight would be defensible too, but a crew changing a headsail at
+ * nautical dusk is working in the dark whatever the definition says, and the
+ * conservative line is the one that calls more of the passage night.
+ */
+const NIGHT_ELEVATION_DEG = -0.833;
+
+export function isNightAt(lat: number, lon: number, timeMs: number): boolean {
+  return solarElevationDeg(lat, lon, timeMs) < NIGHT_ELEVATION_DEG;
 }
 
 /**
@@ -227,6 +313,25 @@ function legHours(legs: RouteLeg[]): Array<{ leg: RouteLeg; hours: number }> {
  * above the limit set, a flat calm) and the route's own warnings already
  * explain it far better than an all-zero summary would.
  */
+/**
+ * Conditions at the end of the passage, or null if it never got there.
+ *
+ * Taken from the last leg, which is the arrival itself — the router builds it
+ * at the destination with the conditions it closed in.
+ */
+function landfallOf(route: RouteResult): PassageSummary['landfall'] {
+  if (!route.reachedDestination) return null;
+  const last = route.legs[route.legs.length - 1];
+  if (!last) return null;
+  return {
+    atNight: isNightAt(last.lat, last.lon, Date.parse(last.time)),
+    twsKts: last.twsKts,
+    gustKts: last.gustKts,
+    waveHeightM: last.waveHeightM,
+    time: last.time
+  };
+}
+
 export function summarisePassage(
   route: RouteResult,
   options: SummaryOptions = {}
@@ -252,6 +357,10 @@ export function summarisePassage(
       : null;
   let resonantHours = 0;
   let resonanceUnknownHours = 0;
+  let nightHours = 0;
+  let nightManoeuvres = 0;
+  let windAgainstCurrentHours = 0;
+  let currentKnownHours = 0;
 
   const windSamples: Array<{ value: number; hours: number }> = [];
   const waveSamples: Array<{ value: number; hours: number }> = [];
@@ -265,6 +374,19 @@ export function summarisePassage(
     }
     if (leg.gustKts !== null && Number.isFinite(leg.gustKts)) {
       maxGustKts = maxGustKts === null ? leg.gustKts : Math.max(maxGustKts, leg.gustKts);
+    }
+
+    // Judged at the leg's own position and time, so a passage long enough to
+    // change time zone gets its nights where they actually fall rather than
+    // where the departure port's clock says.
+    if (isNightAt(leg.lat, leg.lon, Date.parse(leg.time))) {
+      nightHours += h;
+      if (leg.manoeuvre) nightManoeuvres++;
+    }
+
+    if (leg.currentKts !== null) {
+      currentKnownHours += h;
+      if (leg.windAgainstCurrent) windAgainstCurrentHours += h;
     }
 
     const twa = leg.twaDeg;
@@ -315,6 +437,19 @@ export function summarisePassage(
       twaDeg: HARD_UPWIND_TWA_DEG
     },
     seaStateCoverage: round3(seaHours / hours),
+    night: {
+      fraction: round3(nightHours / hours),
+      hours: Math.round(nightHours * 100) / 100,
+      manoeuvres: nightManoeuvres
+    },
+    windAgainstCurrent:
+      currentKnownHours > 0
+        ? {
+            fraction: round3(windAgainstCurrentHours / hours),
+            hours: Math.round(windAgainstCurrentHours * 100) / 100
+          }
+        : null,
+    landfall: landfallOf(route),
     rollResonance:
       rollPeriodS === null
         ? null

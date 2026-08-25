@@ -96,6 +96,48 @@ export interface PassageSummary {
         /** Hours the encounter period could not be computed — running with the sea. */
         unknownHours: number;
     } | null;
+    /**
+     * How much of the passage is sailed in the dark, and how much of the work.
+     *
+     * Nobody in the comparison this came from reports either, and for a
+     * short-handed crew they outrank half of what is reported instead. Hours of
+     * darkness set the watch bill. Manoeuvres in the dark are the ones that go
+     * wrong: a gybe at 0300 with one person awake is a different act from the
+     * same gybe at noon.
+     */
+    night: {
+        fraction: number;
+        hours: number;
+        manoeuvres: number;
+    };
+    /**
+     * Wind against current, where both are real enough to matter.
+     *
+     * The compound metric that justifies fetching currents at all. Wind over
+     * tide is where an ordinary sea stands up, shortens and breaks, and the
+     * wave distribution above cannot show it — the forecast height does not know
+     * the water underneath it is running the other way.
+     */
+    windAgainstCurrent: {
+        fraction: number;
+        hours: number;
+    } | null;
+    /**
+     * What it is like where the passage ends, which is where the risk is.
+     *
+     * Arriving at an unfamiliar harbour at 0300 in twenty-five knots is the real
+     * hazard of most passages, and it is invisible in every average and every
+     * distribution — a summary can call a passage benign and still be describing
+     * one that finishes in the dark in a gale. Null for a route that never
+     * arrived, because a landfall that did not happen has no conditions.
+     */
+    landfall: {
+        atNight: boolean;
+        twsKts: number;
+        gustKts: number | null;
+        waveHeightM: number | null;
+        time: string;
+    } | null;
 }
 export interface SummaryOptions {
     /**
@@ -127,6 +169,17 @@ export interface SummaryOptions {
  */
 export declare function encounterPeriodS(wavePeriodS: number, waveAngleDeg: number, boatSpeedKts: number): number | null;
 /**
+ * The sun's elevation above the horizon, in degrees.
+ *
+ * The low-precision solar position algorithm, good to about a hundredth of a
+ * degree — which is three or four orders of magnitude better than a passage
+ * plan needs, and worth having because it is arithmetic rather than a service.
+ * A boat mid-ocean can work out when it gets dark with no network at all,
+ * which is the same reason the routing itself runs client-side.
+ */
+export declare function solarElevationDeg(lat: number, lon: number, timeMs: number): number;
+export declare function isNightAt(lat: number, lon: number, timeMs: number): boolean;
+/**
  * Wind bands, in knots.
  *
  * Chosen around what a cruising boat does rather than around round numbers: 8
@@ -143,12 +196,4 @@ export declare const WIND_BANDS_KTS: number[];
  * on half a metre at these heights anyway.
  */
 export declare const WAVE_BANDS_M: number[];
-/**
- * Summarise a computed route.
- *
- * Returns null for a route with nothing to summarise — one that never left the
- * departure point. That is a real outcome (a start inside an obstacle, a sea
- * above the limit set, a flat calm) and the route's own warnings already
- * explain it far better than an all-zero summary would.
- */
 export declare function summarisePassage(route: RouteResult, options?: SummaryOptions): PassageSummary | null;
