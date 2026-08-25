@@ -240,6 +240,40 @@ export interface RouteOptions {
      */
     manoeuvrePenaltyMinutes?: number;
     /**
+     * What a sail change costs in the dark, on top of the ordinary penalty.
+     *
+     * The whole of "manoeuvre limits by watch". A gybe at noon with everyone up
+     * is a manoeuvre; the same gybe at 0300 short-handed means waking the
+     * off-watch, working a foredeck by torchlight, and a loaded boom nobody can
+     * see coming. Crews have policies about this, and a router that plans a
+     * midnight gybe to save four minutes is planning a passage nobody sails.
+     *
+     * Each is minutes, or `Infinity` to refuse the manoeuvre outright. Tacks and
+     * gybes are separate because the risk is not: a tack is a controlled stall
+     * through the wind, a gybe is the boom coming across.
+     *
+     * MEASURED BEHAVIOUR, WORTH KNOWING BEFORE CHOOSING BETWEEN THEM. A finite
+     * penalty is a bias, not a guarantee. It biases each local choice correctly,
+     * but the search optimises arrival time and the frontier prunes on reach, so
+     * a different penalty can select a wholly different path whose manoeuvres
+     * happen to land differently. Swept over one synthetic passage, the count of
+     * night manoeuvres was NOT monotonic in the penalty: 0 min gave two, 60 gave
+     * one, and 90 gave four. Only `Infinity` is deterministic, which is why the
+     * app offers the rule rather than the dial.
+     *
+     * A prohibition cannot usually strand the search, because holding the
+     * current tack is never a manoeuvre and is therefore never forbidden. It can
+     * where a big wind shift puts every heading inside `maxOffCourseDeg` on the
+     * other side of the wind, and that case gets its own message rather than
+     * being reported as a calm.
+     *
+     * Both default to 0, so with no policy this behaves exactly as before.
+     */
+    nightManoeuvre?: {
+        tackPenaltyMinutes?: number;
+        gybePenaltyMinutes?: number;
+    };
+    /**
      * Ignore headings more than this far off the bearing to the destination.
      * Wide enough for upwind tacking; narrow enough to stop the search sailing
      * away from where it is going. Default 110°.

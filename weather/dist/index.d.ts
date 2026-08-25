@@ -12,7 +12,8 @@ export { fetchWindField, createWindSampler, boundsForPassage, toComponents, from
 export type { WindField, WindFieldOptions, Bounds } from './windField.js';
 export { fetchMarineField, createWaveSampler, createCurrentSampler, waveToComponents, waveFromComponents, currentToComponents, currentFromComponents, speedToKnots } from './marineField.js';
 export type { MarineField, MarineFieldOptions } from './marineField.js';
-export { summarisePassage, encounterPeriodS, solarElevationDeg, isNightAt, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
+export { summarisePassage, encounterPeriodS, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
+export { solarElevationDeg, isNightAt, NIGHT_ELEVATION_DEG } from './sun.js';
 export type { PassageSummary, Band, SummaryOptions } from './passageSummary.js';
 export { createPolarAccumulator, addSample, derivePolar, mergeAccumulators, trueWindAngle, toPolFile, serializeAccumulator, deserializeAccumulator } from './polarLearning.js';
 export type { PolarAccumulator, PolarBin, TelemetrySample, AddSampleResult, RejectionReason, LearningOptions, DeriveOptions, DerivedPolar, PolarCoverage, CoverageCell } from './polarLearning.js';

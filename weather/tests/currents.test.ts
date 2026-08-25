@@ -13,7 +13,8 @@ import {
   type WaveSampler,
   type CurrentSampler
 } from '../src/routing.js';
-import { summarisePassage, solarElevationDeg, isNightAt } from '../src/passageSummary.js';
+import { summarisePassage } from '../src/passageSummary.js';
+import { solarElevationDeg, isNightAt } from '../src/sun.js';
 import { GENERIC_POLARS } from '../src/polars.js';
 
 const T0 = Date.UTC(2026, 7, 22, 12, 0, 0);

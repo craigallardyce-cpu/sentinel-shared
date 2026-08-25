@@ -2,9 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WAVE_BANDS_M = exports.WIND_BANDS_KTS = void 0;
 exports.encounterPeriodS = encounterPeriodS;
-exports.solarElevationDeg = solarElevationDeg;
-exports.isNightAt = isNightAt;
 exports.summarisePassage = summarisePassage;
+const sun_js_1 = require("./sun.js");
 /**
  * The period at which the boat meets the waves, in seconds.
  *
@@ -36,45 +35,6 @@ function encounterPeriodS(wavePeriodS, waveAngleDeg, boatSpeedKts) {
     if (!Number.isFinite(omegaE) || omegaE <= 1e-6)
         return null;
     return (2 * Math.PI) / omegaE;
-}
-/**
- * The sun's elevation above the horizon, in degrees.
- *
- * The low-precision solar position algorithm, good to about a hundredth of a
- * degree — which is three or four orders of magnitude better than a passage
- * plan needs, and worth having because it is arithmetic rather than a service.
- * A boat mid-ocean can work out when it gets dark with no network at all,
- * which is the same reason the routing itself runs client-side.
- */
-function solarElevationDeg(lat, lon, timeMs) {
-    const rad = Math.PI / 180;
-    // Days since J2000.0.
-    const d = timeMs / 86400000 + 2440587.5 - 2451545.0;
-    const meanAnomaly = (357.529 + 0.98560028 * d) * rad;
-    const meanLongitude = (280.459 + 0.98564736 * d) * rad;
-    const eclipticLongitude = meanLongitude + (1.915 * Math.sin(meanAnomaly) + 0.02 * Math.sin(2 * meanAnomaly)) * rad;
-    const obliquity = (23.439 - 0.00000036 * d) * rad;
-    const rightAscension = Math.atan2(Math.cos(obliquity) * Math.sin(eclipticLongitude), Math.cos(eclipticLongitude));
-    const declination = Math.asin(Math.sin(obliquity) * Math.sin(eclipticLongitude));
-    // Greenwich mean sidereal time, in degrees, then local hour angle.
-    const gmstHours = (18.697374558 + 24.06570982441908 * d) % 24;
-    const hourAngle = (gmstHours * 15 + lon) * rad - rightAscension;
-    const elevation = Math.asin(Math.sin(lat * rad) * Math.sin(declination) +
-        Math.cos(lat * rad) * Math.cos(declination) * Math.cos(hourAngle));
-    return elevation / rad;
-}
-/**
- * Dark, for a watch-keeping purpose.
- *
- * The threshold is the sun's upper limb on the horizon allowing for
- * refraction, which is the same instant an almanac calls sunset. Civil
- * twilight would be defensible too, but a crew changing a headsail at
- * nautical dusk is working in the dark whatever the definition says, and the
- * conservative line is the one that calls more of the passage night.
- */
-const NIGHT_ELEVATION_DEG = -0.833;
-function isNightAt(lat, lon, timeMs) {
-    return solarElevationDeg(lat, lon, timeMs) < NIGHT_ELEVATION_DEG;
 }
 /**
  * How near the encounter period has to be to the boat's own roll period to
@@ -142,10 +102,14 @@ function distribute(edges, unit, samples) {
 function legHours(legs) {
     const out = [];
     for (let i = 1; i < legs.length; i++) {
-        const hours = (Date.parse(legs[i].time) - Date.parse(legs[i - 1].time)) / 3600000;
+        const startMs = Date.parse(legs[i - 1].time);
+        const hours = (Date.parse(legs[i].time) - startMs) / 3600000;
         if (!Number.isFinite(hours) || hours <= 0)
             continue;
-        out.push({ leg: legs[i], hours });
+        // The start is carried, not just the span: anything that happens at a
+        // single instant on this leg — a tack, a gybe — happens at its beginning,
+        // and the leg's own timestamp is its end.
+        out.push({ leg: legs[i], hours, startMs });
     }
     return out;
 }
@@ -170,7 +134,7 @@ function landfallOf(route) {
     if (!last)
         return null;
     return {
-        atNight: isNightAt(last.lat, last.lon, Date.parse(last.time)),
+        atNight: (0, sun_js_1.isNightAt)(last.lat, last.lon, Date.parse(last.time)),
         twsKts: last.twsKts,
         gustKts: last.gustKts,
         waveHeightM: last.waveHeightM,
@@ -204,7 +168,7 @@ function summarisePassage(route, options = {}) {
     let currentKnownHours = 0;
     const windSamples = [];
     const waveSamples = [];
-    for (const { leg, hours: h } of sailed) {
+    for (const { leg, hours: h, startMs } of sailed) {
         if (Number.isFinite(leg.twsKts)) {
             minKts = Math.min(minKts, leg.twsKts);
             maxKts = Math.max(maxKts, leg.twsKts);
@@ -217,10 +181,17 @@ function summarisePassage(route, options = {}) {
         // Judged at the leg's own position and time, so a passage long enough to
         // change time zone gets its nights where they actually fall rather than
         // where the departure port's clock says.
-        if (isNightAt(leg.lat, leg.lon, Date.parse(leg.time))) {
+        if ((0, sun_js_1.isNightAt)(leg.lat, leg.lon, Date.parse(leg.time))) {
             nightHours += h;
-            if (leg.manoeuvre)
-                nightManoeuvres++;
+        }
+        // A manoeuvre is judged at the moment the boat TURNS, which is the start
+        // of the leg, not its timestamp — legs are stamped with their arrival.
+        // The router charges its night penalty at the same instant, and if these
+        // two disagree the summary reports sail changes in darkness that the
+        // search was never asked to avoid. A leg that gybes at dusk and finishes
+        // after dark is a daylight gybe.
+        if (leg.manoeuvre && (0, sun_js_1.isNightAt)(leg.lat, leg.lon, startMs)) {
+            nightManoeuvres++;
         }
         if (leg.currentKts !== null) {
             currentKnownHours += h;

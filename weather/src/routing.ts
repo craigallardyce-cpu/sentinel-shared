@@ -1,5 +1,6 @@
 import { boatSpeed, foldTwa, type PolarDiagram } from './polars.js';
 import type { ObstacleField } from './obstacles.js';
+import { isNightAt } from './sun.js';
 
 /**
  * Isochrone weather routing.
@@ -376,6 +377,40 @@ export interface RouteOptions {
    */
   manoeuvrePenaltyMinutes?: number;
   /**
+   * What a sail change costs in the dark, on top of the ordinary penalty.
+   *
+   * The whole of "manoeuvre limits by watch". A gybe at noon with everyone up
+   * is a manoeuvre; the same gybe at 0300 short-handed means waking the
+   * off-watch, working a foredeck by torchlight, and a loaded boom nobody can
+   * see coming. Crews have policies about this, and a router that plans a
+   * midnight gybe to save four minutes is planning a passage nobody sails.
+   *
+   * Each is minutes, or `Infinity` to refuse the manoeuvre outright. Tacks and
+   * gybes are separate because the risk is not: a tack is a controlled stall
+   * through the wind, a gybe is the boom coming across.
+   *
+   * MEASURED BEHAVIOUR, WORTH KNOWING BEFORE CHOOSING BETWEEN THEM. A finite
+   * penalty is a bias, not a guarantee. It biases each local choice correctly,
+   * but the search optimises arrival time and the frontier prunes on reach, so
+   * a different penalty can select a wholly different path whose manoeuvres
+   * happen to land differently. Swept over one synthetic passage, the count of
+   * night manoeuvres was NOT monotonic in the penalty: 0 min gave two, 60 gave
+   * one, and 90 gave four. Only `Infinity` is deterministic, which is why the
+   * app offers the rule rather than the dial.
+   *
+   * A prohibition cannot usually strand the search, because holding the
+   * current tack is never a manoeuvre and is therefore never forbidden. It can
+   * where a big wind shift puts every heading inside `maxOffCourseDeg` on the
+   * other side of the wind, and that case gets its own message rather than
+   * being reported as a calm.
+   *
+   * Both default to 0, so with no policy this behaves exactly as before.
+   */
+  nightManoeuvre?: {
+    tackPenaltyMinutes?: number;
+    gybePenaltyMinutes?: number;
+  };
+  /**
    * Ignore headings more than this far off the bearing to the destination.
    * Wide enough for upwind tacking; narrow enough to stop the search sailing
    * away from where it is going. Default 110°.
@@ -608,6 +643,43 @@ function currentWarnings(
   return notes;
 }
 
+/**
+ * Said when a watch policy shaped the route, because it means the route is
+ * deliberately not the fastest one available and a reader comparing ETAs
+ * deserves to know which thumb is on the scale.
+ */
+function watchWarnings(
+  nightManoeuvre: RouteOptions['nightManoeuvre'],
+  legs: RouteLeg[]
+): string[] {
+  if (!nightManoeuvre) return [];
+  const tack = nightManoeuvre.tackPenaltyMinutes ?? 0;
+  const gybe = nightManoeuvre.gybePenaltyMinutes ?? 0;
+  if (tack <= 0 && gybe <= 0) return [];
+
+  // Counted at the START of each leg, where the boat actually turns and where
+  // the search charged for it. A leg carries its arrival time, so counting on
+  // that would report a dusk gybe as a night one.
+  const nightWork = legs.filter(
+    (l, i) => l.manoeuvre && i > 0 && isNightAt(l.lat, l.lon, Date.parse(legs[i - 1].time))
+  ).length;
+
+  const refused = !Number.isFinite(tack) || !Number.isFinite(gybe);
+  const note = refused
+    ? 'This route was planned not to change sail in the dark, so it is not the fastest passage ' +
+      'available — it is the fastest one that leaves the off-watch asleep.'
+    : 'Sail changes in darkness were charged against this route, so it is not the fastest passage ' +
+      'available. A charge is a preference rather than a rule: it biases each choice, but the ' +
+      'search is still optimising arrival time, and a route can come back with more night work ' +
+      'than an unconstrained one. Set the policy to refuse them if it matters.';
+
+  return [
+    nightWork === 0
+      ? `${note} Nothing in it falls at night.`
+      : `${note} ${nightWork} sail ${nightWork === 1 ? 'change' : 'changes'} still ${nightWork === 1 ? 'falls' : 'fall'} in darkness.`
+  ];
+}
+
 function relativeSide(headingDeg: number, windFromDeg: number): number {
   const delta = ((headingDeg - windFromDeg + 540) % 360) - 180;
   if (Math.abs(delta) < 1e-6 || Math.abs(Math.abs(delta) - 180) < 1e-6) return 0;
@@ -721,6 +793,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     sectorWidthDeg = 2,
     maxOffCourseDeg = 110,
     manoeuvrePenaltyMinutes = 2,
+    nightManoeuvre,
     obstacles,
     waves,
     maxWaveHeightM,
@@ -822,6 +895,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     let noWind = 0;
     let calm = 0;
     let tooRough = 0;
+    let forbiddenAtNight = 0;
 
     for (const node of frontier) {
       const sample = wind(node.lat, node.lon, node.timeMs);
@@ -977,6 +1051,10 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         wavePeriodS: sea?.periodS ?? null
       });
 
+      // Whether the crew here is working in the dark. One test per position:
+      // every course leaving it does so at the same moment.
+      const darkHere = nightManoeuvre ? isNightAt(node.lat, node.lon, node.timeMs) : false;
+
       const toDestination = toDest;
       const remaining = distanceNm(node.lat, node.lon, destination.lat, destination.lon);
 
@@ -1043,7 +1121,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
             ...warnings,
             ...seaStateWarnings(waves, waveSampleCount, seaLimit),
             ...currentWarnings(currents, currentSampleCount, legs),
-            ...motoringWarnings(motoring, legs)
+            ...motoringWarnings(motoring, legs),
+            ...watchWarnings(nightManoeuvre, legs)
           ],
           polarName: polar.name,
           maxWaveHeightM: worstSeas(legs),
@@ -1063,9 +1142,17 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         // the crew is busy, so the same hour covers less ground.
         const side = relativeSide(heading, windForSails.directionDeg);
         const manoeuvring = node.tackSide !== 0 && side !== 0 && side !== node.tackSide;
-        const usableHours = manoeuvring
-          ? Math.max(0, stepHours - manoeuvrePenaltyMinutes / 60)
-          : stepHours;
+        let penaltyMinutes = manoeuvring ? manoeuvrePenaltyMinutes : 0;
+        if (manoeuvring && nightManoeuvre && darkHere) {
+          // Which manoeuvre this is, by the same test `buildLegs` uses: across
+          // the wind forward of the beam is a tack, behind it a gybe.
+          const gybing = (node.twaDeg + twa) / 2 >= 90;
+          const nightCost =
+            (gybing ? nightManoeuvre.gybePenaltyMinutes : nightManoeuvre.tackPenaltyMinutes) ?? 0;
+          if (!Number.isFinite(nightCost)) { forbiddenAtNight++; continue; }
+          penaltyMinutes += nightCost;
+        }
+        const usableHours = Math.max(0, stepHours - penaltyMinutes / 60);
         // Steered through the water, carried over the ground.
         const ground = groundTrack(heading, speed);
         const legDistance = ground.speedKts * usableHours;
@@ -1116,6 +1203,16 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       // Everything else the search ran into. Skipped entirely when the sea
       // limit was the only thing in the way, so a route the skipper's own
       // setting stopped is not also told the wind was against it.
+      // Rare, but it has its own sentence because every other explanation
+      // would be a lie: there is wind, there is sea room, and the boat is
+      // perfectly able to sail — it is the watch policy that closed the door.
+      if (forbiddenAtNight && !blockedByLand && !unsailable) {
+        warnings.push(
+          `The wind has shifted so far that every course open ${where} would mean a sail change in ` +
+            'the dark, which this passage was planned not to do. Allow night manoeuvres, or accept ' +
+            'that the boat holds its tack until first light.'
+        );
+      }
       if (noWind || calm || blockedByLand || unsailable) {
         if ((noWind || calm) && !blockedByLand && !unsailable) {
           warnings.push(
@@ -1207,7 +1304,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       ...warnings,
       ...seaStateWarnings(waves, waveSampleCount, seaLimit),
       ...currentWarnings(currents, currentSampleCount, legs),
-      ...motoringWarnings(motoring, legs)
+      ...motoringWarnings(motoring, legs),
+      ...watchWarnings(nightManoeuvre, legs)
     ],
     polarName: polar.name,
     maxWaveHeightM: worstSeas(legs),

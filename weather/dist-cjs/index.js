@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deserializeAccumulator = exports.serializeAccumulator = exports.toPolFile = exports.trueWindAngle = exports.mergeAccumulators = exports.derivePolar = exports.addSample = exports.createPolarAccumulator = exports.WAVE_BANDS_M = exports.WIND_BANDS_KTS = exports.isNightAt = exports.solarElevationDeg = exports.encounterPeriodS = exports.summarisePassage = exports.speedToKnots = exports.currentFromComponents = exports.currentToComponents = exports.waveFromComponents = exports.waveToComponents = exports.createCurrentSampler = exports.createWaveSampler = exports.fetchMarineField = exports.fromComponents = exports.toComponents = exports.boundsForPassage = exports.createWindSampler = exports.fetchWindField = exports.landZones = exports.userZone = exports.createObstacleField = exports.compareSecondOpinion = exports.seaStateFactor = exports.angleBetween = exports.destinationPoint = exports.bearingDeg = exports.distanceNm = exports.routeIsochrone = exports.GENERIC_POLARS = exports.parsePolarFile = exports.bestVmg = exports.foldTwa = exports.boatSpeed = exports.clearForecastCache = exports.getOpenMeteoForecast = exports.formatPosition = exports.isInsideNwsCoverage = void 0;
+exports.deserializeAccumulator = exports.serializeAccumulator = exports.toPolFile = exports.trueWindAngle = exports.mergeAccumulators = exports.derivePolar = exports.addSample = exports.createPolarAccumulator = exports.NIGHT_ELEVATION_DEG = exports.isNightAt = exports.solarElevationDeg = exports.WAVE_BANDS_M = exports.WIND_BANDS_KTS = exports.encounterPeriodS = exports.summarisePassage = exports.speedToKnots = exports.currentFromComponents = exports.currentToComponents = exports.waveFromComponents = exports.waveToComponents = exports.createCurrentSampler = exports.createWaveSampler = exports.fetchMarineField = exports.fromComponents = exports.toComponents = exports.boundsForPassage = exports.createWindSampler = exports.fetchWindField = exports.landZones = exports.userZone = exports.createObstacleField = exports.compareSecondOpinion = exports.seaStateFactor = exports.angleBetween = exports.destinationPoint = exports.bearingDeg = exports.distanceNm = exports.routeIsochrone = exports.GENERIC_POLARS = exports.parsePolarFile = exports.bestVmg = exports.foldTwa = exports.boatSpeed = exports.clearForecastCache = exports.getOpenMeteoForecast = exports.formatPosition = exports.isInsideNwsCoverage = void 0;
 var openMeteo_js_1 = require("./openMeteo.js");
 Object.defineProperty(exports, "isInsideNwsCoverage", { enumerable: true, get: function () { return openMeteo_js_1.isInsideNwsCoverage; } });
 Object.defineProperty(exports, "formatPosition", { enumerable: true, get: function () { return openMeteo_js_1.formatPosition; } });
@@ -43,10 +43,12 @@ Object.defineProperty(exports, "speedToKnots", { enumerable: true, get: function
 var passageSummary_js_1 = require("./passageSummary.js");
 Object.defineProperty(exports, "summarisePassage", { enumerable: true, get: function () { return passageSummary_js_1.summarisePassage; } });
 Object.defineProperty(exports, "encounterPeriodS", { enumerable: true, get: function () { return passageSummary_js_1.encounterPeriodS; } });
-Object.defineProperty(exports, "solarElevationDeg", { enumerable: true, get: function () { return passageSummary_js_1.solarElevationDeg; } });
-Object.defineProperty(exports, "isNightAt", { enumerable: true, get: function () { return passageSummary_js_1.isNightAt; } });
 Object.defineProperty(exports, "WIND_BANDS_KTS", { enumerable: true, get: function () { return passageSummary_js_1.WIND_BANDS_KTS; } });
 Object.defineProperty(exports, "WAVE_BANDS_M", { enumerable: true, get: function () { return passageSummary_js_1.WAVE_BANDS_M; } });
+var sun_js_1 = require("./sun.js");
+Object.defineProperty(exports, "solarElevationDeg", { enumerable: true, get: function () { return sun_js_1.solarElevationDeg; } });
+Object.defineProperty(exports, "isNightAt", { enumerable: true, get: function () { return sun_js_1.isNightAt; } });
+Object.defineProperty(exports, "NIGHT_ELEVATION_DEG", { enumerable: true, get: function () { return sun_js_1.NIGHT_ELEVATION_DEG; } });
 var polarLearning_js_1 = require("./polarLearning.js");
 Object.defineProperty(exports, "createPolarAccumulator", { enumerable: true, get: function () { return polarLearning_js_1.createPolarAccumulator; } });
 Object.defineProperty(exports, "addSample", { enumerable: true, get: function () { return polarLearning_js_1.addSample; } });

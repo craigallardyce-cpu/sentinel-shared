@@ -169,17 +169,6 @@ export interface SummaryOptions {
  */
 export declare function encounterPeriodS(wavePeriodS: number, waveAngleDeg: number, boatSpeedKts: number): number | null;
 /**
- * The sun's elevation above the horizon, in degrees.
- *
- * The low-precision solar position algorithm, good to about a hundredth of a
- * degree — which is three or four orders of magnitude better than a passage
- * plan needs, and worth having because it is arithmetic rather than a service.
- * A boat mid-ocean can work out when it gets dark with no network at all,
- * which is the same reason the routing itself runs client-side.
- */
-export declare function solarElevationDeg(lat: number, lon: number, timeMs: number): number;
-export declare function isNightAt(lat: number, lon: number, timeMs: number): boolean;
-/**
  * Wind bands, in knots.
  *
  * Chosen around what a cruising boat does rather than around round numbers: 8

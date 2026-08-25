@@ -67,11 +67,11 @@ export type { MarineField, MarineFieldOptions } from './marineField.js';
 export {
   summarisePassage,
   encounterPeriodS,
-  solarElevationDeg,
-  isNightAt,
   WIND_BANDS_KTS,
   WAVE_BANDS_M
 } from './passageSummary.js';
+
+export { solarElevationDeg, isNightAt, NIGHT_ELEVATION_DEG } from './sun.js';
 export type { PassageSummary, Band, SummaryOptions } from './passageSummary.js';
 
 export {
