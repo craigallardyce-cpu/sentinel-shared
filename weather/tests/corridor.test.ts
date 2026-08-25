@@ -330,7 +330,7 @@ describe('the corridor is not the reachable set', () => {
     const c = buildCorridor(r, DEST);
     // Every retained position must still be able to make the passage within
     // the tolerance, judged the same way the corridor judges it.
-    const slack = 0.1 * r.directDistanceNm;
+    const slackFor = (baseline) => 0.1 * baseline;
     for (const band of c.bands) {
       // How far along the best route was at this hour.
       const closest = r.legs.reduce((a, b) =>
@@ -338,7 +338,8 @@ describe('the corridor is not the reachable set', () => {
       );
       const baseline = distanceNm(closest.lat, closest.lon, DEST.lat, DEST.lon);
       for (const pt of band.points) {
-        expect(distanceNm(pt.lat, pt.lon, DEST.lat, DEST.lon)).toBeLessThanOrEqual(baseline + slack + 1e-6);
+        expect(distanceNm(pt.lat, pt.lon, DEST.lat, DEST.lon))
+          .toBeLessThanOrEqual(baseline + slackFor(baseline) + 1e-6);
       }
     }
   });
@@ -365,5 +366,58 @@ describe('the corridor is not the reachable set', () => {
     });
     expect(stalled.reachedDestination).toBe(false);
     expect(buildCorridor(stalled, { lat: 34, lon: -20 }).bands).toEqual([]);
+  });
+});
+
+describe('the corridor closes on the destination', () => {
+  /**
+   * Spotted by looking at the chart: the bands fanned out and stayed fanned,
+   * ending as a blob tens of miles across around the arrival rather than
+   * converging on it. The cause was a slack held constant in nautical miles —
+   * near the destination the best route's remaining distance goes to zero
+   * while a fixed allowance does not, and there is no time left in which to
+   * make up that distance, so the width was a claim that was not true.
+   */
+  it('is narrow at the end, and much wider in the middle', () => {
+    const r = routeIsochrone({
+      start: START,
+      destination: DEST,
+      departure: T0,
+      polar,
+      wind: steadyWind(14, 20),
+      retainFronts: true,
+      frontIntervalSteps: 6,
+      maxHours: 200
+    });
+    expect(r.reachedDestination).toBe(true);
+    const bands = buildCorridor(r, DEST).bands;
+    expect(bands.length).toBeGreaterThan(4);
+
+    const last = bands[bands.length - 1];
+    const widest = bands.reduce((a, b) => (a.widthNm >= b.widthNm ? a : b));
+    // The final band is a small fraction of the widest — the passage has to
+    // end AT the destination, so the water that still gets there closes on it.
+    expect(last.widthNm).toBeLessThan(widest.widthNm * 0.25);
+    // And the widest is genuinely in the middle, not at either end.
+    expect(widest).not.toBe(bands[0]);
+    expect(widest).not.toBe(last);
+  });
+
+  it('narrows monotonically over the second half of the passage', () => {
+    const r = routeIsochrone({
+      start: START,
+      destination: DEST,
+      departure: T0,
+      polar,
+      wind: steadyWind(14, 20),
+      retainFronts: true,
+      frontIntervalSteps: 6,
+      maxHours: 200
+    });
+    const bands = buildCorridor(r, DEST).bands;
+    const widestAt = bands.indexOf(bands.reduce((a, b) => (a.widthNm >= b.widthNm ? a : b)));
+    for (let i = widestAt + 1; i < bands.length; i++) {
+      expect(bands[i].widthNm).toBeLessThanOrEqual(bands[i - 1].widthNm + 1e-6);
+    }
   });
 });

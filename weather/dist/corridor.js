@@ -178,7 +178,19 @@ export function buildCorridor(route, destination, options = {}) {
      * how far along is this position — needs no speed estimate and cannot be
      * fooled by a dog-leg.
      */
-    const slackNm = tolerance * route.directDistanceNm;
+    // Proportional to how far there still is to go, NOT a fixed distance.
+    //
+    // A constant slack does not converge: near the destination the best route's
+    // remaining distance goes to zero while the allowance stays put, so the
+    // corridor ends as a blob tens of miles wide around the arrival instead of
+    // closing on it. Measured on one passage it was still 106 nm across an hour
+    // before landfall, which is not a corridor and is not true — there is no
+    // time left in which to make up that distance.
+    //
+    // As a share of the baseline it says something scale-free and correct: you
+    // may be up to a tenth further from the destination than the best route is,
+    // at this moment. Generous early, and nothing at all at the end.
+    const slackFor = (baselineNm) => tolerance * baselineNm;
     /** Where the best route had got to by a given moment. */
     const bestRemainingAt = (timeMs) => {
         let closest = null;
@@ -204,7 +216,7 @@ export function buildCorridor(route, destination, options = {}) {
             const remaining = distanceNm(p.lat, p.lon, destination.lat, destination.lon);
             // Further from the destination than the best route was at this hour, by
             // more than the slack, is water the boat can reach and should not be in.
-            return remaining <= baseline + slackNm;
+            return remaining <= baseline + slackFor(baseline);
         });
         const clear = evenSample(worthwhile.map((p) => ({ lat: p.lat, lon: p.lon })), MAX_POINTS_PER_BAND);
         if (clear.length < 2)
