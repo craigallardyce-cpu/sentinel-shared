@@ -183,6 +183,15 @@ export interface RouteLeg {
     headingDeg: number;
     twaDeg: number;
     twsKts: number;
+    /**
+     * The direction the wind is coming FROM, degrees true.
+     *
+     * A leg carried the angle between the wind and the boat but not the wind
+     * itself, which made it impossible to say which way the wind was blowing
+     * without re-sampling the field — `twaDeg` is folded into 0-180, so the side
+     * is gone. Anything drawing wind on a chart needs this.
+     */
+    windFromDeg: number;
     /** Gust speed here, where the model gave one. */
     gustKts: number | null;
     boatSpeedKts: number;

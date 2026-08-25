@@ -23,6 +23,7 @@ function routeOf(
       headingDeg: 90,
       twaDeg: l.twaDeg ?? 90,
       twsKts: l.twsKts ?? 15,
+      windFromDeg: l.windFromDeg ?? 0,
       gustKts: l.gustKts ?? null,
       boatSpeedKts: 6,
       distanceNm: 6 * l.hours,

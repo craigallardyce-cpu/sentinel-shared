@@ -326,6 +326,15 @@ export interface RouteLeg {
   headingDeg: number;
   twaDeg: number;
   twsKts: number;
+  /**
+   * The direction the wind is coming FROM, degrees true.
+   *
+   * A leg carried the angle between the wind and the boat but not the wind
+   * itself, which made it impossible to say which way the wind was blowing
+   * without re-sampling the field — `twaDeg` is folded into 0-180, so the side
+   * is gone. Anything drawing wind on a chart needs this.
+   */
+  windFromDeg: number;
   /** Gust speed here, where the model gave one. */
   gustKts: number | null;
   boatSpeedKts: number;
@@ -537,6 +546,7 @@ interface Node {
   headingDeg: number;
   twaDeg: number;
   twsKts: number;
+  windFromDeg: number;
   gustKts: number | null;
   boatSpeedKts: number;
   distanceNm: number;
@@ -760,6 +770,7 @@ function buildLegs(node: Node, polarName: string): RouteLeg[] {
       headingDeg: Math.round(n.headingDeg * 10) / 10,
       twaDeg: Math.round(n.twaDeg * 10) / 10,
       twsKts: Math.round(n.twsKts * 10) / 10,
+      windFromDeg: Math.round(n.windFromDeg),
       gustKts: n.gustKts === null ? null : Math.round(n.gustKts * 10) / 10,
       boatSpeedKts: Math.round(n.boatSpeedKts * 100) / 100,
       distanceNm: Math.round(n.distanceNm * 100) / 100,
@@ -967,6 +978,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     headingDeg: bearingDeg(start.lat, start.lon, destination.lat, destination.lon),
     twaDeg: 0,
     twsKts: 0,
+    windFromDeg: 0,
     gustKts: null,
     boatSpeedKts: 0,
     distanceNm: 0,
@@ -1207,6 +1219,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           headingDeg: closingHeading,
           twaDeg: closingTwa,
           twsKts: windForSails.speedKts,
+          windFromDeg: windForSails.directionDeg,
           gustKts: sample.gustKts ?? null,
           boatSpeedKts: speedIn(closingHeading, closingTwa).speed,
           distanceNm: remaining,
@@ -1281,6 +1294,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           headingDeg: heading,
           twaDeg: twa,
           twsKts: windForSails.speedKts,
+          windFromDeg: windForSails.directionDeg,
           gustKts: sample.gustKts ?? null,
           boatSpeedKts: speed,
           distanceNm: legDistance,

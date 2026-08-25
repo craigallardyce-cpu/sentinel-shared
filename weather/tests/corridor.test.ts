@@ -421,3 +421,30 @@ describe('the corridor closes on the destination', () => {
     }
   });
 });
+
+describe('legs know which way the wind is blowing', () => {
+  /**
+   * `twaDeg` is folded into 0-180, so the side is gone and the wind direction
+   * cannot be recovered from a leg. Anything drawing wind on a chart — barbs
+   * along a passage, for instance — needs the direction itself.
+   */
+  it('records the wind direction, not only the angle to the boat', () => {
+    const r = routeIsochrone({
+      start: START,
+      destination: DEST,
+      departure: T0,
+      polar,
+      wind: steadyWind(18, 215)
+    });
+    const sailing = r.legs.filter((l) => l.twsKts > 0);
+    expect(sailing.length).toBeGreaterThan(0);
+    for (const leg of sailing) expect(leg.windFromDeg).toBeCloseTo(215, 0);
+  });
+
+  it('reports the wind the sails feel, so a current shifts it', () => {
+    const base = { start: START, destination: DEST, departure: T0, polar, wind: steadyWind(14, 0) };
+    const still = routeIsochrone(base);
+    const inStream = routeIsochrone({ ...base, currents: () => ({ speedKts: 3, setDeg: 90 }) });
+    expect(inStream.legs[1].windFromDeg).not.toBeCloseTo(still.legs[1].windFromDeg, 1);
+  });
+});
