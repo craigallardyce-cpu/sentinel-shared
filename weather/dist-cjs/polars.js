@@ -48,7 +48,35 @@ function boatSpeed(polar, twaDeg, twsKts) {
     const at = (ai, si) => polar.speeds[ai]?.[si] ?? 0;
     const lowAngle = at(a.lo, s.lo) + (at(a.lo, s.hi) - at(a.lo, s.lo)) * s.frac;
     const highAngle = at(a.hi, s.lo) + (at(a.hi, s.hi) - at(a.hi, s.lo)) * s.frac;
-    const speed = lowAngle + (highAngle - lowAngle) * a.frac;
+    let speed = lowAngle + (highAngle - lowAngle) * a.frac;
+    /**
+     * Below the polar's lightest wind, ramp to zero instead of clamping.
+     *
+     * Every polar stops somewhere at the bottom — the generic ones here start at
+     * 6 knots, and published ones rarely go below 4, because nobody measures a
+     * boat in a drifter. `interpolationSlot` clamps outside the table, which for
+     * the top of the range is defensible and for the bottom was not: it meant
+     * that in a tenth of a knot of wind this returned the full six-knot-column
+     * speed. The boat sailed a flat calm at 5.3 knots.
+     *
+     * That was not a rounding error, it was load-bearing. The isochrone router
+     * decides whether to start the engine by asking what the sails could make
+     * good, so a boat that "sails" at 5.3 knots in a calm never motors — the
+     * engine sat idle through exactly the conditions it exists for, and a
+     * passage with twelve hours of calm in it was planned as though those hours
+     * were sailed at hull speed. Both the ETA and the fuel figure were fiction.
+     *
+     * Linear to the origin is the honest minimum. It is not a real light-air
+     * model — real boats have a threshold below which they will not steer at
+     * all, and drift with the current instead — but it is monotonic, it is
+     * conservative in the right direction, and it makes a calm behave like a
+     * calm. Anything better needs measurements that the boat itself can supply
+     * through the learned polar.
+     */
+    const lightest = polar.twsValues[0];
+    if (Number.isFinite(lightest) && lightest > 0 && twsKts < lightest) {
+        speed *= twsKts / lightest;
+    }
     return speed > 0 ? speed : 0;
 }
 /**

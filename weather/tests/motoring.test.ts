@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { routeIsochrone, seaStateFactor, type WindSampler, type WaveSampler } from '../src/routing.js';
 import { summarisePassage, encounterPeriodS } from '../src/passageSummary.js';
-import { GENERIC_POLARS } from '../src/polars.js';
+import { GENERIC_POLARS, boatSpeed } from '../src/polars.js';
 
 const T0 = Date.UTC(2026, 7, 22, 0, 0, 0);
 const polar = GENERIC_POLARS.cruisingMonohull;
@@ -239,5 +239,106 @@ describe('roll resonance', () => {
     const summary = summarisePassage(routeIn(steadySea(2, 90, null)), { rollPeriodS: 8 })!;
     expect(summary.rollResonance!.fraction).toBe(0);
     expect(summary.rollResonance!.hours).toBe(0);
+  });
+});
+
+describe('light air below the polar', () => {
+  it('ramps to zero instead of clamping to the lightest column', () => {
+    const lightest = polar.twsValues[0];
+    // The bug: outside the table `interpolationSlot` clamps, so a drifter
+    // returned the full lightest-column speed and the boat "sailed" a calm.
+    const atLightest = boatSpeed(polar, 90, lightest);
+    expect(boatSpeed(polar, 90, lightest / 10)).toBeLessThan(atLightest / 5);
+    expect(boatSpeed(polar, 90, 0)).toBe(0);
+  });
+
+  it('stays monotonic through the join, with no step at the lightest column', () => {
+    const lightest = polar.twsValues[0];
+    let previous = 0;
+    for (let tws = 0; tws <= lightest + 4; tws += 0.25) {
+      const speed = boatSpeed(polar, 90, tws);
+      expect(speed).toBeGreaterThanOrEqual(previous - 1e-9);
+      previous = speed;
+    }
+    // No cliff either side of the join: approaching it from below must arrive
+    // at the tabulated value rather than jumping to it.
+    const below = boatSpeed(polar, 90, lightest - 0.01);
+    expect(Math.abs(below - boatSpeed(polar, 90, lightest))).toBeLessThan(0.05);
+  });
+
+  it('starts the engine in a calm, which is the whole reason it is carried', () => {
+    // A flat calm the whole way, and plenty of fuel. Every hour of this should
+    // be under power; while the polar clamped, not one of them was.
+    const route = routeIsochrone({
+      start: { lat: 32, lon: -66 },
+      destination: { lat: 32, lon: -64.65 },
+      departure: T0,
+      polar,
+      wind: steadyWind(1.5, 270),
+      motoring: { speedKts: 6, enduranceHours: 53, fuelLitresPerHour: 3 },
+      stepMinutes: 60,
+      maxSteps: 60
+    });
+    expect(route.reachedDestination).toBe(true);
+    expect(route.motoringHours).toBeGreaterThan(0);
+    // Essentially the whole passage, and at roughly engine speed rather than
+    // the 3.4 knots the clamped polar invented.
+    const motored = route.legs.filter((l) => l.motoring).length;
+    expect(motored / (route.legs.length - 1)).toBeGreaterThan(0.9);
+    expect(route.etaHours!).toBeGreaterThan(10);
+    expect(route.etaHours!).toBeLessThan(13);
+  });
+
+  it('leaves the engine off when there is enough wind to sail', () => {
+    const route = routeIsochrone({
+      start: { lat: 32, lon: -66 },
+      destination: { lat: 32, lon: -64.65 },
+      departure: T0,
+      polar,
+      wind: steadyWind(14, 200),
+      motoring: { speedKts: 6, enduranceHours: 53, fuelLitresPerHour: 3 },
+      stepMinutes: 60,
+      maxSteps: 60
+    });
+    expect(route.reachedDestination).toBe(true);
+    expect(route.motoringHours).toBe(0);
+  });
+
+  it('reports the engine in the summary, including into a landfall', () => {
+    const route = routeIsochrone({
+      start: { lat: 32, lon: -66 },
+      destination: { lat: 32, lon: -64.65 },
+      departure: T0,
+      polar,
+      wind: steadyWind(1.5, 270),
+      motoring: { speedKts: 6, enduranceHours: 53, fuelLitresPerHour: 3 },
+      stepMinutes: 60,
+      maxSteps: 60
+    });
+    const summary = summarisePassage(route, {
+      motoring: { enduranceHours: 53, fuelLitresPerHour: 3 }
+    })!;
+    expect(summary.motoring).not.toBeNull();
+    expect(summary.motoring!.fraction).toBeGreaterThan(0.9);
+    expect(summary.motoring!.fuelLitres).toBeGreaterThan(0);
+    expect(summary.motoring!.enduranceHours).toBe(53);
+    expect(summary.motoring!.usableLitres).toBe(159); // 53 h at 3 L/h
+    expect(summary.motoring!.fuelLitres!).toBeLessThan(summary.motoring!.usableLitres!);
+    // Arriving under power is called out separately from the share, because
+    // it is the case a percentage hides.
+    expect(summary.motoring!.intoLandfall).toBe(true);
+  });
+
+  it('reports no engine at all, rather than zero hours, when none was modelled', () => {
+    const route = routeIsochrone({
+      start: { lat: 32, lon: -66 },
+      destination: { lat: 32, lon: -64.65 },
+      departure: T0,
+      polar,
+      wind: steadyWind(14, 200),
+      stepMinutes: 60,
+      maxSteps: 60
+    });
+    expect(summarisePassage(route)!.motoring).toBeNull();
   });
 });

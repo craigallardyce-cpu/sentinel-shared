@@ -166,6 +166,7 @@ function summarisePassage(route, options = {}) {
     let nightManoeuvres = 0;
     let windAgainstCurrentHours = 0;
     let currentKnownHours = 0;
+    let motoringHours = 0;
     const windSamples = [];
     const waveSamples = [];
     for (const { leg, hours: h, startMs } of sailed) {
@@ -198,6 +199,8 @@ function summarisePassage(route, options = {}) {
             if (leg.windAgainstCurrent)
                 windAgainstCurrentHours += h;
         }
+        if (leg.motoring)
+            motoringHours += h;
         const twa = leg.twaDeg;
         if (twa < REACHING_FROM_DEG)
             upwind += h;
@@ -224,6 +227,9 @@ function summarisePassage(route, options = {}) {
         }
     }
     const round3 = (n) => Math.round(n * 1000) / 1000;
+    const positive = (v) => Number.isFinite(v) && v > 0 ? v : null;
+    const endurance = positive(options.motoring?.enduranceHours);
+    const burn = positive(options.motoring?.fuelLitresPerHour);
     return {
         hours: Math.round(hours * 100) / 100,
         wind: {
@@ -257,6 +263,19 @@ function summarisePassage(route, options = {}) {
                 hours: Math.round(windAgainstCurrentHours * 100) / 100
             }
             : null,
+        // Null only when no engine was modelled at all. `route.motoringHours` is
+        // the router's own null-when-absent signal; a described engine that was
+        // never used reports zero hours, which is a real and different answer.
+        motoring: route.motoringHours === null
+            ? null
+            : {
+                hours: Math.round(motoringHours * 100) / 100,
+                fraction: round3(motoringHours / hours),
+                fuelLitres: route.fuelLitres,
+                enduranceHours: endurance,
+                usableLitres: endurance !== null && burn !== null ? Math.round(endurance * burn) : null,
+                intoLandfall: Boolean(route.legs[route.legs.length - 1]?.motoring)
+            },
         landfall: landfallOf(route),
         rollResonance: rollPeriodS === null
             ? null

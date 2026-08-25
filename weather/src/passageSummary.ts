@@ -111,6 +111,47 @@ export interface PassageSummary {
    */
   windAgainstCurrent: { fraction: number; hours: number } | null;
   /**
+   * How much of the passage is under power, and what it costs.
+   *
+   * The engine was modelled, drawn on the chart and warned about, and then
+   * left out of the one artefact a skipper reads before leaving. That gap had
+   * a specific edge: a passage can finish under power — motoring the last
+   * stretch into a landfall is the commonest engine use there is — and a
+   * synopsis that never mentions it describes a boat sailing in where it will
+   * not be sailing in.
+   *
+   * Fuel is carried through from the route rather than recomputed, because the
+   * router is what enforced the endurance limit and its arithmetic is the one
+   * that decided the route. Null where the boat was never described well
+   * enough to model an engine, which is not the same as a passage that sails
+   * all the way — `hours: 0` says that.
+   */
+  motoring: {
+    hours: number;
+    fraction: number;
+    /** Null when no fuel burn was given: hours are known, litres are not. */
+    fuelLitres: number | null;
+    /** The endurance the route was held to, in hours. */
+    enduranceHours: number | null;
+    /**
+     * Usable fuel aboard, in litres — the tank less its reserve.
+     *
+     * Carried so the burn can be stated in its own units. "21 litres of the
+     * 53 hours aboard" is two quantities in one sentence and answers neither
+     * question; "21 of 160 litres" is the one a skipper is actually asking.
+     */
+    usableLitres: number | null;
+    /**
+     * Whether the passage arrives under power.
+     *
+     * Called out separately because it is the case a distribution hides. Two
+     * hours of engine is unremarkable spread through a calm and is a different
+     * fact entirely when it is the two hours that end at an unfamiliar
+     * harbour entrance.
+     */
+    intoLandfall: boolean;
+  } | null;
+  /**
    * What it is like where the passage ends, which is where the risk is.
    *
    * Arriving at an unfamiliar harbour at 0300 in twenty-five knots is the real
@@ -136,6 +177,12 @@ export interface SummaryOptions {
    * a skipper would actually change plans over.
    */
   rollPeriodS?: number | null;
+  /**
+   * The engine the route was actually given, passed straight through from the
+   * router rather than restated, so the summary cannot describe a different
+   * tank from the one that constrained the route.
+   */
+  motoring?: { enduranceHours?: number | null; fuelLitresPerHour?: number | null } | null;
 }
 
 /**
@@ -315,6 +362,7 @@ export function summarisePassage(
   let nightManoeuvres = 0;
   let windAgainstCurrentHours = 0;
   let currentKnownHours = 0;
+  let motoringHours = 0;
 
   const windSamples: Array<{ value: number; hours: number }> = [];
   const waveSamples: Array<{ value: number; hours: number }> = [];
@@ -352,6 +400,8 @@ export function summarisePassage(
       if (leg.windAgainstCurrent) windAgainstCurrentHours += h;
     }
 
+    if (leg.motoring) motoringHours += h;
+
     const twa = leg.twaDeg;
     if (twa < REACHING_FROM_DEG) upwind += h;
     else if (twa <= REACHING_TO_DEG) reaching += h;
@@ -377,6 +427,11 @@ export function summarisePassage(
   }
 
   const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+  const positive = (v: number | null | undefined) =>
+    Number.isFinite(v) && (v as number) > 0 ? (v as number) : null;
+  const endurance = positive(options.motoring?.enduranceHours);
+  const burn = positive(options.motoring?.fuelLitresPerHour);
 
   return {
     hours: Math.round(hours * 100) / 100,
@@ -412,6 +467,21 @@ export function summarisePassage(
             hours: Math.round(windAgainstCurrentHours * 100) / 100
           }
         : null,
+    // Null only when no engine was modelled at all. `route.motoringHours` is
+    // the router's own null-when-absent signal; a described engine that was
+    // never used reports zero hours, which is a real and different answer.
+    motoring:
+      route.motoringHours === null
+        ? null
+        : {
+            hours: Math.round(motoringHours * 100) / 100,
+            fraction: round3(motoringHours / hours),
+            fuelLitres: route.fuelLitres,
+            enduranceHours: endurance,
+            usableLitres:
+              endurance !== null && burn !== null ? Math.round(endurance * burn) : null,
+            intoLandfall: Boolean(route.legs[route.legs.length - 1]?.motoring)
+          },
     landfall: landfallOf(route),
     rollResonance:
       rollPeriodS === null
