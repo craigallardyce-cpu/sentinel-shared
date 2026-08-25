@@ -350,3 +350,150 @@ export function buildAdvisory(
         : null
   };
 }
+
+/**
+ * A point on the filed passage, with what the forecast said about it AT THE
+ * TIME IT WAS FILED.
+ *
+ * Kept on the plan record rather than recomputed, and that is the whole point:
+ * it is the written-down expectation. A comparison that re-derived the "plan"
+ * from a forecast fetched today would be comparing today with today and would
+ * always report that nothing had changed.
+ */
+export interface PlanCheckpoint {
+  lat: number;
+  lon: number;
+  /** When the plan expected the boat to be here, ISO. */
+  time: string;
+  windKts: number | null;
+  gustKts: number | null;
+  waveM: number | null;
+}
+
+export type SegmentVerdict = 'tracking' | 'easing' | 'worsening' | 'unknown';
+
+export interface PlanSegment {
+  time: string;
+  hoursAway: number;
+  lat: number;
+  lon: number;
+  verdict: SegmentVerdict;
+  plannedWindKts: number | null;
+  nowWindKts: number | null;
+  windDeltaKts: number | null;
+  plannedWaveM: number | null;
+  nowWaveM: number | null;
+  waveDeltaM: number | null;
+}
+
+export interface PlanComparison {
+  segments: PlanSegment[];
+  /** The worst verdict anywhere still ahead — what the headline should say. */
+  verdict: SegmentVerdict;
+  /** Where it stops tracking, or null if it never does. */
+  divergesAt: PlanSegment | null;
+  /** How much of the remaining passage is still going to plan, 0-1. */
+  trackingFraction: number;
+}
+
+/**
+ * How far a forecast may move before it is worth mentioning.
+ *
+ * Wide enough to swallow the disagreement between two grids interpolated at
+ * slightly different bounds, which is the noise that makes a comparison cry
+ * wolf. A plan is not "changed" because the wind is a knot different from a
+ * number somebody wrote down five days ago.
+ */
+const TRACKING_WIND_KTS = 5;
+const TRACKING_WAVE_M = 0.5;
+
+/**
+ * Compare the passage still ahead against what was expected when it was filed.
+ *
+ * This is the other half of the safety story. `scanHazards` answers "is
+ * anything dangerous", which is binary and only fires at the limits; this
+ * answers "is the passage still the one I planned", which is the question a
+ * skipper asks every watch and which has a useful answer long before anything
+ * is dangerous.
+ *
+ * Only the future is compared. What the weather did yesterday is not a
+ * forecast any more, it is history, and reporting that it diverged is telling
+ * somebody about a decision they can no longer make.
+ */
+export function compareToPlan(
+  checkpoints: PlanCheckpoint[],
+  samplers: Samplers,
+  options: { now?: number; windToleranceKts?: number; waveToleranceM?: number } = {}
+): PlanComparison {
+  const now = options.now ?? Date.now();
+  const windTol = options.windToleranceKts ?? TRACKING_WIND_KTS;
+  const waveTol = options.waveToleranceM ?? TRACKING_WAVE_M;
+
+  const segments: PlanSegment[] = [];
+
+  for (const cp of checkpoints) {
+    const timeMs = Date.parse(cp.time);
+    if (!Number.isFinite(timeMs) || timeMs < now) continue;
+
+    const wind = samplers.wind(cp.lat, cp.lon, timeMs);
+    const sea = samplers.waves?.(cp.lat, cp.lon, timeMs);
+    const nowWindKts = wind && Number.isFinite(wind.speedKts) ? Math.round(wind.speedKts * 10) / 10 : null;
+    const nowWaveM = sea && Number.isFinite(sea.heightM) ? Math.round(sea.heightM * 10) / 10 : null;
+
+    const windDeltaKts =
+      cp.windKts !== null && nowWindKts !== null
+        ? Math.round((nowWindKts - cp.windKts) * 10) / 10
+        : null;
+    const waveDeltaM =
+      cp.waveM !== null && nowWaveM !== null ? Math.round((nowWaveM - cp.waveM) * 10) / 10 : null;
+
+    // Worsening wins over easing: a passage where the wind has dropped and the
+    // sea has got up is not "mixed", it is worse, and that is what a crew
+    // needs to hear.
+    let verdict: SegmentVerdict = 'unknown';
+    if (windDeltaKts !== null || waveDeltaM !== null) {
+      const worse =
+        (windDeltaKts !== null && windDeltaKts > windTol) ||
+        (waveDeltaM !== null && waveDeltaM > waveTol);
+      const better =
+        (windDeltaKts === null || windDeltaKts < -windTol) &&
+        (waveDeltaM === null || waveDeltaM < -waveTol);
+      verdict = worse ? 'worsening' : better ? 'easing' : 'tracking';
+    }
+
+    segments.push({
+      time: cp.time,
+      hoursAway: Math.round(((timeMs - now) / 3_600_000) * 10) / 10,
+      lat: cp.lat,
+      lon: cp.lon,
+      verdict,
+      plannedWindKts: cp.windKts,
+      nowWindKts,
+      windDeltaKts,
+      plannedWaveM: cp.waveM,
+      nowWaveM,
+      waveDeltaM
+    });
+  }
+
+  const judged = segments.filter((s) => s.verdict !== 'unknown');
+  const worsening = segments.filter((s) => s.verdict === 'worsening');
+  const verdict: SegmentVerdict = worsening.length
+    ? 'worsening'
+    : judged.length
+      ? (judged.every((s) => s.verdict === 'easing') ? 'easing' : 'tracking')
+      : 'unknown';
+
+  return {
+    segments,
+    verdict,
+    // The first divergence, not the worst: it is the one the crew meets, and
+    // the one there is still time to do something about.
+    divergesAt: worsening.length
+      ? worsening.reduce((a, b) => (a.hoursAway <= b.hoursAway ? a : b))
+      : null,
+    trackingFraction: judged.length
+      ? Math.round((judged.filter((s) => s.verdict === 'tracking').length / judged.length) * 100) / 100
+      : 0
+  };
+}

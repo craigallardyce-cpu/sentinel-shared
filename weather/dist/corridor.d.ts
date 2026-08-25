@@ -151,3 +151,62 @@ export interface Advisory {
     costHours: number | null;
 }
 export declare function buildAdvisory(route: RouteResult, scan: HazardScan, corridor: Corridor, filedEtaHours?: number | null): Advisory;
+/**
+ * A point on the filed passage, with what the forecast said about it AT THE
+ * TIME IT WAS FILED.
+ *
+ * Kept on the plan record rather than recomputed, and that is the whole point:
+ * it is the written-down expectation. A comparison that re-derived the "plan"
+ * from a forecast fetched today would be comparing today with today and would
+ * always report that nothing had changed.
+ */
+export interface PlanCheckpoint {
+    lat: number;
+    lon: number;
+    /** When the plan expected the boat to be here, ISO. */
+    time: string;
+    windKts: number | null;
+    gustKts: number | null;
+    waveM: number | null;
+}
+export type SegmentVerdict = 'tracking' | 'easing' | 'worsening' | 'unknown';
+export interface PlanSegment {
+    time: string;
+    hoursAway: number;
+    lat: number;
+    lon: number;
+    verdict: SegmentVerdict;
+    plannedWindKts: number | null;
+    nowWindKts: number | null;
+    windDeltaKts: number | null;
+    plannedWaveM: number | null;
+    nowWaveM: number | null;
+    waveDeltaM: number | null;
+}
+export interface PlanComparison {
+    segments: PlanSegment[];
+    /** The worst verdict anywhere still ahead — what the headline should say. */
+    verdict: SegmentVerdict;
+    /** Where it stops tracking, or null if it never does. */
+    divergesAt: PlanSegment | null;
+    /** How much of the remaining passage is still going to plan, 0-1. */
+    trackingFraction: number;
+}
+/**
+ * Compare the passage still ahead against what was expected when it was filed.
+ *
+ * This is the other half of the safety story. `scanHazards` answers "is
+ * anything dangerous", which is binary and only fires at the limits; this
+ * answers "is the passage still the one I planned", which is the question a
+ * skipper asks every watch and which has a useful answer long before anything
+ * is dangerous.
+ *
+ * Only the future is compared. What the weather did yesterday is not a
+ * forecast any more, it is history, and reporting that it diverged is telling
+ * somebody about a decision they can no longer make.
+ */
+export declare function compareToPlan(checkpoints: PlanCheckpoint[], samplers: Samplers, options?: {
+    now?: number;
+    windToleranceKts?: number;
+    waveToleranceM?: number;
+}): PlanComparison;

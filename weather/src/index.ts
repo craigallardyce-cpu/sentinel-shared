@@ -75,7 +75,7 @@ export {
 
 export { solarElevationDeg, isNightAt, NIGHT_ELEVATION_DEG } from './sun.js';
 
-export { scanHazards, buildCorridor, buildAdvisory } from './corridor.js';
+export { scanHazards, buildCorridor, buildAdvisory, compareToPlan } from './corridor.js';
 export type {
   Hazard,
   HazardScan,
@@ -83,7 +83,11 @@ export type {
   Corridor,
   CorridorBand,
   Advisory,
-  Samplers
+  Samplers,
+  PlanCheckpoint,
+  PlanSegment,
+  PlanComparison,
+  SegmentVerdict
 } from './corridor.js';
 export type { PassageSummary, Band, SummaryOptions } from './passageSummary.js';
 

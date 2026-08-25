@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { routeIsochrone, type WindSampler, type WaveSampler } from '../src/routing.js';
-import { scanHazards, buildCorridor, buildAdvisory } from '../src/corridor.js';
+import { scanHazards, buildCorridor, buildAdvisory, compareToPlan } from '../src/corridor.js';
 import { GENERIC_POLARS } from '../src/polars.js';
 
 const T0 = Date.UTC(2026, 7, 22, 12, 0, 0);
@@ -230,5 +230,77 @@ describe('buildAdvisory', () => {
   it('reports no cost when there is no filed plan to compare against', () => {
     const r = route({ retainFronts: true, frontIntervalSteps: 6 });
     expect(buildAdvisory(r, scanHazards(r, calm), buildCorridor(r.fronts), null).costHours).toBeNull();
+  });
+});
+
+describe('compareToPlan', () => {
+  const at = (hoursFromT0: number, windKts: number | null, waveM: number | null) => ({
+    lat: 37,
+    lon: -62,
+    time: new Date(T0 + hoursFromT0 * 3600_000).toISOString(),
+    windKts,
+    gustKts: null,
+    waveM
+  });
+
+  it('says a passage is tracking when the forecast has barely moved', () => {
+    const cps = [at(6, 18, 2), at(18, 20, 2.2), at(30, 16, 1.8)];
+    const c = compareToPlan(cps, { wind: steadyWind(19, 0), waves: steadySea(2.1) }, { now: T0 });
+    expect(c.segments).toHaveLength(3);
+    expect(c.verdict).toBe('tracking');
+    expect(c.divergesAt).toBeNull();
+    expect(c.trackingFraction).toBe(1);
+  });
+
+  it('calls it worsening when the wind has got up beyond the noise', () => {
+    const cps = [at(6, 18, 2), at(18, 18, 2)];
+    const c = compareToPlan(cps, { wind: steadyWind(32, 0), waves: steadySea(2) }, { now: T0 });
+    expect(c.verdict).toBe('worsening');
+    expect(c.segments[0].windDeltaKts).toBeCloseTo(14, 1);
+    // The FIRST divergence, not the worst: it is the one there is still time
+    // to do something about.
+    expect(c.divergesAt!.hoursAway).toBeCloseTo(6, 1);
+  });
+
+  it('calls it easing when both have dropped', () => {
+    const cps = [at(6, 30, 4), at(18, 30, 4)];
+    const c = compareToPlan(cps, { wind: steadyWind(18, 0), waves: steadySea(1.5) }, { now: T0 });
+    expect(c.verdict).toBe('easing');
+  });
+
+  it('will not call a knot of grid noise a change', () => {
+    const cps = [at(6, 18, 2)];
+    const c = compareToPlan(cps, { wind: steadyWind(20, 0), waves: steadySea(2.3) }, { now: T0 });
+    expect(c.verdict).toBe('tracking');
+  });
+
+  it('reports worse where the wind eased but the sea got up', () => {
+    // Not "mixed". A crew needs to hear the worse half.
+    const cps = [at(6, 30, 2)];
+    const c = compareToPlan(cps, { wind: steadyWind(20, 0), waves: steadySea(3.5) }, { now: T0 });
+    expect(c.verdict).toBe('worsening');
+  });
+
+  it('ignores the part of the passage already sailed', () => {
+    // Telling somebody yesterday diverged is telling them about a decision
+    // they can no longer make.
+    const cps = [at(-24, 18, 2), at(-6, 18, 2), at(12, 18, 2)];
+    const c = compareToPlan(cps, { wind: steadyWind(19, 0), waves: steadySea(2) }, { now: T0 });
+    expect(c.segments).toHaveLength(1);
+    expect(c.segments[0].hoursAway).toBeCloseTo(12, 1);
+  });
+
+  it('says unknown rather than guessing where the forecast does not reach', () => {
+    const cps = [at(6, 18, 2)];
+    const c = compareToPlan(cps, { wind: () => null }, { now: T0 });
+    expect(c.segments[0].verdict).toBe('unknown');
+    expect(c.verdict).toBe('unknown');
+    expect(c.trackingFraction).toBe(0);
+  });
+
+  it('has nothing to compare when the plan carried no expectations', () => {
+    const cps = [at(6, null, null)];
+    const c = compareToPlan(cps, { wind: steadyWind(20, 0), waves: steadySea(2) }, { now: T0 });
+    expect(c.segments[0].verdict).toBe('unknown');
   });
 });

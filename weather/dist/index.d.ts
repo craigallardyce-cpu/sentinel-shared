@@ -14,8 +14,8 @@ export { fetchMarineField, createWaveSampler, createCurrentSampler, waveToCompon
 export type { MarineField, MarineFieldOptions } from './marineField.js';
 export { summarisePassage, encounterPeriodS, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
 export { solarElevationDeg, isNightAt, NIGHT_ELEVATION_DEG } from './sun.js';
-export { scanHazards, buildCorridor, buildAdvisory } from './corridor.js';
-export type { Hazard, HazardScan, HazardLimits, Corridor, CorridorBand, Advisory, Samplers } from './corridor.js';
+export { scanHazards, buildCorridor, buildAdvisory, compareToPlan } from './corridor.js';
+export type { Hazard, HazardScan, HazardLimits, Corridor, CorridorBand, Advisory, Samplers, PlanCheckpoint, PlanSegment, PlanComparison, SegmentVerdict } from './corridor.js';
 export type { PassageSummary, Band, SummaryOptions } from './passageSummary.js';
 export { createPolarAccumulator, addSample, derivePolar, mergeAccumulators, trueWindAngle, toPolFile, serializeAccumulator, deserializeAccumulator } from './polarLearning.js';
 export type { PolarAccumulator, PolarBin, TelemetrySample, AddSampleResult, RejectionReason, LearningOptions, DeriveOptions, DerivedPolar, PolarCoverage, CoverageCell } from './polarLearning.js';
