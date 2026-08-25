@@ -1,4 +1,4 @@
-import { type RouteResult, type RouteFront, type WaveSampler, type WindSampler } from './routing.js';
+import { type RouteResult, type WaveSampler, type WindSampler } from './routing.js';
 /**
  * The advisory corridor, and the weather it is advising about.
  *
@@ -131,7 +131,12 @@ export interface Corridor {
  * taken them. A band with no clear points at all is dropped rather than drawn
  * empty — there is no advice to give for an hour with nowhere to be.
  */
-export declare function buildCorridor(fronts: RouteFront[]): Corridor;
+export declare function buildCorridor(route: RouteResult, destination: {
+    lat: number;
+    lon: number;
+}, options?: {
+    toleranceFraction?: number;
+}): Corridor;
 /**
  * The advisory, in the order it should be read.
  *

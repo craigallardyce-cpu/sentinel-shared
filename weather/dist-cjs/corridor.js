@@ -105,8 +105,23 @@ function scanHazards(route, samplers, options = {}) {
         : null;
     return { hazards, worst, soonest, comparedToPlan, limits };
 }
+const fronts = (route) => route.fronts ?? [];
 /** Below this share of the widest band, a narrowing is worth calling a decision. */
 const PINCH_RATIO = 0.55;
+/**
+ * How much slower than the best route a position may still be worth being in.
+ *
+ * This is the filter that makes a corridor a corridor. Without it the "corridor"
+ * is the whole reachable set — everywhere the boat could physically get to —
+ * which on an ocean passage fans out across the entire chart and reads as
+ * scattered blobs rather than as advice. Reachability is not the question. The
+ * question is which water still gets you there in about the time the best route
+ * would, and that is a much narrower set.
+ *
+ * Ten percent of the passage: wide enough that a real choice between two sides
+ * of a weather system stays visible, tight enough that the answer is a band.
+ */
+const NEAR_OPTIMAL_TOLERANCE = 0.1;
 /**
  * Positions on a front are ranked by their spread, which is O(n²) on a set that
  * can be a few hundred wide. Capped so a long passage cannot quietly cost
@@ -143,10 +158,61 @@ function spreadNm(points) {
  * taken them. A band with no clear points at all is dropped rather than drawn
  * empty — there is no advice to give for an hour with nowhere to be.
  */
-function buildCorridor(fronts) {
+function buildCorridor(route, destination, options = {}) {
     const bands = [];
-    for (const front of fronts) {
-        const clear = evenSample(front.points.filter((p) => p.clear).map((p) => ({ lat: p.lat, lon: p.lon })), MAX_POINTS_PER_BAND);
+    const tolerance = options.toleranceFraction ?? NEAR_OPTIMAL_TOLERANCE;
+    // Judging near-optimal needs something to be near. A passage that never
+    // reached its destination has no best time to measure against, and inventing
+    // one would draw a confident corridor around a route that failed.
+    if (!route.reachedDestination || !(route.etaHours > 0) || !(route.directDistanceNm > 0)) {
+        return { bands: [], pinch: null, widest: null };
+    }
+    /**
+     * How much further from the destination than the best route a position may
+     * be, at the same moment, and still count as being in the corridor.
+     *
+     * Measured against the OPTIMAL ROUTE'S OWN PROGRESS rather than against a
+     * speed estimate, which is the second attempt and the right one. The first
+     * tried elapsed-plus-remaining-at-average-VMG, and a test caught it failing
+     * on exactly the passages this feature exists for: where a route detours
+     * around weather, the straight-line distance still to run is much larger
+     * than the average pace implies, because that pace already has the detour
+     * baked into it. Every position was judged hopeless and the corridor came
+     * back empty.
+     *
+     * Comparing like with like — how far along was the best route at this hour,
+     * how far along is this position — needs no speed estimate and cannot be
+     * fooled by a dog-leg.
+     */
+    const slackNm = tolerance * route.directDistanceNm;
+    /** Where the best route had got to by a given moment. */
+    const bestRemainingAt = (timeMs) => {
+        let closest = null;
+        let bestGap = Infinity;
+        for (const leg of route.legs) {
+            const gap = Math.abs(Date.parse(leg.time) - timeMs);
+            if (gap < bestGap) {
+                bestGap = gap;
+                closest = leg;
+            }
+        }
+        return closest
+            ? (0, routing_js_1.distanceNm)(closest.lat, closest.lon, destination.lat, destination.lon)
+            : null;
+    };
+    for (const front of fronts(route)) {
+        const baseline = bestRemainingAt(front.timeMs);
+        const worthwhile = front.points.filter((p) => {
+            if (!p.clear)
+                return false;
+            if (baseline === null)
+                return false;
+            const remaining = (0, routing_js_1.distanceNm)(p.lat, p.lon, destination.lat, destination.lon);
+            // Further from the destination than the best route was at this hour, by
+            // more than the slack, is water the boat can reach and should not be in.
+            return remaining <= baseline + slackNm;
+        });
+        const clear = evenSample(worthwhile.map((p) => ({ lat: p.lat, lon: p.lon })), MAX_POINTS_PER_BAND);
         if (clear.length < 2)
             continue;
         bands.push({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { routeIsochrone, type WindSampler, type WaveSampler } from '../src/routing.js';
+import { routeIsochrone, distanceNm, type WindSampler, type WaveSampler } from '../src/routing.js';
 import { scanHazards, buildCorridor, buildAdvisory, compareToPlan } from '../src/corridor.js';
 import { GENERIC_POLARS } from '../src/polars.js';
 
@@ -57,14 +57,14 @@ describe('retaining fronts', () => {
 
 describe('buildCorridor', () => {
   it('has nothing to say about a route with no fronts', () => {
-    const c = buildCorridor([]);
+    const c = buildCorridor({ ...route(), reachedDestination: false, fronts: [] }, DEST);
     expect(c.bands).toEqual([]);
     expect(c.pinch).toBeNull();
     expect(c.widest).toBeNull();
   });
 
   it('measures how much water the boat has, hour by hour', () => {
-    const c = buildCorridor(route({ retainFronts: true, frontIntervalSteps: 4 }).fronts);
+    const c = buildCorridor(route({ retainFronts: true, frontIntervalSteps: 4 }), DEST);
     expect(c.bands.length).toBeGreaterThan(2);
     expect(c.widest!.widthNm).toBeGreaterThan(0);
     // Every band's width is a real separation between two of its own points.
@@ -77,15 +77,18 @@ describe('buildCorridor', () => {
   it('finds no decision to report in open water', () => {
     // Steady wind, no sea limit: nothing is taking the boat's options away, so
     // claiming a pinch would be inventing one.
-    const c = buildCorridor(route({ retainFronts: true, frontIntervalSteps: 4 }).fronts);
+    const c = buildCorridor(route({ retainFronts: true, frontIntervalSteps: 4 }), DEST);
     expect(c.pinch).toBeNull();
   });
 
   it('narrows where the weather takes the options away', () => {
-    // A band of gale seas across the middle of the passage, with a sea limit
-    // that refuses it. The corridor should be measurably narrower there.
-    const patch: WaveSampler = (lat) => ({
-      heightM: Math.abs(lat - 36) < 0.7 ? 6 : 0.5,
+    // A patch of gale seas ON the rhumb line, with calm water round it and a
+    // sea limit that refuses it — so the boat goes around and still arrives.
+    // An earlier version of this fixture was a band spanning every longitude,
+    // which is a wall rather than an obstacle: nothing got through, and the
+    // corridor was empty for the honest reason that there was no passage.
+    const patch: WaveSampler = (lat, lon) => ({
+      heightM: Math.hypot(lat - 36, lon + 62) < 0.8 ? 6 : 0.5,
       directionDeg: 90,
       periodS: 8
     });
@@ -96,7 +99,8 @@ describe('buildCorridor', () => {
       maxWaveHeightM: 3,
       maxHours: 160
     });
-    const c = buildCorridor(r.fronts);
+    expect(r.reachedDestination).toBe(true);
+    const c = buildCorridor(r, DEST);
     expect(c.bands.length).toBeGreaterThan(2);
     // Some water was carved out: at least one front lost points to the gale.
     const carved = r.fronts.some((f) => f.points.some((p) => !p.clear));
@@ -106,7 +110,7 @@ describe('buildCorridor', () => {
   it('never calls the start or the finish a decision', () => {
     // A passage begins and ends at a point, so those fronts are narrow for a
     // reason that has nothing to do with the weather.
-    const c = buildCorridor(route({ retainFronts: true, frontIntervalSteps: 4 }).fronts);
+    const c = buildCorridor(route({ retainFronts: true, frontIntervalSteps: 4 }), DEST);
     if (c.pinch) {
       expect(c.pinch).not.toBe(c.bands[0]);
       expect(c.pinch).not.toBe(c.bands[c.bands.length - 1]);
@@ -194,7 +198,7 @@ describe('buildAdvisory', () => {
 
     const r = route({ retainFronts: true, frontIntervalSteps: 6 });
     const scan = scanHazards(r, samplers, { plannedWith: planned });
-    const advisory = buildAdvisory(r, scan, buildCorridor(r.fronts), null);
+    const advisory = buildAdvisory(r, scan, buildCorridor(r, DEST), null);
 
     expect(advisory.headlineIsNew).toBe(true);
     // The gusts are new; the sea was always going to be like that, and the
@@ -209,27 +213,27 @@ describe('buildAdvisory', () => {
     const gale = { wind: steadyWind(36, 0), waves: steadySea(1) };
     const r = route({ retainFronts: true, frontIntervalSteps: 6 });
     const scan = scanHazards(r, gale, { plannedWith: gale });
-    const advisory = buildAdvisory(r, scan, buildCorridor(r.fronts), null);
+    const advisory = buildAdvisory(r, scan, buildCorridor(r, DEST), null);
     expect(advisory.headline).not.toBeNull();
     expect(advisory.headlineIsNew).toBe(false);
   });
 
   it('has no headline for a passage with nothing wrong with it', () => {
     const r = route({ retainFronts: true, frontIntervalSteps: 6 });
-    const advisory = buildAdvisory(r, scanHazards(r, calm), buildCorridor(r.fronts), null);
+    const advisory = buildAdvisory(r, scanHazards(r, calm), buildCorridor(r, DEST), null);
     expect(advisory.headline).toBeNull();
     expect(advisory.headlineIsNew).toBe(false);
   });
 
   it('says what the diversion costs against the plan as filed', () => {
     const r = route({ retainFronts: true, frontIntervalSteps: 6 });
-    const advisory = buildAdvisory(r, scanHazards(r, calm), buildCorridor(r.fronts), r.etaHours - 9);
+    const advisory = buildAdvisory(r, scanHazards(r, calm), buildCorridor(r, DEST), r.etaHours - 9);
     expect(advisory.costHours).toBeCloseTo(9, 1);
   });
 
   it('reports no cost when there is no filed plan to compare against', () => {
     const r = route({ retainFronts: true, frontIntervalSteps: 6 });
-    expect(buildAdvisory(r, scanHazards(r, calm), buildCorridor(r.fronts), null).costHours).toBeNull();
+    expect(buildAdvisory(r, scanHazards(r, calm), buildCorridor(r, DEST), null).costHours).toBeNull();
   });
 });
 
@@ -302,5 +306,64 @@ describe('compareToPlan', () => {
     const cps = [at(6, null, null)];
     const c = compareToPlan(cps, { wind: steadyWind(20, 0), waves: steadySea(2) }, { now: T0 });
     expect(c.segments[0].verdict).toBe('unknown');
+  });
+});
+
+describe('the corridor is not the reachable set', () => {
+  /**
+   * The bug this guards against was visible the moment somebody looked at the
+   * chart: the corridor was drawn from every position the boat could reach,
+   * which on an ocean passage fans out across the whole area and reads as
+   * scattered blobs. Reachability is not the question — which water still gets
+   * you there in about the best time is.
+   */
+  it('keeps far less than the search could reach', () => {
+    const r = route({ retainFronts: true, frontIntervalSteps: 3 });
+    const reachable = r.fronts.reduce((n, f) => n + f.points.filter((p) => p.clear).length, 0);
+    const inCorridor = buildCorridor(r, DEST).bands.reduce((n, b) => n + b.points.length, 0);
+    expect(reachable).toBeGreaterThan(0);
+    expect(inCorridor).toBeLessThan(reachable);
+  });
+
+  it('keeps the water near the route and drops the water behind the fan', () => {
+    const r = route({ retainFronts: true, frontIntervalSteps: 3 });
+    const c = buildCorridor(r, DEST);
+    // Every retained position must still be able to make the passage within
+    // the tolerance, judged the same way the corridor judges it.
+    const slack = 0.1 * r.directDistanceNm;
+    for (const band of c.bands) {
+      // How far along the best route was at this hour.
+      const closest = r.legs.reduce((a, b) =>
+        Math.abs(Date.parse(a.time) - band.timeMs) <= Math.abs(Date.parse(b.time) - band.timeMs) ? a : b
+      );
+      const baseline = distanceNm(closest.lat, closest.lon, DEST.lat, DEST.lon);
+      for (const pt of band.points) {
+        expect(distanceNm(pt.lat, pt.lon, DEST.lat, DEST.lon)).toBeLessThanOrEqual(baseline + slack + 1e-6);
+      }
+    }
+  });
+
+  it('widens when the tolerance is loosened', () => {
+    const r = route({ retainFronts: true, frontIntervalSteps: 3 });
+    const tight = buildCorridor(r, DEST, { toleranceFraction: 0.02 });
+    const loose = buildCorridor(r, DEST, { toleranceFraction: 0.35 });
+    const count = (c) => c.bands.reduce((n, b) => n + b.points.length, 0);
+    expect(count(loose)).toBeGreaterThan(count(tight));
+  });
+
+  it('draws nothing for a passage that never arrived', () => {
+    // No best time to be near, so a corridor would be a confident shape around
+    // a route that failed.
+    const stalled = routeIsochrone({
+      start: START,
+      destination: { lat: 34, lon: -20 },
+      departure: T0,
+      polar,
+      wind: steadyWind(12, 90),
+      maxHours: 8,
+      retainFronts: true
+    });
+    expect(stalled.reachedDestination).toBe(false);
+    expect(buildCorridor(stalled, { lat: 34, lon: -20 }).bands).toEqual([]);
   });
 });
