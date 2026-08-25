@@ -403,7 +403,7 @@ function worstSeas(legs) {
  * useful about the passage, and `reachedDestination` reports which happened.
  */
 export function routeIsochrone(options) {
-    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, nightManoeuvre, obstacles, waves, maxWaveHeightM, seaState, motoring, currents } = options;
+    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, nightManoeuvre, obstacles, waves, maxWaveHeightM, seaState, motoring, currents, retainFronts = false, frontIntervalSteps = 1 } = options;
     const avoiding = Boolean(obstacles && obstacles.count > 0);
     const warnings = [avoiding ? COARSE_LAND_WARNING : NO_LAND_WARNING];
     if (polar.generic) {
@@ -418,6 +418,55 @@ export function routeIsochrone(options) {
     // was routed through waves, so the count decides which warning is told.
     let waveSampleCount = 0;
     let currentSampleCount = 0;
+    const fronts = [];
+    /**
+     * Record a front, marking each position clear or not.
+     *
+     * Called with the frontier BEFORE it is pruned to one node per sector, so
+     * the corridor describes the water the boat can actually reach rather than
+     * the handful of points the search kept to carry on from.
+     */
+    /**
+     * Mark a position as not clear on whichever front it was recorded in.
+     *
+     * The sea limit is tested when a node is expanded, one step after the node
+     * was created — so a position is discovered to be in the gale after it has
+     * already been written down as reachable. This goes back and says so, which
+     * is what carves the hazard out of the corridor.
+     */
+    const markNotClear = (node) => {
+        if (!retainFronts)
+            return;
+        for (let i = fronts.length - 1; i >= 0; i--) {
+            if (fronts[i].timeMs !== node.timeMs)
+                continue;
+            const hit = fronts[i].points.find((pt) => Math.abs(pt.lat - node.lat) < 1e-4 && Math.abs(pt.lon - node.lon) < 1e-4);
+            if (hit)
+                hit.clear = false;
+            return;
+        }
+    };
+    const recordFront = (step, nodes, timeMs) => {
+        if (!retainFronts)
+            return;
+        if (step % Math.max(1, Math.round(frontIntervalSteps)) !== 0)
+            return;
+        if (!nodes.length)
+            return;
+        fronts.push({
+            timeMs,
+            hoursFromDeparture: Math.round(((timeMs - departure) / 3600000) * 100) / 100,
+            points: nodes.map((n) => ({
+                lat: Math.round(n.lat * 10000) / 10000,
+                lon: Math.round(n.lon * 10000) / 10000,
+                // A node only exists if the search let it through, and the sea limit
+                // is applied when a node is EXPANDED rather than when it is created.
+                // So a retained node is clear by construction unless its own water is
+                // over the limit, which the next step will discover.
+                clear: true
+            }))
+        });
+    };
     const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
     const stepHours = stepMinutes / 60;
     const maxSteps = Math.max(1, Math.floor(maxHours / stepHours));
@@ -449,7 +498,8 @@ export function routeIsochrone(options) {
                 maxWaveHeightM: null,
                 motoringHours: null,
                 fuelLitres: null,
-                maxCurrentKts: null
+                maxCurrentKts: null,
+                fronts: []
             };
         }
     }
@@ -553,6 +603,7 @@ export function routeIsochrone(options) {
                 // is what lets the frontier route around a gale instead of into it.
                 if (seaLimit !== null && sea.heightM > seaLimit) {
                     tooRough++;
+                    markNotClear(node);
                     continue;
                 }
             }
@@ -708,6 +759,7 @@ export function routeIsochrone(options) {
                     polarName: polar.name,
                     maxWaveHeightM: worstSeas(legs),
                     maxCurrentKts: worstCurrent(legs),
+                    fronts,
                     ...engineUse(legs, motoring)
                 };
             }
@@ -819,6 +871,7 @@ export function routeIsochrone(options) {
             }
             break;
         }
+        recordFront(step, candidates, nextTime);
         // Prune to one survivor per bearing-from-origin sector: the point that got
         // FURTHEST from the origin. That is what makes this an isochrone rather
         // than a greedy walk — keeping whichever point is nearest the destination
@@ -876,6 +929,7 @@ export function routeIsochrone(options) {
         polarName: polar.name,
         maxWaveHeightM: worstSeas(legs),
         maxCurrentKts: worstCurrent(legs),
+        fronts,
         ...engineUse(legs, motoring)
     };
 }

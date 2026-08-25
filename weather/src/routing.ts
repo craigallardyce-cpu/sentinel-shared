@@ -288,6 +288,36 @@ export interface MotoringOptions {
   fuelLitresPerHour?: number | null;
 }
 
+/** One position on a front: reachable at that time, and whether it is clear. */
+export interface FrontPoint {
+  lat: number;
+  lon: number;
+  /**
+   * False where the sea at this position and hour is above the limit set.
+   *
+   * The whole point of retaining fronts. A front is everywhere the boat could
+   * be at a given hour; subtracting the water it must not be in leaves the
+   * water it can, which is what the corridor draws. Always true when no sea
+   * limit was given — nothing was excluded, so nothing is marked.
+   */
+  clear: boolean;
+}
+
+/**
+ * Everywhere the boat could be at one moment.
+ *
+ * The isochrone builds these to advance and has always thrown them away,
+ * keeping one node per front for the route. They are the raw material of the
+ * advisory corridor: not a line with a width painted on it, but the actual set
+ * of places this boat can reach by that hour.
+ */
+export interface RouteFront {
+  timeMs: number;
+  /** Hours since departure, for labelling. */
+  hoursFromDeparture: number;
+  points: FrontPoint[];
+}
+
 export interface RouteLeg {
   lat: number;
   lon: number;
@@ -352,6 +382,13 @@ export interface RouteResult {
   fuelLitres: number | null;
   /** Strongest current met anywhere on the route, or null if none was known. */
   maxCurrentKts: number | null;
+  /**
+   * The reachable set at each step, when `retainFronts` asked for it.
+   *
+   * Empty otherwise, because holding a few hundred positions per hour for ten
+   * simulated days is real memory and the passage planner has no use for it.
+   */
+  fronts: RouteFront[];
 }
 
 export interface RouteOptions {
@@ -449,6 +486,22 @@ export interface RouteOptions {
   maxWaveHeightM?: number;
   /** How the sea is turned into lost speed. See `seaStateFactor`. */
   seaState?: SeaStateOptions;
+  /**
+   * Keep the reachable set at each step instead of discarding it.
+   *
+   * Off by default: the fronts are hundreds of positions per simulated hour,
+   * and a departure comparison that routes six times has no use for six copies
+   * of them. Underway routing does — see `corridor.ts`.
+   */
+  retainFronts?: boolean;
+  /**
+   * Sample every Nth front when retaining. Default 1 (all of them).
+   *
+   * A corridor drawn at hourly resolution is finer than the forecast that
+   * produced it and costs proportionally more to hold and to draw. Six is a
+   * sensible figure for a multi-day passage: a band every six hours.
+   */
+  frontIntervalSteps?: number;
   /**
    * Ocean current over the passage. Optional, like the sea.
    *
@@ -799,7 +852,9 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     maxWaveHeightM,
     seaState,
     motoring,
-    currents
+    currents,
+    retainFronts = false,
+    frontIntervalSteps = 1
   } = options;
 
   const avoiding = Boolean(obstacles && obstacles.count > 0);
@@ -819,6 +874,53 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
   // was routed through waves, so the count decides which warning is told.
   let waveSampleCount = 0;
   let currentSampleCount = 0;
+  const fronts: RouteFront[] = [];
+
+  /**
+   * Record a front, marking each position clear or not.
+   *
+   * Called with the frontier BEFORE it is pruned to one node per sector, so
+   * the corridor describes the water the boat can actually reach rather than
+   * the handful of points the search kept to carry on from.
+   */
+  /**
+   * Mark a position as not clear on whichever front it was recorded in.
+   *
+   * The sea limit is tested when a node is expanded, one step after the node
+   * was created — so a position is discovered to be in the gale after it has
+   * already been written down as reachable. This goes back and says so, which
+   * is what carves the hazard out of the corridor.
+   */
+  const markNotClear = (node: Node) => {
+    if (!retainFronts) return;
+    for (let i = fronts.length - 1; i >= 0; i--) {
+      if (fronts[i].timeMs !== node.timeMs) continue;
+      const hit = fronts[i].points.find(
+        (pt) => Math.abs(pt.lat - node.lat) < 1e-4 && Math.abs(pt.lon - node.lon) < 1e-4
+      );
+      if (hit) hit.clear = false;
+      return;
+    }
+  };
+
+  const recordFront = (step: number, nodes: Node[], timeMs: number) => {
+    if (!retainFronts) return;
+    if (step % Math.max(1, Math.round(frontIntervalSteps)) !== 0) return;
+    if (!nodes.length) return;
+    fronts.push({
+      timeMs,
+      hoursFromDeparture: Math.round(((timeMs - departure) / 3_600_000) * 100) / 100,
+      points: nodes.map((n) => ({
+        lat: Math.round(n.lat * 10000) / 10000,
+        lon: Math.round(n.lon * 10000) / 10000,
+        // A node only exists if the search let it through, and the sea limit
+        // is applied when a node is EXPANDED rather than when it is created.
+        // So a retained node is clear by construction unless its own water is
+        // over the limit, which the next step will discover.
+        clear: true
+      }))
+    });
+  };
 
   const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
   const stepHours = stepMinutes / 60;
@@ -851,7 +953,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         maxWaveHeightM: null,
         motoringHours: null,
         fuelLitres: null,
-        maxCurrentKts: null
+        maxCurrentKts: null,
+        fronts: []
       };
     }
   }
@@ -960,7 +1063,11 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         // Above the skipper's limit this water is simply not available, the
         // same as land. Dropping the whole position rather than each course
         // is what lets the frontier route around a gale instead of into it.
-        if (seaLimit !== null && sea.heightM > seaLimit) { tooRough++; continue; }
+        if (seaLimit !== null && sea.heightM > seaLimit) {
+          tooRough++;
+          markNotClear(node);
+          continue;
+        }
       }
       // The sea slows a boat under power exactly as it slows one under sail —
       // more so, since a motoring boat is usually pointing straight into it
@@ -1127,6 +1234,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           polarName: polar.name,
           maxWaveHeightM: worstSeas(legs),
           maxCurrentKts: worstCurrent(legs),
+          fronts,
           ...engineUse(legs, motoring)
         };
       }
@@ -1245,6 +1353,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       break;
     }
 
+    recordFront(step, candidates, nextTime);
+
     // Prune to one survivor per bearing-from-origin sector: the point that got
     // FURTHEST from the origin. That is what makes this an isochrone rather
     // than a greedy walk — keeping whichever point is nearest the destination
@@ -1310,6 +1420,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     polarName: polar.name,
     maxWaveHeightM: worstSeas(legs),
     maxCurrentKts: worstCurrent(legs),
+    fronts,
     ...engineUse(legs, motoring)
   };
 }

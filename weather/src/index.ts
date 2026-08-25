@@ -27,6 +27,8 @@ export type {
   RouteOptions,
   RouteResult,
   RouteLeg,
+  RouteFront,
+  FrontPoint,
   WindSample,
   WindSampler,
   WaveSample,
@@ -72,6 +74,17 @@ export {
 } from './passageSummary.js';
 
 export { solarElevationDeg, isNightAt, NIGHT_ELEVATION_DEG } from './sun.js';
+
+export { scanHazards, buildCorridor, buildAdvisory } from './corridor.js';
+export type {
+  Hazard,
+  HazardScan,
+  HazardLimits,
+  Corridor,
+  CorridorBand,
+  Advisory,
+  Samplers
+} from './corridor.js';
 export type { PassageSummary, Band, SummaryOptions } from './passageSummary.js';
 
 export {

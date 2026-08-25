@@ -7,4 +7,5 @@ export { fetchWindField, createWindSampler, boundsForPassage, toComponents, from
 export { fetchMarineField, createWaveSampler, createCurrentSampler, waveToComponents, waveFromComponents, currentToComponents, currentFromComponents, speedToKnots } from './marineField.js';
 export { summarisePassage, encounterPeriodS, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
 export { solarElevationDeg, isNightAt, NIGHT_ELEVATION_DEG } from './sun.js';
+export { scanHazards, buildCorridor, buildAdvisory } from './corridor.js';
 export { createPolarAccumulator, addSample, derivePolar, mergeAccumulators, trueWindAngle, toPolFile, serializeAccumulator, deserializeAccumulator } from './polarLearning.js';
