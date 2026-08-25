@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deserializeAccumulator = exports.serializeAccumulator = exports.toPolFile = exports.trueWindAngle = exports.mergeAccumulators = exports.derivePolar = exports.addSample = exports.createPolarAccumulator = exports.fromComponents = exports.toComponents = exports.boundsForPassage = exports.createWindSampler = exports.fetchWindField = exports.landZones = exports.userZone = exports.createObstacleField = exports.compareSecondOpinion = exports.angleBetween = exports.destinationPoint = exports.bearingDeg = exports.distanceNm = exports.routeIsochrone = exports.GENERIC_POLARS = exports.parsePolarFile = exports.bestVmg = exports.foldTwa = exports.boatSpeed = exports.clearForecastCache = exports.getOpenMeteoForecast = exports.formatPosition = exports.isInsideNwsCoverage = void 0;
+exports.deserializeAccumulator = exports.serializeAccumulator = exports.toPolFile = exports.trueWindAngle = exports.mergeAccumulators = exports.derivePolar = exports.addSample = exports.createPolarAccumulator = exports.WAVE_BANDS_M = exports.WIND_BANDS_KTS = exports.summarisePassage = exports.waveFromComponents = exports.waveToComponents = exports.createWaveSampler = exports.fetchWaveField = exports.fromComponents = exports.toComponents = exports.boundsForPassage = exports.createWindSampler = exports.fetchWindField = exports.landZones = exports.userZone = exports.createObstacleField = exports.compareSecondOpinion = exports.seaStateFactor = exports.angleBetween = exports.destinationPoint = exports.bearingDeg = exports.distanceNm = exports.routeIsochrone = exports.GENERIC_POLARS = exports.parsePolarFile = exports.bestVmg = exports.foldTwa = exports.boatSpeed = exports.clearForecastCache = exports.getOpenMeteoForecast = exports.formatPosition = exports.isInsideNwsCoverage = void 0;
 var openMeteo_js_1 = require("./openMeteo.js");
 Object.defineProperty(exports, "isInsideNwsCoverage", { enumerable: true, get: function () { return openMeteo_js_1.isInsideNwsCoverage; } });
 Object.defineProperty(exports, "formatPosition", { enumerable: true, get: function () { return openMeteo_js_1.formatPosition; } });
@@ -18,6 +18,7 @@ Object.defineProperty(exports, "distanceNm", { enumerable: true, get: function (
 Object.defineProperty(exports, "bearingDeg", { enumerable: true, get: function () { return routing_js_1.bearingDeg; } });
 Object.defineProperty(exports, "destinationPoint", { enumerable: true, get: function () { return routing_js_1.destinationPoint; } });
 Object.defineProperty(exports, "angleBetween", { enumerable: true, get: function () { return routing_js_1.angleBetween; } });
+Object.defineProperty(exports, "seaStateFactor", { enumerable: true, get: function () { return routing_js_1.seaStateFactor; } });
 var secondOpinion_js_1 = require("./secondOpinion.js");
 Object.defineProperty(exports, "compareSecondOpinion", { enumerable: true, get: function () { return secondOpinion_js_1.compareSecondOpinion; } });
 var obstacles_js_1 = require("./obstacles.js");
@@ -30,6 +31,15 @@ Object.defineProperty(exports, "createWindSampler", { enumerable: true, get: fun
 Object.defineProperty(exports, "boundsForPassage", { enumerable: true, get: function () { return windField_js_1.boundsForPassage; } });
 Object.defineProperty(exports, "toComponents", { enumerable: true, get: function () { return windField_js_1.toComponents; } });
 Object.defineProperty(exports, "fromComponents", { enumerable: true, get: function () { return windField_js_1.fromComponents; } });
+var waveField_js_1 = require("./waveField.js");
+Object.defineProperty(exports, "fetchWaveField", { enumerable: true, get: function () { return waveField_js_1.fetchWaveField; } });
+Object.defineProperty(exports, "createWaveSampler", { enumerable: true, get: function () { return waveField_js_1.createWaveSampler; } });
+Object.defineProperty(exports, "waveToComponents", { enumerable: true, get: function () { return waveField_js_1.waveToComponents; } });
+Object.defineProperty(exports, "waveFromComponents", { enumerable: true, get: function () { return waveField_js_1.waveFromComponents; } });
+var passageSummary_js_1 = require("./passageSummary.js");
+Object.defineProperty(exports, "summarisePassage", { enumerable: true, get: function () { return passageSummary_js_1.summarisePassage; } });
+Object.defineProperty(exports, "WIND_BANDS_KTS", { enumerable: true, get: function () { return passageSummary_js_1.WIND_BANDS_KTS; } });
+Object.defineProperty(exports, "WAVE_BANDS_M", { enumerable: true, get: function () { return passageSummary_js_1.WAVE_BANDS_M; } });
 var polarLearning_js_1 = require("./polarLearning.js");
 Object.defineProperty(exports, "createPolarAccumulator", { enumerable: true, get: function () { return polarLearning_js_1.createPolarAccumulator; } });
 Object.defineProperty(exports, "addSample", { enumerable: true, get: function () { return polarLearning_js_1.addSample; } });

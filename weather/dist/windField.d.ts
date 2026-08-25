@@ -16,6 +16,17 @@ export interface WindField {
     u: number[][][];
     /** v[timeIndex][latIndex][lonIndex] — northward component, knots. */
     v: number[][][];
+    /**
+     * gust[timeIndex][latIndex][lonIndex] — gust speed, knots. NaN where the
+     * model gave none.
+     *
+     * Carried but never routed on: a boat does not sail its polar in a gust, it
+     * reefs for one. The number a passage summary wants is the worst gust it
+     * will see, which is what decides how the boat is set up, not how fast it
+     * goes. Costs nothing to fetch — Open-Meteo meters coordinates, not
+     * variables, so an extra hourly field rides along on a grid already paid for.
+     */
+    gust: number[][][];
 }
 export interface WindFieldOptions {
     /** Grid spacing in degrees. Default 1°, about 60 nm. */

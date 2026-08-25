@@ -68,7 +68,7 @@ async function fetchWindField(bounds, options = {}) {
             lonParam.push(lo);
         }
     const url = `${FORECAST_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
-        '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn' +
+        '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn' +
         `&forecast_days=${Math.min(16, Math.max(1, Math.round(days)))}` +
         `&models=${encodeURIComponent(model)}`;
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -87,16 +87,20 @@ async function fetchWindField(bounds, options = {}) {
     const times = timeStrings.map((t) => Date.parse(/[Zz+]/.test(t) ? t : `${t}Z`));
     const u = [];
     const v = [];
+    const gust = [];
     for (let t = 0; t < times.length; t++) {
         const uPlane = [];
         const vPlane = [];
+        const gPlane = [];
         for (let i = 0; i < lats.length; i++) {
             const uRow = [];
             const vRow = [];
+            const gRow = [];
             for (let j = 0; j < lons.length; j++) {
                 const point = points[i * lons.length + j];
                 const speed = point?.hourly?.wind_speed_10m?.[t];
                 const dir = point?.hourly?.wind_direction_10m?.[t];
+                const g = point?.hourly?.wind_gusts_10m?.[t];
                 if (Number.isFinite(speed) && Number.isFinite(dir)) {
                     const c = toComponents(speed, dir);
                     uRow.push(c.u);
@@ -106,14 +110,19 @@ async function fetchWindField(bounds, options = {}) {
                     uRow.push(NaN);
                     vRow.push(NaN);
                 }
+                // Independent of the wind above: a model that gave a wind but no gust
+                // should still give a wind.
+                gRow.push(Number.isFinite(g) ? g : NaN);
             }
             uPlane.push(uRow);
             vPlane.push(vRow);
+            gPlane.push(gRow);
         }
         u.push(uPlane);
         v.push(vPlane);
+        gust.push(gPlane);
     }
-    return { model, lats, lons, times, u, v };
+    return { model, lats, lons, times, u, v, gust };
 }
 function slot(values, target) {
     if (!values.length)
@@ -170,6 +179,29 @@ function createWindSampler(field) {
         const after = blend(t.hi);
         if (!before || !after)
             return null;
-        return fromComponents(before.u + (after.u - before.u) * t.frac, before.v + (after.v - before.v) * t.frac);
+        const sample = fromComponents(before.u + (after.u - before.u) * t.frac, before.v + (after.v - before.v) * t.frac);
+        // Gusts are a scalar, so they interpolate directly — and unlike the wind
+        // they are allowed to be missing without costing the sample. A model that
+        // publishes no gust field should not take the wind down with it.
+        const gustAt = (ti) => {
+            const c = [
+                field.gust[ti]?.[y.lo]?.[x.lo],
+                field.gust[ti]?.[y.lo]?.[x.hi],
+                field.gust[ti]?.[y.hi]?.[x.lo],
+                field.gust[ti]?.[y.hi]?.[x.hi]
+            ];
+            if (c.some((g) => !Number.isFinite(g)))
+                return null;
+            const low = c[0] + (c[1] - c[0]) * x.frac;
+            const high = c[2] + (c[3] - c[2]) * x.frac;
+            return low + (high - low) * y.frac;
+        };
+        const gustBefore = gustAt(t.lo);
+        const gustAfter = gustAt(t.hi);
+        sample.gustKts =
+            gustBefore !== null && gustAfter !== null
+                ? gustBefore + (gustAfter - gustBefore) * t.frac
+                : null;
+        return sample;
     };
 }

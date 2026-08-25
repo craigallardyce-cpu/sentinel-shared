@@ -4,6 +4,7 @@ exports.distanceNm = distanceNm;
 exports.bearingDeg = bearingDeg;
 exports.destinationPoint = destinationPoint;
 exports.angleBetween = angleBetween;
+exports.seaStateFactor = seaStateFactor;
 exports.routeIsochrone = routeIsochrone;
 const polars_js_1 = require("./polars.js");
 /**
@@ -26,7 +27,13 @@ const polars_js_1 = require("./polars.js");
  *     schemes. Every result says which case it was in `warnings`, and callers
  *     must present it as a weather plan to lay over a chart, never as a
  *     course to steer.
- *   - No currents, no waves, no leeway. Wind and polar only.
+ *   - No currents, no leeway. Sea state is used, but coarsely: significant
+ *     wave height and the angle it meets the boat at slow the polar down, and
+ *     a wave height limit steers the search around water rougher than the
+ *     skipper is willing to sail. Both are approximations of a boat nobody
+ *     measured in a seaway — see `seaStateFactor` — and both are optional:
+ *     with no `waves` sampler this behaves exactly as it did when it was
+ *     wind-only.
  *
  * It runs client-side on cached forecast data, so a passage can be re-planned
  * at sea with no connectivity and costs nothing per user to compute.
@@ -69,6 +76,46 @@ function destinationPoint(lat, lon, bearing, distNm) {
 function angleBetween(a, b) {
     return (0, polars_js_1.foldTwa)(a - b);
 }
+/**
+ * How much of its polar speed a boat keeps in a given sea.
+ *
+ * Added resistance in waves rises roughly with the square of wave height and
+ * falls with the length of the boat, which gives the shape used here:
+ *
+ *     loss = coefficient · Hs² · angleFactor / referenceLength
+ *
+ * With the defaults, a 12 m boat punching into it loses about 3% of its speed
+ * in a 1 m sea, 10% in 2 m, 22% in 3 m and 40% in 4 m. Those are the right
+ * order of magnitude for a cruising boat and they are not this boat's numbers.
+ * Nothing here is measured: not the coefficient, not the angle shape, and not
+ * the boat. It is a defensible curve standing in for a sea trial nobody ran,
+ * and every route computed with it says so in its warnings.
+ *
+ * The angle factor is full strength dead on the bow, falls away through the
+ * beam, and keeps a small floor dead astern — a following sea still costs a
+ * cruising boat something in steering and rolling, even when it is not the
+ * wall a head sea is. It deliberately never goes negative: a boat that surfs
+ * down a swell is a real effect and modelling it as free speed is how a router
+ * talks a crew into a passage it should not make.
+ *
+ * Wave period is not in this. A short steep sea hurts far more than a long
+ * swell of the same height, and pretending otherwise is the largest single
+ * error left in here — but a period term guessed as loosely as the rest would
+ * add error while looking like precision. Period is carried through to the
+ * legs so a navigator can apply the judgement this cannot.
+ */
+function seaStateFactor(heightM, waveAngleDeg, options = {}) {
+    const { referenceLengthM = 12, coefficient = 0.3, maxLossFraction = 0.6 } = options;
+    if (!Number.isFinite(heightM) || heightM <= 0)
+        return 1;
+    if (!(referenceLengthM > 0))
+        return 1;
+    const angle = (0, polars_js_1.foldTwa)(waveAngleDeg);
+    const head = (1 + Math.cos(toRad(angle))) / 2; // 1 dead ahead, 0 dead astern
+    const angleFactor = 0.1 + 0.9 * head ** 1.5;
+    const loss = (coefficient * heightM * heightM * angleFactor) / referenceLengthM;
+    return 1 - Math.min(maxLossFraction, Math.max(0, loss));
+}
 const NO_LAND_WARNING = 'This route is computed from wind and boat polar only. It does not know where land, ' +
     'shallows, or traffic schemes are — check every leg against your chart before sailing it.';
 /**
@@ -85,6 +132,43 @@ const COARSE_LAND_WARNING = 'This route was kept clear of the coastline outline 
     'a check against a coarse outline of the shape of the land — it knows nothing of depths, rocks, ' +
     'reefs, buoyage or traffic schemes, and a strait it leaves open may not be. Check every leg ' +
     'against your chart before sailing it.';
+/**
+ * What using sea state does, and does not, entitle a route to claim.
+ *
+ * Appended at the end rather than led with, because unlike the land warning it
+ * is not the thing most likely to hurt someone — but it is not optional
+ * either. A boat given a wave-aware ETA will trust it further than a wind-only
+ * one, and the extra trust is not earned by anything measured.
+ *
+ * The no-data case gets its own sentence for the same reason a calm and a
+ * headwind do: a plan that quietly fell back to wind-only, in exactly the
+ * coastal or high-latitude corners where the marine models thin out, is one a
+ * skipper would otherwise read as having been checked against the sea.
+ */
+function seaStateWarnings(waves, sampleCount, seaLimit) {
+    if (!waves)
+        return [];
+    if (sampleCount === 0) {
+        return [
+            'No sea state covered this passage, so these timings are from wind and polar alone. The ' +
+                'marine forecast reaches neither as far ahead nor as far into coastal water as the wind ' +
+                'one does, and where it stops this route knows nothing about the sea it is crossing.'
+        ];
+    }
+    const notes = [
+        'Sea state is charged against the boat as a coarse speed penalty from wave height and the ' +
+            'angle it meets the boat at. It is a reasonable curve for a cruising boat, not this boat ' +
+            'measured in a seaway, and it ignores wave period entirely — a short steep sea costs far ' +
+            'more than a long swell of the same height. Treat a rough-weather ETA as the optimistic end.'
+    ];
+    if (seaLimit !== null) {
+        notes.push(`The route was kept out of seas above ${seaLimit} m, checked at each simulated position ` +
+            'rather than continuously — a patch of rougher water narrower than one step of the search ' +
+            'can be stepped straight over. It keeps a passage out of a gale; it does not promise every ' +
+            'mile of it is under the limit.');
+    }
+    return notes;
+}
 function relativeSide(headingDeg, windFromDeg) {
     const delta = ((headingDeg - windFromDeg + 540) % 360) - 180;
     if (Math.abs(delta) < 1e-6 || Math.abs(Math.abs(delta) - 180) < 1e-6)
@@ -112,15 +196,36 @@ function buildLegs(node, polarName) {
             headingDeg: Math.round(n.headingDeg * 10) / 10,
             twaDeg: Math.round(n.twaDeg * 10) / 10,
             twsKts: Math.round(n.twsKts * 10) / 10,
+            gustKts: n.gustKts === null ? null : Math.round(n.gustKts * 10) / 10,
             boatSpeedKts: Math.round(n.boatSpeedKts * 100) / 100,
             distanceNm: Math.round(n.distanceNm * 100) / 100,
-            manoeuvre
+            manoeuvre,
+            waveHeightM: n.waveHeightM === null ? null : Math.round(n.waveHeightM * 10) / 10,
+            waveAngleDeg: n.waveAngleDeg === null ? null : Math.round(n.waveAngleDeg),
+            wavePeriodS: n.wavePeriodS === null ? null : Math.round(n.wavePeriodS)
         });
     }
     return legs;
 }
 function totalDistance(legs) {
     return Math.round(legs.reduce((sum, l) => sum + l.distanceNm, 0) * 100) / 100;
+}
+/**
+ * The roughest water the route goes through, rounded as the legs are.
+ *
+ * Taken from the legs rather than tracked during the search, so it describes
+ * the passage that was actually chosen and not the worst sea the frontier
+ * looked at and rejected.
+ */
+function worstSeas(legs) {
+    let worst = null;
+    for (const leg of legs) {
+        if (leg.waveHeightM === null)
+            continue;
+        if (worst === null || leg.waveHeightM > worst)
+            worst = leg.waveHeightM;
+    }
+    return worst;
 }
 /**
  * Compute a weather-optimal route.
@@ -130,7 +235,7 @@ function totalDistance(legs) {
  * useful about the passage, and `reachedDestination` reports which happened.
  */
 function routeIsochrone(options) {
-    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, obstacles } = options;
+    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, obstacles, waves, maxWaveHeightM, seaState } = options;
     const avoiding = Boolean(obstacles && obstacles.count > 0);
     const warnings = [avoiding ? COARSE_LAND_WARNING : NO_LAND_WARNING];
     if (polar.generic) {
@@ -139,6 +244,11 @@ function routeIsochrone(options) {
     }
     if (polar.note)
         warnings.push(polar.note);
+    const seaLimit = Number.isFinite(maxWaveHeightM) ? maxWaveHeightM : null;
+    // Whether the sea state ever actually resolved. A sampler that was supplied
+    // but had nothing for this passage must not leave the result looking like it
+    // was routed through waves, so the count decides which warning is told.
+    let waveSampleCount = 0;
     const directDistanceNm = distanceNm(start.lat, start.lon, destination.lat, destination.lon);
     const stepHours = stepMinutes / 60;
     const maxSteps = Math.max(1, Math.floor(maxHours / stepHours));
@@ -166,7 +276,8 @@ function routeIsochrone(options) {
                 distanceNm: 0,
                 directDistanceNm: Math.round(directDistanceNm * 100) / 100,
                 warnings,
-                polarName: polar.name
+                polarName: polar.name,
+                maxWaveHeightM: null
             };
         }
     }
@@ -178,9 +289,13 @@ function routeIsochrone(options) {
         headingDeg: bearingDeg(start.lat, start.lon, destination.lat, destination.lon),
         twaDeg: 0,
         twsKts: 0,
+        gustKts: null,
         boatSpeedKts: 0,
         distanceNm: 0,
-        tackSide: 0
+        tackSide: 0,
+        waveHeightM: null,
+        waveAngleDeg: null,
+        wavePeriodS: null
     };
     let frontier = [root];
     let best = root;
@@ -196,6 +311,7 @@ function routeIsochrone(options) {
         let unsailable = 0;
         let noWind = 0;
         let calm = 0;
+        let tooRough = 0;
         for (const node of frontier) {
             const sample = wind(node.lat, node.lon, node.timeMs);
             if (!sample || !Number.isFinite(sample.speedKts)) {
@@ -209,6 +325,33 @@ function routeIsochrone(options) {
                 calm++;
                 continue;
             }
+            // The sea here, and what the boat keeps of its polar in it. Sampled once
+            // per position: the height and the direction of the sea do not depend on
+            // which course is being tried, only the angle between them does.
+            const sea = waves ? waves(node.lat, node.lon, node.timeMs) : null;
+            if (sea && Number.isFinite(sea.heightM)) {
+                waveSampleCount++;
+                // Above the skipper's limit this water is simply not available, the
+                // same as land. Dropping the whole position rather than each course
+                // is what lets the frontier route around a gale instead of into it.
+                if (seaLimit !== null && sea.heightM > seaLimit) {
+                    tooRough++;
+                    continue;
+                }
+            }
+            const speedIn = (headingDeg, twaDeg) => {
+                const base = (0, polars_js_1.boatSpeed)(polar, twaDeg, sample.speedKts);
+                if (!sea || !Number.isFinite(sea.heightM) || base <= 0)
+                    return base;
+                return base * seaStateFactor(sea.heightM, angleBetween(headingDeg, sea.directionDeg), seaState);
+            };
+            const seaOf = (headingDeg) => ({
+                waveHeightM: sea && Number.isFinite(sea.heightM) ? sea.heightM : null,
+                waveAngleDeg: sea && Number.isFinite(sea.heightM)
+                    ? angleBetween(headingDeg, sea.directionDeg)
+                    : null,
+                wavePeriodS: sea?.periodS ?? null
+            });
             const toDestination = bearingDeg(node.lat, node.lon, destination.lat, destination.lon);
             const remaining = distanceNm(node.lat, node.lon, destination.lat, destination.lon);
             // Final approach. Closing speed is velocity made good toward the
@@ -221,7 +364,7 @@ function routeIsochrone(options) {
             let closingTwa = angleBetween(toDestination, sample.directionDeg);
             for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
                 const twa = angleBetween(heading, sample.directionDeg);
-                const speed = (0, polars_js_1.boatSpeed)(polar, twa, sample.speedKts);
+                const speed = speedIn(heading, twa);
                 if (speed <= 0)
                     continue;
                 const vmg = speed * Math.cos(toRad(angleBetween(heading, toDestination)));
@@ -242,9 +385,11 @@ function routeIsochrone(options) {
                     headingDeg: closingHeading,
                     twaDeg: closingTwa,
                     twsKts: sample.speedKts,
-                    boatSpeedKts: (0, polars_js_1.boatSpeed)(polar, closingTwa, sample.speedKts),
+                    gustKts: sample.gustKts ?? null,
+                    boatSpeedKts: speedIn(closingHeading, closingTwa),
                     distanceNm: remaining,
-                    tackSide: relativeSide(closingHeading, sample.directionDeg)
+                    tackSide: relativeSide(closingHeading, sample.directionDeg),
+                    ...seaOf(closingHeading)
                 };
                 const legs = buildLegs(arrival, polar.name);
                 return {
@@ -253,15 +398,16 @@ function routeIsochrone(options) {
                     etaHours: Math.round(((arrivalMs - departure) / 3600000) * 100) / 100,
                     distanceNm: totalDistance(legs),
                     directDistanceNm: Math.round(directDistanceNm * 100) / 100,
-                    warnings,
-                    polarName: polar.name
+                    warnings: [...warnings, ...seaStateWarnings(waves, waveSampleCount, seaLimit)],
+                    polarName: polar.name,
+                    maxWaveHeightM: worstSeas(legs)
                 };
             }
             for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
                 if (angleBetween(heading, toDestination) > maxOffCourseDeg)
                     continue;
                 const twa = angleBetween(heading, sample.directionDeg);
-                const speed = (0, polars_js_1.boatSpeed)(polar, twa, sample.speedKts);
+                const speed = speedIn(heading, twa);
                 if (speed <= 0) {
                     unsailable++;
                     continue;
@@ -292,35 +438,52 @@ function routeIsochrone(options) {
                     headingDeg: heading,
                     twaDeg: twa,
                     twsKts: sample.speedKts,
+                    gustKts: sample.gustKts ?? null,
                     boatSpeedKts: speed,
                     distanceNm: legDistance,
-                    tackSide: side
+                    tackSide: side,
+                    ...seaOf(heading)
                 });
             }
         }
         if (!candidates.length) {
             const where = step === 0 ? 'from the starting position' : 'from the last position reached';
-            if ((noWind || calm) && !blockedByLand && !unsailable) {
+            // Said first and on its own terms, because it is the one cause here the
+            // skipper chose: the limit is a setting, and "your limit stopped this"
+            // is a different sentence from "the sea stopped this".
+            if (tooRough) {
                 warnings.push(step === 0
-                    ? 'No forecast wind at the departure point and time, so no route could be started.'
-                    : 'The route stalled: no usable wind was forecast ahead of the last position reached.');
+                    ? `The sea at the departure point is already above the ${seaLimit} m limit set, so no ` +
+                        'passage could be started. A later departure may find it down.'
+                    : `The route stopped: every position it could sail on from is in seas above the ` +
+                        `${seaLimit} m limit set.`);
             }
-            else if (blockedByLand && !unsailable) {
-                warnings.push(`Every course ${where} runs into land within one step of the search. ` +
-                    'Start further offshore, where a passage plan is the right tool.');
-            }
-            else if (unsailable && !blockedByLand) {
-                warnings.push(`The wind is dead against this passage ${where}: every course open to the search is ` +
-                    'inside the angle this boat cannot sail. Try a later departure.');
-            }
-            else {
-                // Both, which is the boxed-in case: what land leaves open, the wind
-                // forbids. Naming both is the whole point — either alone reads as a
-                // different and fixable problem.
-                warnings.push(`There is no way out ${where}: the courses that clear the land are ones this boat ` +
-                    'cannot sail against the forecast wind, and the courses it could sail run ashore. ' +
-                    'Beating out of somewhere this tight is pilotage, which this planner does not do — ' +
-                    'start from open water, or wait for a shift.');
+            // Everything else the search ran into. Skipped entirely when the sea
+            // limit was the only thing in the way, so a route the skipper's own
+            // setting stopped is not also told the wind was against it.
+            if (noWind || calm || blockedByLand || unsailable) {
+                if ((noWind || calm) && !blockedByLand && !unsailable) {
+                    warnings.push(step === 0
+                        ? 'No forecast wind at the departure point and time, so no route could be started.'
+                        : 'The route stalled: no usable wind was forecast ahead of the last position reached.');
+                }
+                else if (blockedByLand && !unsailable) {
+                    warnings.push(`Every course ${where} runs into land within one step of the search. ` +
+                        'Start further offshore, where a passage plan is the right tool.');
+                }
+                else if (unsailable && !blockedByLand) {
+                    warnings.push(`The wind is dead against this passage ${where}: every course open to the search is ` +
+                        'inside the angle this boat cannot sail. Try a later departure.');
+                }
+                else {
+                    // Both, which is the boxed-in case: what land leaves open, the wind
+                    // forbids. Naming both is the whole point — either alone reads as a
+                    // different and fixable problem.
+                    warnings.push(`There is no way out ${where}: the courses that clear the land are ones this boat ` +
+                        'cannot sail against the forecast wind, and the courses it could sail run ashore. ' +
+                        'Beating out of somewhere this tight is pilotage, which this planner does not do — ' +
+                        'start from open water, or wait for a shift.');
+                }
             }
             break;
         }
@@ -371,7 +534,8 @@ function routeIsochrone(options) {
         etaHours: Math.round(((best.timeMs - departure) / 3600000) * 100) / 100,
         distanceNm: totalDistance(legs),
         directDistanceNm: Math.round(directDistanceNm * 100) / 100,
-        warnings,
-        polarName: polar.name
+        warnings: [...warnings, ...seaStateWarnings(waves, waveSampleCount, seaLimit)],
+        polarName: polar.name,
+        maxWaveHeightM: worstSeas(legs)
     };
 }
