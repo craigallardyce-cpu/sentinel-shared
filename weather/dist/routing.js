@@ -19,13 +19,17 @@ import { boatSpeed, foldTwa } from './polars.js';
  *     schemes. Every result says which case it was in `warnings`, and callers
  *     must present it as a weather plan to lay over a chart, never as a
  *     course to steer.
- *   - No currents, no leeway. Sea state is used, but coarsely: significant
- *     wave height and the angle it meets the boat at slow the polar down, and
+ *   - No currents, no leeway. Sea state is used, but coarsely: wave height,
+ *     the angle it meets the boat at and its period slow the polar down, and
  *     a wave height limit steers the search around water rougher than the
  *     skipper is willing to sail. Both are approximations of a boat nobody
  *     measured in a seaway — see `seaStateFactor` — and both are optional:
  *     with no `waves` sampler this behaves exactly as it did when it was
  *     wind-only.
+ *   - The engine is off unless asked for, and when asked for it is a resource
+ *     with a bottom to it rather than an escape from sailing. It rescues a
+ *     calm; it does not shorten a beat, and it runs out of fuel. See
+ *     `MotoringOptions` and the `engineOn` decision in the search.
  *
  * It runs client-side on cached forecast data, so a passage can be re-planned
  * at sea with no connectivity and costs nothing per user to compute.
@@ -90,14 +94,30 @@ export function angleBetween(a, b) {
  * down a swell is a real effect and modelling it as free speed is how a router
  * talks a crew into a passage it should not make.
  *
- * Wave period is not in this. A short steep sea hurts far more than a long
- * swell of the same height, and pretending otherwise is the largest single
- * error left in here — but a period term guessed as loosely as the rest would
- * add error while looking like precision. Period is carried through to the
- * legs so a navigator can apply the judgement this cannot.
+ * Wave period IS in this, as of 2026-08, and it was the largest error here
+ * before it was. Two seas of the same height are not the same sea: at a fixed
+ * height a shorter period means a shorter wavelength and a steeper face, and
+ * steepness is what actually stops a boat. Wave steepness goes as H/L and deep
+ * -water wavelength as L = 1.56·T², so at a fixed height the period term goes
+ * as the inverse square — normalised so an ordinary 8-second wind sea leaves
+ * the calibration above exactly where it was, and clamped hard either side.
+ *
+ * Concretely, for a 2 m sea on the bow: about 20% of speed gone at 5 seconds,
+ * 10% at 8, and 5% at 12. Any sailor who has beaten into short harbour chop
+ * and then into an ocean swell of the same height will recognise which is
+ * which, and that recognition is the only calibration this term has.
+ *
+ * It is the ABSOLUTE wave period, not the period the boat encounters. The
+ * encounter period depends on boat speed, boat speed depends on this factor,
+ * and closing that loop for a term this rough would buy precision the inputs
+ * cannot support. `passageSummary.ts` computes the encounter period properly,
+ * where nothing depends on the answer.
+ *
+ * A forecast with no period falls back to the height-and-angle answer this
+ * gave before, unchanged.
  */
-export function seaStateFactor(heightM, waveAngleDeg, options = {}) {
-    const { referenceLengthM = 12, coefficient = 0.3, maxLossFraction = 0.6 } = options;
+export function seaStateFactor(heightM, waveAngleDeg, periodS = null, options = {}) {
+    const { referenceLengthM = 12, coefficient = 0.3, maxLossFraction = 0.6, referencePeriodS = 8, periodFactorLimit = 2 } = options;
     if (!Number.isFinite(heightM) || heightM <= 0)
         return 1;
     if (!(referenceLengthM > 0))
@@ -105,7 +125,12 @@ export function seaStateFactor(heightM, waveAngleDeg, options = {}) {
     const angle = foldTwa(waveAngleDeg);
     const head = (1 + Math.cos(toRad(angle))) / 2; // 1 dead ahead, 0 dead astern
     const angleFactor = 0.1 + 0.9 * head ** 1.5;
-    const loss = (coefficient * heightM * heightM * angleFactor) / referenceLengthM;
+    let periodFactor = 1;
+    if (periodS !== null && Number.isFinite(periodS) && periodS > 0 && referencePeriodS > 0) {
+        const raw = (referencePeriodS / periodS) ** 2;
+        periodFactor = Math.min(periodFactorLimit, Math.max(1 / periodFactorLimit, raw));
+    }
+    const loss = (coefficient * heightM * heightM * angleFactor * periodFactor) / referenceLengthM;
     return 1 - Math.min(maxLossFraction, Math.max(0, loss));
 }
 const NO_LAND_WARNING = 'This route is computed from wind and boat polar only. It does not know where land, ' +
@@ -161,6 +186,32 @@ function seaStateWarnings(waves, sampleCount, seaLimit) {
     }
     return notes;
 }
+/**
+ * What a routed engine is and is not promising.
+ *
+ * The endurance warning is the one that matters. A route that spends its last
+ * litre of diesel three days from anywhere has been planned, arithmetically,
+ * to arrive with nothing in reserve — and a passage plan that quietly assumes
+ * a dry tank at landfall is worse than one that never offered the engine.
+ */
+function motoringWarnings(motoring, legs) {
+    if (!motoring)
+        return [];
+    const { motoringHours } = engineUse(legs, motoring);
+    if (motoringHours === null || motoringHours <= 0)
+        return [];
+    const notes = [
+        `Engine hours are planned at a flat ${motoring.speedKts} knots, slowed by the sea the way the ` +
+            'sails are. Real motoring is not flat: it depends on how loaded the boat is, how foul the ' +
+            'bottom is and how hard the skipper is willing to push, none of which is known here.'
+    ];
+    if (motoringHours / motoring.enduranceHours > 0.8) {
+        notes.push(`This route plans ${motoringHours.toFixed(0)} of the ${motoring.enduranceHours.toFixed(0)} ` +
+            'engine hours the boat has fuel for, so it arrives with next to nothing in the tank. Plan ' +
+            'against a reserve you would be content to make harbour on, not against the whole tank.');
+    }
+    return notes;
+}
 function relativeSide(headingDeg, windFromDeg) {
     const delta = ((headingDeg - windFromDeg + 540) % 360) - 180;
     if (Math.abs(delta) < 1e-6 || Math.abs(Math.abs(delta) - 180) < 1e-6)
@@ -194,7 +245,8 @@ function buildLegs(node, polarName) {
             manoeuvre,
             waveHeightM: n.waveHeightM === null ? null : Math.round(n.waveHeightM * 10) / 10,
             waveAngleDeg: n.waveAngleDeg === null ? null : Math.round(n.waveAngleDeg),
-            wavePeriodS: n.wavePeriodS === null ? null : Math.round(n.wavePeriodS)
+            wavePeriodS: n.wavePeriodS === null ? null : Math.round(n.wavePeriodS),
+            motoring: n.motoring
         });
     }
     return legs;
@@ -209,6 +261,23 @@ function totalDistance(legs) {
  * the passage that was actually chosen and not the worst sea the frontier
  * looked at and rejected.
  */
+function engineUse(legs, motoring) {
+    if (!motoring)
+        return { motoringHours: null, fuelLitres: null };
+    let hours = 0;
+    for (let i = 1; i < legs.length; i++) {
+        if (!legs[i].motoring)
+            continue;
+        hours += (Date.parse(legs[i].time) - Date.parse(legs[i - 1].time)) / 3600000;
+    }
+    const burn = motoring.fuelLitresPerHour;
+    return {
+        motoringHours: Math.round(hours * 100) / 100,
+        fuelLitres: burn !== null && burn !== undefined && Number.isFinite(burn)
+            ? Math.round(hours * burn * 10) / 10
+            : null
+    };
+}
 function worstSeas(legs) {
     let worst = null;
     for (const leg of legs) {
@@ -227,7 +296,7 @@ function worstSeas(legs) {
  * useful about the passage, and `reachedDestination` reports which happened.
  */
 export function routeIsochrone(options) {
-    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, obstacles, waves, maxWaveHeightM, seaState } = options;
+    const { start, destination, departure, polar, wind, stepMinutes = 60, headingResolutionDeg = 10, maxHours = 240, sectorWidthDeg = 2, maxOffCourseDeg = 110, manoeuvrePenaltyMinutes = 2, obstacles, waves, maxWaveHeightM, seaState, motoring } = options;
     const avoiding = Boolean(obstacles && obstacles.count > 0);
     const warnings = [avoiding ? COARSE_LAND_WARNING : NO_LAND_WARNING];
     if (polar.generic) {
@@ -269,7 +338,9 @@ export function routeIsochrone(options) {
                 directDistanceNm: Math.round(directDistanceNm * 100) / 100,
                 warnings,
                 polarName: polar.name,
-                maxWaveHeightM: null
+                maxWaveHeightM: null,
+                motoringHours: null,
+                fuelLitres: null
             };
         }
     }
@@ -287,7 +358,9 @@ export function routeIsochrone(options) {
         tackSide: 0,
         waveHeightM: null,
         waveAngleDeg: null,
-        wavePeriodS: null
+        wavePeriodS: null,
+        motoring: false,
+        motorHours: 0
     };
     let frontier = [root];
     let best = root;
@@ -310,10 +383,14 @@ export function routeIsochrone(options) {
                 noWind++;
                 continue;
             }
+            // Whether the engine is an option from HERE, which is not the same as
+            // whether the boat has one: fuel is spent along a route, so a node deep
+            // into a passage may have burned what an earlier one still had.
+            const canMotor = Boolean(motoring) && node.motorHours < motoring.enduranceHours;
             // A calm is not a headwind. Both leave the boat going nowhere, but only
             // one of them is fixed by waiting for a shift, so they must not share a
-            // message.
-            if (sample.speedKts <= 0) {
+            // message. Neither stops a boat with fuel left.
+            if (sample.speedKts <= 0 && !canMotor) {
                 calm++;
                 continue;
             }
@@ -331,11 +408,63 @@ export function routeIsochrone(options) {
                     continue;
                 }
             }
+            // The sea slows a boat under power exactly as it slows one under sail —
+            // more so, since a motoring boat is usually pointing straight into it
+            // rather than choosing a comfortable angle.
+            const inSea = (speed, headingDeg) => {
+                if (!sea || !Number.isFinite(sea.heightM) || speed <= 0)
+                    return speed;
+                return (speed *
+                    seaStateFactor(sea.heightM, angleBetween(headingDeg, sea.directionDeg), sea.periodS, seaState));
+            };
+            const sailedOn = (headingDeg, twaDeg) => inSea(boatSpeed(polar, twaDeg, sample.speedKts), headingDeg);
+            const toDest = bearingDeg(node.lat, node.lon, destination.lat, destination.lon);
+            /**
+             * Whether the engine goes on here at all.
+             *
+             * Decided ONCE per position, from the best progress the sails could make
+             * toward the destination on any heading — not per heading. That
+             * distinction is the whole design, and getting it wrong the other way
+             * produced a router that motored dead upwind past a fleet of boats
+             * sailing: on a head-to-wind heading the sails give nothing, so a
+             * per-heading test always preferred the engine, and every windward
+             * passage became a motor.
+             *
+             * Judged on VMG rather than boat speed because that is the question a
+             * skipper is actually asking. A boat beating at six knots is making
+             * three good, and whether that is worth motoring for depends on the
+             * three, not the six.
+             *
+             * The consequence is deliberate and worth stating: this engine rescues a
+             * calm, it does not shorten a beat. A delivery skipper motorsailing to
+             * windward is doing something real, but it is a different question from
+             * the one a passage plan answers, and defaulting to it would quietly
+             * turn every upwind forecast into a fuel bill.
+             */
+            let engineOn = false;
+            if (canMotor) {
+                let bestSailVmg = 0;
+                for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
+                    const speed = sailedOn(heading, angleBetween(heading, sample.directionDeg));
+                    if (speed <= 0)
+                        continue;
+                    const vmg = speed * Math.cos(toRad(angleBetween(heading, toDest)));
+                    if (vmg > bestSailVmg)
+                        bestSailVmg = vmg;
+                }
+                engineOn = bestSailVmg < (motoring.thresholdKts ?? 3);
+            }
+            /** What the boat does on a heading, and whether the engine is doing it. */
             const speedIn = (headingDeg, twaDeg) => {
-                const base = boatSpeed(polar, twaDeg, sample.speedKts);
-                if (!sea || !Number.isFinite(sea.heightM) || base <= 0)
-                    return base;
-                return base * seaStateFactor(sea.heightM, angleBetween(headingDeg, sea.directionDeg), seaState);
+                const sailed = sailedOn(headingDeg, twaDeg);
+                if (!engineOn)
+                    return { speed: sailed, motoring: false };
+                const motored = inSea(motoring.speedKts, headingDeg);
+                // Still take the sails where they happen to beat the engine — a boat
+                // that has started its engine does not drop the main.
+                if (sailed >= motored)
+                    return { speed: sailed, motoring: false };
+                return { speed: motored, motoring: true };
             };
             const seaOf = (headingDeg) => ({
                 waveHeightM: sea && Number.isFinite(sea.heightM) ? sea.heightM : null,
@@ -344,7 +473,7 @@ export function routeIsochrone(options) {
                     : null,
                 wavePeriodS: sea?.periodS ?? null
             });
-            const toDestination = bearingDeg(node.lat, node.lon, destination.lat, destination.lon);
+            const toDestination = toDest;
             const remaining = distanceNm(node.lat, node.lon, destination.lat, destination.lon);
             // Final approach. Closing speed is velocity made good toward the
             // destination, not boat speed: the last miles are often dead upwind, and
@@ -354,9 +483,10 @@ export function routeIsochrone(options) {
             let closingVmg = 0;
             let closingHeading = toDestination;
             let closingTwa = angleBetween(toDestination, sample.directionDeg);
+            let closingMotoring = false;
             for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
                 const twa = angleBetween(heading, sample.directionDeg);
-                const speed = speedIn(heading, twa);
+                const { speed, motoring: underPower } = speedIn(heading, twa);
                 if (speed <= 0)
                     continue;
                 const vmg = speed * Math.cos(toRad(angleBetween(heading, toDestination)));
@@ -364,11 +494,13 @@ export function routeIsochrone(options) {
                     closingVmg = vmg;
                     closingHeading = heading;
                     closingTwa = twa;
+                    closingMotoring = underPower;
                 }
             }
             const arrivalBlocked = avoiding && obstacles.blocks(node.lat, node.lon, destination.lat, destination.lon) !== null;
             if (closingVmg > 0 && remaining <= closingVmg * stepHours && !arrivalBlocked) {
                 const arrivalMs = node.timeMs + (remaining / closingVmg) * 3600000;
+                const arrivalHours = remaining / closingVmg;
                 const arrival = {
                     lat: destination.lat,
                     lon: destination.lon,
@@ -378,10 +510,12 @@ export function routeIsochrone(options) {
                     twaDeg: closingTwa,
                     twsKts: sample.speedKts,
                     gustKts: sample.gustKts ?? null,
-                    boatSpeedKts: speedIn(closingHeading, closingTwa),
+                    boatSpeedKts: speedIn(closingHeading, closingTwa).speed,
                     distanceNm: remaining,
                     tackSide: relativeSide(closingHeading, sample.directionDeg),
-                    ...seaOf(closingHeading)
+                    ...seaOf(closingHeading),
+                    motoring: closingMotoring,
+                    motorHours: node.motorHours + (closingMotoring ? arrivalHours : 0)
                 };
                 const legs = buildLegs(arrival, polar.name);
                 return {
@@ -390,16 +524,21 @@ export function routeIsochrone(options) {
                     etaHours: Math.round(((arrivalMs - departure) / 3600000) * 100) / 100,
                     distanceNm: totalDistance(legs),
                     directDistanceNm: Math.round(directDistanceNm * 100) / 100,
-                    warnings: [...warnings, ...seaStateWarnings(waves, waveSampleCount, seaLimit)],
+                    warnings: [
+                        ...warnings,
+                        ...seaStateWarnings(waves, waveSampleCount, seaLimit),
+                        ...motoringWarnings(motoring, legs)
+                    ],
                     polarName: polar.name,
-                    maxWaveHeightM: worstSeas(legs)
+                    maxWaveHeightM: worstSeas(legs),
+                    ...engineUse(legs, motoring)
                 };
             }
             for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
                 if (angleBetween(heading, toDestination) > maxOffCourseDeg)
                     continue;
                 const twa = angleBetween(heading, sample.directionDeg);
-                const speed = speedIn(heading, twa);
+                const { speed, motoring: underPower } = speedIn(heading, twa);
                 if (speed <= 0) {
                     unsailable++;
                     continue;
@@ -434,7 +573,9 @@ export function routeIsochrone(options) {
                     boatSpeedKts: speed,
                     distanceNm: legDistance,
                     tackSide: side,
-                    ...seaOf(heading)
+                    ...seaOf(heading),
+                    motoring: underPower,
+                    motorHours: node.motorHours + (underPower ? usableHours : 0)
                 });
             }
         }
@@ -526,8 +667,13 @@ export function routeIsochrone(options) {
         etaHours: Math.round(((best.timeMs - departure) / 3600000) * 100) / 100,
         distanceNm: totalDistance(legs),
         directDistanceNm: Math.round(directDistanceNm * 100) / 100,
-        warnings: [...warnings, ...seaStateWarnings(waves, waveSampleCount, seaLimit)],
+        warnings: [
+            ...warnings,
+            ...seaStateWarnings(waves, waveSampleCount, seaLimit),
+            ...motoringWarnings(motoring, legs)
+        ],
         polarName: polar.name,
-        maxWaveHeightM: worstSeas(legs)
+        maxWaveHeightM: worstSeas(legs),
+        ...engineUse(legs, motoring)
     };
 }

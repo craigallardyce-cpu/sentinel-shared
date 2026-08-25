@@ -244,12 +244,12 @@ describe('seaStateFactor', () => {
 
   it('never takes more than the cap, however bad the forecast', () => {
     expect(seaStateFactor(15, 0)).toBeCloseTo(0.4, 6);
-    expect(seaStateFactor(15, 0, { maxLossFraction: 0.5 })).toBeCloseTo(0.5, 6);
+    expect(seaStateFactor(15, 0, null, { maxLossFraction: 0.5 })).toBeCloseTo(0.5, 6);
   });
 
   it('costs a longer boat less than a short one', () => {
-    expect(seaStateFactor(3, 0, { referenceLengthM: 24 })).toBeGreaterThan(
-      seaStateFactor(3, 0, { referenceLengthM: 12 })
+    expect(seaStateFactor(3, 0, null, { referenceLengthM: 24 })).toBeGreaterThan(
+      seaStateFactor(3, 0, null, { referenceLengthM: 12 })
     );
   });
 });

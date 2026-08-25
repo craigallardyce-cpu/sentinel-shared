@@ -73,7 +73,59 @@ export interface PassageSummary {
      * it covered all of it is not.
      */
     seaStateCoverage: number;
+    /**
+     * How much of the passage the sea arrives in step with the boat's own roll,
+     * or null when no roll period was given.
+     *
+     * This is the honest half of what a seakeeping model would tell you. Real
+     * RMS roll and vertical acceleration come from a hull model — dimensions,
+     * displacement, metacentric height — that this app does not have and should
+     * not guess at. But resonance needs only one number, and it is a number the
+     * owner can MEASURE rather than one anybody has to infer: rock the boat at
+     * the dock, time several full rolls, divide. That is the same bargain the
+     * learned polar strikes, and it is why this reports resonance rather than
+     * degrees of roll it cannot know.
+     *
+     * Resonant rolling is also the thing that actually ruins a passage. A boat
+     * can be perfectly safe and completely miserable, and this is usually why.
+     */
+    rollResonance: {
+        fraction: number;
+        hours: number;
+        rollPeriodS: number;
+        /** Hours the encounter period could not be computed — running with the sea. */
+        unknownHours: number;
+    } | null;
 }
+export interface SummaryOptions {
+    /**
+     * The boat's natural roll period in seconds, measured rather than modelled.
+     * Omit and no resonance is reported, which is the right outcome: a guessed
+     * roll period would produce a confident answer about the one thing here that
+     * a skipper would actually change plans over.
+     */
+    rollPeriodS?: number | null;
+}
+/**
+ * The period at which the boat meets the waves, in seconds.
+ *
+ * Not the same as the wave period, and the difference is the whole point: a
+ * boat punching into a sea meets it far more often than a boat running away
+ * from the same sea. The standard deep-water relation is
+ *
+ *     ω_e = ω − (ω²·v/g)·cos μ
+ *
+ * where μ is the angle between the boat's heading and the direction the waves
+ * are TRAVELLING. `waveAngleDeg` on a leg is measured against where the waves
+ * come FROM — 0 is a head sea — so μ is its supplement.
+ *
+ * Returns null when the boat is running with the waves at close to their own
+ * speed. There the encounter period goes to infinity and then negative as the
+ * waves start overtaking from ahead, and neither answer means anything useful
+ * to a cruising boat. Saying nothing is better than reporting a 400-second
+ * roll period.
+ */
+export declare function encounterPeriodS(wavePeriodS: number, waveAngleDeg: number, boatSpeedKts: number): number | null;
 /**
  * Wind bands, in knots.
  *
@@ -99,4 +151,4 @@ export declare const WAVE_BANDS_M: number[];
  * above the limit set, a flat calm) and the route's own warnings already
  * explain it far better than an all-zero summary would.
  */
-export declare function summarisePassage(route: RouteResult): PassageSummary | null;
+export declare function summarisePassage(route: RouteResult, options?: SummaryOptions): PassageSummary | null;

@@ -56,6 +56,23 @@ export interface SeaStateOptions {
      * confident 20-day passage.
      */
     maxLossFraction?: number;
+    /**
+     * The wave period the coefficient above was calibrated at, in seconds.
+     * Default 8 s — an ordinary wind sea. Seas shorter than this cost more and
+     * longer swells cost less; see `seaStateFactor`.
+     */
+    referencePeriodS?: number;
+    /**
+     * How far the period term is allowed to move the answer, as a multiplier
+     * either side of 1. Default 2 — a short steep sea may cost twice what its
+     * height alone suggests, a long swell half.
+     *
+     * The clamp is doing real work. The period term goes as the inverse square,
+     * so a 3-second chop would otherwise be charged seven times over, and a
+     * 20-second swell written off almost entirely. Neither is true, and both
+     * happen in real forecasts.
+     */
+    periodFactorLimit?: number;
 }
 /**
  * How much of its polar speed a boat keeps in a given sea.
@@ -79,13 +96,50 @@ export interface SeaStateOptions {
  * down a swell is a real effect and modelling it as free speed is how a router
  * talks a crew into a passage it should not make.
  *
- * Wave period is not in this. A short steep sea hurts far more than a long
- * swell of the same height, and pretending otherwise is the largest single
- * error left in here — but a period term guessed as loosely as the rest would
- * add error while looking like precision. Period is carried through to the
- * legs so a navigator can apply the judgement this cannot.
+ * Wave period IS in this, as of 2026-08, and it was the largest error here
+ * before it was. Two seas of the same height are not the same sea: at a fixed
+ * height a shorter period means a shorter wavelength and a steeper face, and
+ * steepness is what actually stops a boat. Wave steepness goes as H/L and deep
+ * -water wavelength as L = 1.56·T², so at a fixed height the period term goes
+ * as the inverse square — normalised so an ordinary 8-second wind sea leaves
+ * the calibration above exactly where it was, and clamped hard either side.
+ *
+ * Concretely, for a 2 m sea on the bow: about 20% of speed gone at 5 seconds,
+ * 10% at 8, and 5% at 12. Any sailor who has beaten into short harbour chop
+ * and then into an ocean swell of the same height will recognise which is
+ * which, and that recognition is the only calibration this term has.
+ *
+ * It is the ABSOLUTE wave period, not the period the boat encounters. The
+ * encounter period depends on boat speed, boat speed depends on this factor,
+ * and closing that loop for a term this rough would buy precision the inputs
+ * cannot support. `passageSummary.ts` computes the encounter period properly,
+ * where nothing depends on the answer.
+ *
+ * A forecast with no period falls back to the height-and-angle answer this
+ * gave before, unchanged.
  */
-export declare function seaStateFactor(heightM: number, waveAngleDeg: number, options?: SeaStateOptions): number;
+export declare function seaStateFactor(heightM: number, waveAngleDeg: number, periodS?: number | null, options?: SeaStateOptions): number;
+export interface MotoringOptions {
+    /** Speed under power in flat water, knots. */
+    speedKts: number;
+    /**
+     * Sail slower than this and the engine goes on, in knots. Default 3 — near
+     * enough to where a cruising boat stops making useful progress and the sails
+     * start slatting.
+     */
+    thresholdKts?: number;
+    /**
+     * Hours of engine the boat has fuel for.
+     *
+     * Required, and the whole reason motoring can be modelled honestly at all.
+     * An engine with unlimited fuel turns every passage into a straight line at
+     * hull speed, which is not a passage plan, it is a lie with an ETA on it.
+     * Fuel is what makes the engine a resource the search has to spend.
+     */
+    enduranceHours: number;
+    /** Litres per hour, carried only so the result can report fuel burned. */
+    fuelLitresPerHour?: number | null;
+}
 export interface RouteLeg {
     lat: number;
     lon: number;
@@ -106,6 +160,8 @@ export interface RouteLeg {
     waveAngleDeg: number | null;
     /** Mean wave period in seconds, where the model gave one. */
     wavePeriodS: number | null;
+    /** True where this leg was run under power rather than sail. */
+    motoring: boolean;
 }
 export interface RouteResult {
     reachedDestination: boolean;
@@ -126,6 +182,10 @@ export interface RouteResult {
      * water.
      */
     maxWaveHeightM: number | null;
+    /** Hours run under power, or null when the engine was not offered. */
+    motoringHours: number | null;
+    /** Litres burned, where a burn rate was given. */
+    fuelLitres: number | null;
 }
 export interface RouteOptions {
     start: {
@@ -194,6 +254,16 @@ export interface RouteOptions {
     maxWaveHeightM?: number;
     /** How the sea is turned into lost speed. See `seaStateFactor`. */
     seaState?: SeaStateOptions;
+    /**
+     * The engine, if the boat is willing to use it.
+     *
+     * Off by default, and that default is not laziness: a delivery skipper and a
+     * cruiser on passage are answering different questions, and a plan that
+     * silently motored through every calm would flatter one of them badly. Given
+     * this, the search treats the engine as a resource with a bottom to it — it
+     * burns endurance, and a boat out of fuel is a sailing boat again.
+     */
+    motoring?: MotoringOptions;
 }
 /**
  * Compute a weather-optimal route.

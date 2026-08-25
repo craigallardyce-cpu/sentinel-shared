@@ -1,3 +1,42 @@
+/**
+ * The period at which the boat meets the waves, in seconds.
+ *
+ * Not the same as the wave period, and the difference is the whole point: a
+ * boat punching into a sea meets it far more often than a boat running away
+ * from the same sea. The standard deep-water relation is
+ *
+ *     ω_e = ω − (ω²·v/g)·cos μ
+ *
+ * where μ is the angle between the boat's heading and the direction the waves
+ * are TRAVELLING. `waveAngleDeg` on a leg is measured against where the waves
+ * come FROM — 0 is a head sea — so μ is its supplement.
+ *
+ * Returns null when the boat is running with the waves at close to their own
+ * speed. There the encounter period goes to infinity and then negative as the
+ * waves start overtaking from ahead, and neither answer means anything useful
+ * to a cruising boat. Saying nothing is better than reporting a 400-second
+ * roll period.
+ */
+export function encounterPeriodS(wavePeriodS, waveAngleDeg, boatSpeedKts) {
+    if (!Number.isFinite(wavePeriodS) || wavePeriodS <= 0)
+        return null;
+    const g = 9.81;
+    const speedMs = (boatSpeedKts * 1852) / 3600;
+    const omega = (2 * Math.PI) / wavePeriodS;
+    // Waves come FROM waveAngleDeg off the bow; they TRAVEL toward its supplement.
+    const mu = (180 - Math.abs(waveAngleDeg)) * (Math.PI / 180);
+    const omegaE = omega - ((omega * omega * speedMs) / g) * Math.cos(mu);
+    if (!Number.isFinite(omegaE) || omegaE <= 1e-6)
+        return null;
+    return (2 * Math.PI) / omegaE;
+}
+/**
+ * How near the encounter period has to be to the boat's own roll period to
+ * count as resonant. A boat rolls hardest when the sea arrives in step with
+ * the roll it already has, and the response peak is broad rather than sharp.
+ */
+const RESONANCE_LOW = 0.8;
+const RESONANCE_HIGH = 1.25;
 /** Upwind below this true wind angle, downwind above the other. */
 const REACHING_FROM_DEG = 60;
 const REACHING_TO_DEG = 120;
@@ -72,7 +111,7 @@ function legHours(legs) {
  * above the limit set, a flat calm) and the route's own warnings already
  * explain it far better than an all-zero summary would.
  */
-export function summarisePassage(route) {
+export function summarisePassage(route, options = {}) {
     const sailed = legHours(route.legs);
     if (!sailed.length)
         return null;
@@ -88,6 +127,11 @@ export function summarisePassage(route) {
     let downwind = 0;
     let hardUpwindHours = 0;
     let seaHours = 0;
+    const rollPeriodS = Number.isFinite(options.rollPeriodS) && options.rollPeriodS > 0
+        ? options.rollPeriodS
+        : null;
+    let resonantHours = 0;
+    let resonanceUnknownHours = 0;
     const windSamples = [];
     const waveSamples = [];
     for (const { leg, hours: h } of sailed) {
@@ -115,6 +159,14 @@ export function summarisePassage(route) {
         if (leg.waveHeightM !== null && Number.isFinite(leg.waveHeightM)) {
             waveSamples.push({ value: leg.waveHeightM, hours: h });
             seaHours += h;
+            if (rollPeriodS !== null && leg.wavePeriodS !== null && leg.waveAngleDeg !== null) {
+                const te = encounterPeriodS(leg.wavePeriodS, leg.waveAngleDeg, leg.boatSpeedKts);
+                if (te === null)
+                    resonanceUnknownHours += h;
+                else if (te >= rollPeriodS * RESONANCE_LOW && te <= rollPeriodS * RESONANCE_HIGH) {
+                    resonantHours += h;
+                }
+            }
         }
     }
     const round3 = (n) => Math.round(n * 1000) / 1000;
@@ -139,6 +191,14 @@ export function summarisePassage(route) {
             thresholdKts: HARD_UPWIND_KTS,
             twaDeg: HARD_UPWIND_TWA_DEG
         },
-        seaStateCoverage: round3(seaHours / hours)
+        seaStateCoverage: round3(seaHours / hours),
+        rollResonance: rollPeriodS === null
+            ? null
+            : {
+                fraction: round3(resonantHours / hours),
+                hours: Math.round(resonantHours * 100) / 100,
+                rollPeriodS,
+                unknownHours: Math.round(resonanceUnknownHours * 100) / 100
+            }
     };
 }

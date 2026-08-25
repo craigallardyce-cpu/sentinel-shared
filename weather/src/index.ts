@@ -31,7 +31,8 @@ export type {
   WindSampler,
   WaveSample,
   WaveSampler,
-  SeaStateOptions
+  SeaStateOptions,
+  MotoringOptions
 } from './routing.js';
 
 export { compareSecondOpinion } from './secondOpinion.js';
@@ -57,8 +58,13 @@ export {
 } from './waveField.js';
 export type { WaveField, WaveFieldOptions } from './waveField.js';
 
-export { summarisePassage, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
-export type { PassageSummary, Band } from './passageSummary.js';
+export {
+  summarisePassage,
+  encounterPeriodS,
+  WIND_BANDS_KTS,
+  WAVE_BANDS_M
+} from './passageSummary.js';
+export type { PassageSummary, Band, SummaryOptions } from './passageSummary.js';
 
 export {
   createPolarAccumulator,

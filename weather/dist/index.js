@@ -5,5 +5,5 @@ export { compareSecondOpinion } from './secondOpinion.js';
 export { createObstacleField, userZone, landZones } from './obstacles.js';
 export { fetchWindField, createWindSampler, boundsForPassage, toComponents, fromComponents } from './windField.js';
 export { fetchWaveField, createWaveSampler, waveToComponents, waveFromComponents } from './waveField.js';
-export { summarisePassage, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
+export { summarisePassage, encounterPeriodS, WIND_BANDS_KTS, WAVE_BANDS_M } from './passageSummary.js';
 export { createPolarAccumulator, addSample, derivePolar, mergeAccumulators, trueWindAngle, toPolFile, serializeAccumulator, deserializeAccumulator } from './polarLearning.js';

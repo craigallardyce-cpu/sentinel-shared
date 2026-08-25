@@ -67,7 +67,83 @@ export interface PassageSummary {
    * it covered all of it is not.
    */
   seaStateCoverage: number;
+  /**
+   * How much of the passage the sea arrives in step with the boat's own roll,
+   * or null when no roll period was given.
+   *
+   * This is the honest half of what a seakeeping model would tell you. Real
+   * RMS roll and vertical acceleration come from a hull model — dimensions,
+   * displacement, metacentric height — that this app does not have and should
+   * not guess at. But resonance needs only one number, and it is a number the
+   * owner can MEASURE rather than one anybody has to infer: rock the boat at
+   * the dock, time several full rolls, divide. That is the same bargain the
+   * learned polar strikes, and it is why this reports resonance rather than
+   * degrees of roll it cannot know.
+   *
+   * Resonant rolling is also the thing that actually ruins a passage. A boat
+   * can be perfectly safe and completely miserable, and this is usually why.
+   */
+  rollResonance: {
+    fraction: number;
+    hours: number;
+    rollPeriodS: number;
+    /** Hours the encounter period could not be computed — running with the sea. */
+    unknownHours: number;
+  } | null;
 }
+
+export interface SummaryOptions {
+  /**
+   * The boat's natural roll period in seconds, measured rather than modelled.
+   * Omit and no resonance is reported, which is the right outcome: a guessed
+   * roll period would produce a confident answer about the one thing here that
+   * a skipper would actually change plans over.
+   */
+  rollPeriodS?: number | null;
+}
+
+/**
+ * The period at which the boat meets the waves, in seconds.
+ *
+ * Not the same as the wave period, and the difference is the whole point: a
+ * boat punching into a sea meets it far more often than a boat running away
+ * from the same sea. The standard deep-water relation is
+ *
+ *     ω_e = ω − (ω²·v/g)·cos μ
+ *
+ * where μ is the angle between the boat's heading and the direction the waves
+ * are TRAVELLING. `waveAngleDeg` on a leg is measured against where the waves
+ * come FROM — 0 is a head sea — so μ is its supplement.
+ *
+ * Returns null when the boat is running with the waves at close to their own
+ * speed. There the encounter period goes to infinity and then negative as the
+ * waves start overtaking from ahead, and neither answer means anything useful
+ * to a cruising boat. Saying nothing is better than reporting a 400-second
+ * roll period.
+ */
+export function encounterPeriodS(
+  wavePeriodS: number,
+  waveAngleDeg: number,
+  boatSpeedKts: number
+): number | null {
+  if (!Number.isFinite(wavePeriodS) || wavePeriodS <= 0) return null;
+  const g = 9.81;
+  const speedMs = (boatSpeedKts * 1852) / 3600;
+  const omega = (2 * Math.PI) / wavePeriodS;
+  // Waves come FROM waveAngleDeg off the bow; they TRAVEL toward its supplement.
+  const mu = (180 - Math.abs(waveAngleDeg)) * (Math.PI / 180);
+  const omegaE = omega - ((omega * omega * speedMs) / g) * Math.cos(mu);
+  if (!Number.isFinite(omegaE) || omegaE <= 1e-6) return null;
+  return (2 * Math.PI) / omegaE;
+}
+
+/**
+ * How near the encounter period has to be to the boat's own roll period to
+ * count as resonant. A boat rolls hardest when the sea arrives in step with
+ * the roll it already has, and the response peak is broad rather than sharp.
+ */
+const RESONANCE_LOW = 0.8;
+const RESONANCE_HIGH = 1.25;
 
 /** Upwind below this true wind angle, downwind above the other. */
 const REACHING_FROM_DEG = 60;
@@ -151,7 +227,10 @@ function legHours(legs: RouteLeg[]): Array<{ leg: RouteLeg; hours: number }> {
  * above the limit set, a flat calm) and the route's own warnings already
  * explain it far better than an all-zero summary would.
  */
-export function summarisePassage(route: RouteResult): PassageSummary | null {
+export function summarisePassage(
+  route: RouteResult,
+  options: SummaryOptions = {}
+): PassageSummary | null {
   const sailed = legHours(route.legs);
   if (!sailed.length) return null;
 
@@ -167,6 +246,12 @@ export function summarisePassage(route: RouteResult): PassageSummary | null {
   let downwind = 0;
   let hardUpwindHours = 0;
   let seaHours = 0;
+  const rollPeriodS =
+    Number.isFinite(options.rollPeriodS) && (options.rollPeriodS as number) > 0
+      ? (options.rollPeriodS as number)
+      : null;
+  let resonantHours = 0;
+  let resonanceUnknownHours = 0;
 
   const windSamples: Array<{ value: number; hours: number }> = [];
   const waveSamples: Array<{ value: number; hours: number }> = [];
@@ -195,6 +280,14 @@ export function summarisePassage(route: RouteResult): PassageSummary | null {
     if (leg.waveHeightM !== null && Number.isFinite(leg.waveHeightM)) {
       waveSamples.push({ value: leg.waveHeightM, hours: h });
       seaHours += h;
+
+      if (rollPeriodS !== null && leg.wavePeriodS !== null && leg.waveAngleDeg !== null) {
+        const te = encounterPeriodS(leg.wavePeriodS, leg.waveAngleDeg, leg.boatSpeedKts);
+        if (te === null) resonanceUnknownHours += h;
+        else if (te >= rollPeriodS * RESONANCE_LOW && te <= rollPeriodS * RESONANCE_HIGH) {
+          resonantHours += h;
+        }
+      }
     }
   }
 
@@ -221,6 +314,15 @@ export function summarisePassage(route: RouteResult): PassageSummary | null {
       thresholdKts: HARD_UPWIND_KTS,
       twaDeg: HARD_UPWIND_TWA_DEG
     },
-    seaStateCoverage: round3(seaHours / hours)
+    seaStateCoverage: round3(seaHours / hours),
+    rollResonance:
+      rollPeriodS === null
+        ? null
+        : {
+            fraction: round3(resonantHours / hours),
+            hours: Math.round(resonantHours * 100) / 100,
+            rollPeriodS,
+            unknownHours: Math.round(resonanceUnknownHours * 100) / 100
+          }
   };
 }

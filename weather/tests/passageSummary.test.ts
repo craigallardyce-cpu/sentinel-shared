@@ -27,6 +27,7 @@ function routeOf(
       boatSpeedKts: 6,
       distanceNm: 6 * l.hours,
       manoeuvre: null,
+      motoring: l.motoring ?? false,
       waveHeightM: l.waveHeightM === undefined ? 1.5 : l.waveHeightM,
       waveAngleDeg: l.waveAngleDeg ?? 90,
       wavePeriodS: l.wavePeriodS ?? 8
@@ -40,7 +41,9 @@ function routeOf(
     directDistanceNm: 90,
     warnings: [],
     polarName: 'test',
-    maxWaveHeightM: 1.5
+    maxWaveHeightM: 1.5,
+    motoringHours: null,
+    fuelLitres: null
   };
 }
 
