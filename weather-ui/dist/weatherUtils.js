@@ -23,25 +23,6 @@ export function getHighestWindValue(windRange) {
         return Math.max(...numbers.map(n => parseInt(n, 10)));
     return 0;
 }
-export function getWindColor(speed) {
-    if (speed < 1)
-        return '#94a3b8';
-    if (speed < 5)
-        return '#38bdf8';
-    if (speed < 10)
-        return '#22c55e';
-    if (speed < 15)
-        return '#eab308';
-    if (speed < 20)
-        return '#f97316';
-    if (speed < 25)
-        return '#ef4444';
-    if (speed < 30)
-        return '#d946ef';
-    if (speed < 40)
-        return '#a855f7';
-    return '#4c1d95';
-}
 export function getWeatherIcon(reasonText, theme) {
     const text = (reasonText || '').toLowerCase();
     if (text.includes('thunderstorm') || text.includes('lightning') || text.includes('squall')) {

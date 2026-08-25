@@ -1,7 +1,8 @@
 import React from 'react';
 import { Wind } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getWindRotation, getWindColor, getHighestWindValue, formatTempRangeString } from './weatherUtils';
+import { getWindRotation, getHighestWindValue, formatTempRangeString } from './weatherUtils';
+import { windBandColor } from './windScale';
 
 export interface ForecastPeriod {
   periodName: string;
@@ -121,7 +122,7 @@ export default function ForecastTimeline({
                     className="transition-transform duration-500 ease-out flex items-center justify-center w-3 h-3"
                     title={`Wind from ${p.windDirection}`}
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={getWindColor(getHighestWindValue(p.windRange))} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={windBandColor(getHighestWindValue(p.windRange))} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
                       <line x1="12" y1="20" x2="12" y2="4"></line>
                       <polyline points="5 11 12 4 19 11"></polyline>
                     </svg>

@@ -5,3 +5,6 @@ export { default as ForecastTimeline } from './ForecastTimeline';
 export type { ForecastPeriod, ForecastTimelineProps } from './ForecastTimeline';
 
 export * from './weatherUtils';
+
+export { WIND_BANDS, windBandRgb, windBandColor, windScaleGradient, windBandEdges } from './windScale';
+export type { WindBand } from './windScale';

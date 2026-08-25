@@ -1,7 +1,6 @@
 export declare const directionToDegrees: Record<string, number>;
 export declare function getWindRotation(dirStr: string | undefined): number;
 export declare function getHighestWindValue(windRange: string | undefined): number;
-export declare function getWindColor(speed: number): string;
 export interface WeatherIconTheme {
     thunderstorm?: string;
     rain?: string;

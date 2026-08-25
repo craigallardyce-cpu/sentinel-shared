@@ -31,17 +31,13 @@ export function getHighestWindValue(windRange: string | undefined): number {
   return 0;
 }
 
-export function getWindColor(speed: number): string {
-  if (speed < 1) return '#94a3b8';
-  if (speed < 5) return '#38bdf8';
-  if (speed < 10) return '#22c55e';
-  if (speed < 15) return '#eab308';
-  if (speed < 20) return '#f97316';
-  if (speed < 25) return '#ef4444';
-  if (speed < 30) return '#d946ef';
-  if (speed < 40) return '#a855f7';
-  return '#4c1d95';
-}
+/*
+ * getWindColor lived here: a nine-step PredictWind-style ramp running through
+ * fuchsia and violet. It has been removed rather than kept alongside the
+ * fleet's scale, because keeping a second one alive under an older name is
+ * exactly how there came to be four of them. Use windBandColor from
+ * ./windScale, which every app now shares.
+ */
 
 export interface WeatherIconTheme {
   thunderstorm?: string;
