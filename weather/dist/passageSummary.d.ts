@@ -40,12 +40,42 @@ export interface PassageSummary {
         /** Worst gust anywhere on the passage, where the model published gusts. */
         maxGustKts: number | null;
     };
-    /** Share of time close-hauled, reaching and running. Sums to 1. */
+    /**
+     * Share of time close-hauled, reaching and running. Sums to 1.
+     *
+     * NULL UNDER POWER, and that is the honest answer rather than a missing
+     * one. A motorboat has no points of sail: it steers the course it wants and
+     * the wind angle that results is a fact about the weather, not about how the
+     * vessel is being worked. Reporting "38% upwind" for a trawler would be a
+     * number with no meaning behind it, and the risk is not that it looks odd —
+     * it is that a reader who trusts it starts making decisions with it. What
+     * replaces it is `seaAngle`, which is the question a motorboat owner was
+     * actually asking.
+     */
     pointOfSail: {
         upwind: number;
         reaching: number;
         downwind: number;
-    };
+    } | null;
+    /**
+     * Share of the sea-covered time meeting the waves on the bow, on the beam
+     * and from astern. Null where the marine forecast reached none of it.
+     *
+     * The distribution that matters to any vessel and matters most to a
+     * motorboat. A metre and a half on the bow is a day of slamming, throttling
+     * back and a fuel bill; the same sea from astern is a fast, rolly, cheap
+     * passage. Wave height alone cannot tell those two apart, and for a
+     * motorboat there is no point-of-sail figure standing in for it.
+     *
+     * Fractions are of the time the sea was actually known, not of the whole
+     * passage, so they sum to 1 and read as "of the water we can see". Pair with
+     * `seaStateCoverage` to know how much of the passage that was.
+     */
+    seaAngle: {
+        head: number;
+        beam: number;
+        following: number;
+    } | null;
     windBands: Band[];
     waveBands: Band[];
     /**
@@ -196,6 +226,19 @@ export interface SummaryOptions {
     motoring?: {
         enduranceHours?: number | null;
         fuelLitresPerHour?: number | null;
+    } | null;
+    /**
+     * The tank, under power, passed through from the router for the same reason
+     * `motoring` is: so the summary cannot describe a different tank from the
+     * one that bounded the route.
+     *
+     * Separate from `motoring` because it means something different. That one
+     * describes an auxiliary a sailing boat may or may not have used; this one
+     * describes the fuel the whole passage ran on.
+     */
+    fuel?: {
+        litresPerHour?: number | null;
+        usableLitres?: number | null;
     } | null;
 }
 /**

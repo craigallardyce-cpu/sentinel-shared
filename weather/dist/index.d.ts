@@ -3,7 +3,9 @@ export type { MarineForecast, ForecastPeriod, ForecastOptions } from './openMete
 export { boatSpeed, foldTwa, bestVmg, parsePolarFile, GENERIC_POLARS } from './polars.js';
 export type { PolarDiagram, VmgResult } from './polars.js';
 export { routeIsochrone, distanceNm, bearingDeg, destinationPoint, angleBetween, seaStateFactor } from './routing.js';
-export type { RouteOptions, RouteResult, RouteLeg, RouteFront, FrontPoint, WindSample, WindSampler, WaveSample, WaveSampler, CurrentSample, CurrentSampler, SeaStateOptions, MotoringOptions } from './routing.js';
+export type { RouteOptions, RouteResult, RouteLeg, RouteFront, FrontPoint, WindSample, WindSampler, WaveSample, WaveSampler, CurrentSample, CurrentSampler, SeaStateOptions, MotoringOptions, Propulsion, FuelOptions } from './routing.js';
+export { powerPolar, powerSeaState, powerRangeFrom, windageLossFraction, isUsablePowerProfile } from './powerPerformance.js';
+export type { PowerProfile, PowerRange } from './powerPerformance.js';
 export { compareSecondOpinion } from './secondOpinion.js';
 export type { SecondOpinion, DepartureOutcome } from './secondOpinion.js';
 export { createObstacleField, userZone, landZones } from './obstacles.js';

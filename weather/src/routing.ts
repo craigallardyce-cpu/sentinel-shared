@@ -288,6 +288,50 @@ export interface MotoringOptions {
   fuelLitresPerHour?: number | null;
 }
 
+/**
+ * How the vessel is driven, which decides what "routing" even means here.
+ *
+ * Under sail the search is looking FOR wind: the polar is the boat's whole
+ * performance, a calm is a disaster, and the crossings of the wind a route
+ * implies — tacks and gybes — are work somebody has to do on deck at whatever
+ * hour they fall.
+ *
+ * Under power it is looking to AVOID weather: the polar is a throttle setting
+ * the wind and sea can only take away from, a calm is the best day of the
+ * passage, and crossing the wind means nothing at all because there is
+ * nothing to sheet in. What replaces the manoeuvre bookkeeping is fuel, and it
+ * is a harder constraint than any of it — a sailing boat out of fuel is a
+ * sailing boat, and a motorboat out of fuel is adrift.
+ *
+ * Defaults to sail, so every existing caller behaves exactly as it did.
+ */
+export type Propulsion = 'sail' | 'power';
+
+/**
+ * The tank, when the engine is the only thing moving the vessel.
+ *
+ * Not `MotoringOptions`. That describes a sailing boat's auxiliary — an engine
+ * switched on when the sails give up, whose speed is a separate number from
+ * the polar's, and whose running out means falling back on sail. None of those
+ * is true here: the polar IS the engine, it runs the whole passage, and
+ * running out ends it. Sharing one type between the two would mean every
+ * reader of it first having to work out which kind of vessel they were
+ * looking at.
+ */
+export interface FuelOptions {
+  /** Litres per hour at the modelled throttle setting. */
+  litresPerHour: number;
+  /**
+   * Litres this passage may actually spend — the tank LESS its reserve.
+   *
+   * The subtraction happens before this is handed over, deliberately: the
+   * router should never be in a position to plan the reserve away, and one
+   * number it must not exceed is harder to get wrong than a capacity plus a
+   * percentage it has to remember to combine.
+   */
+  usableLitres: number;
+}
+
 /** One position on a front: reachable at that time, and whether it is clear. */
 export interface FrontPoint {
   lat: number;
@@ -385,10 +429,38 @@ export interface RouteResult {
    * water.
    */
   maxWaveHeightM: number | null;
+  /**
+   * How the vessel this route was computed for is driven.
+   *
+   * Carried out rather than left for the caller to remember, because almost
+   * everything downstream reads differently depending on it: "3 manoeuvres"
+   * is meaningless under power, "12 hours motoring" is the whole passage
+   * rather than a rescue, and a calm is good news instead of bad.
+   */
+  propulsion: Propulsion;
   /** Hours run under power, or null when the engine was not offered. */
   motoringHours: number | null;
   /** Litres burned, where a burn rate was given. */
   fuelLitres: number | null;
+  /**
+   * Litres the passage was allowed to spend — the tank less its reserve —
+   * under power. Null under sail, where the tank is stated in hours instead.
+   *
+   * Reported so a result can say "268 of 380 litres" rather than leaving a
+   * burn figure with nothing to be a fraction of.
+   */
+  usableFuelLitres: number | null;
+  /**
+   * True where the search was stopped by the tank rather than by the clock,
+   * the coast or the sea.
+   *
+   * A distinct outcome and not a detail. Every other reason a route falls
+   * short is about the weather and is answered by choosing another departure;
+   * this one is about the vessel, and no departure fixes it. It means the
+   * passage as asked for is beyond this vessel's range, and the honest
+   * response is more fuel, a stop on the way, or a shorter passage.
+   */
+  ranOutOfFuel: boolean;
   /** Strongest current met anywhere on the route, or null if none was known. */
   maxCurrentKts: number | null;
   /**
@@ -534,8 +606,42 @@ export interface RouteOptions {
    * silently motored through every calm would flatter one of them badly. Given
    * this, the search treats the engine as a resource with a bottom to it — it
    * burns endurance, and a boat out of fuel is a sailing boat again.
+   *
+   * Ignored under power, where the engine is not an option the search takes
+   * but the thing moving the vessel. Use `fuel` for that.
    */
   motoring?: MotoringOptions;
+  /**
+   * Sail or power. Default sail.
+   *
+   * Under power the search changes in four ways, all of them consequences of
+   * there being no sails rather than settings:
+   *
+   *   - The polar is a throttle setting. Build it with `powerPolar`, which
+   *     charges windage against it; the sea is charged on top by the same
+   *     `seaState` path a sailing boat uses, with `powerSeaState` supplying
+   *     the coefficients.
+   *   - A calm is not a stall. The search does not give up on a position with
+   *     no forecast wind, because no wind is exactly the weather a motorboat
+   *     wants.
+   *   - Tacks and gybes do not exist. Manoeuvre penalties and the night watch
+   *     policy are both ignored, and legs come back with `manoeuvre: null` —
+   *     charging a motorboat two minutes for crossing the wind, or refusing to
+   *     let it do so at 0300, would be inventing work nobody does.
+   *   - Fuel is a wall, not a budget. See `fuel`.
+   */
+  propulsion?: Propulsion;
+  /**
+   * The tank, under power. Required to bound the passage; without it the
+   * search will happily route a vessel a thousand miles past empty.
+   *
+   * Unlike the sailing boat's `motoring`, running out here does not change how
+   * the vessel moves — it stops it. So the frontier simply ends where the fuel
+   * does: the route comes back short, `ranOutOfFuel` says why, and the
+   * warnings say how far it got. That is the truthful answer to "can this
+   * vessel make this passage", and it is one only a hard limit can give.
+   */
+  fuel?: FuelOptions;
 }
 
 interface Node {
@@ -578,9 +684,20 @@ const WIND_OVER_TIDE_CURRENT_KTS = 1;
 const WIND_OVER_TIDE_WIND_KTS = 12;
 const WIND_OVER_TIDE_ANGLE_DEG = 120;
 
-const NO_LAND_WARNING =
-  'This route is computed from wind and boat polar only. It does not know where land, ' +
-  'shallows, or traffic schemes are — check every leg against your chart before sailing it.';
+/**
+ * "sailing it" or "running it".
+ *
+ * A small word, and not a cosmetic one. A motorboat owner told to check the
+ * chart "before sailing it" is being handed a warning written for somebody
+ * else, and the first thing that costs is their belief that the rest of the
+ * sentence was written for them either.
+ */
+const verb = (propulsion: Propulsion) => (propulsion === 'power' ? 'running' : 'sailing');
+
+const noLandWarning = (propulsion: Propulsion) =>
+  `This route is computed from wind and the vessel's performance model only. It does not know ` +
+  'where land, shallows, or traffic schemes are — check every leg against your chart before ' +
+  `${verb(propulsion)} it.`;
 
 /**
  * Used instead when an obstacle field is supplied.
@@ -592,11 +709,11 @@ const NO_LAND_WARNING =
  * "checked" is in more danger than one who knows nothing was checked at all,
  * which is why the sentence leads with what is still unknown.
  */
-const COARSE_LAND_WARNING =
+const coarseLandWarning = (propulsion: Propulsion) =>
   'This route was kept clear of the coastline outline and any zones you have marked, but that is ' +
   'a check against a coarse outline of the shape of the land — it knows nothing of depths, rocks, ' +
   'reefs, buoyage or traffic schemes, and a strait it leaves open may not be. Check every leg ' +
-  'against your chart before sailing it.';
+  `against your chart before ${verb(propulsion)} it.`;
 
 /**
  * What using sea state does, and does not, entitle a route to claim.
@@ -749,7 +866,7 @@ function relativeSide(headingDeg: number, windFromDeg: number): number {
   return delta > 0 ? 1 : -1;
 }
 
-function buildLegs(node: Node, polarName: string): RouteLeg[] {
+function buildLegs(node: Node, polarName: string, propulsion: Propulsion = 'sail'): RouteLeg[] {
   const chain: Node[] = [];
   for (let n: Node | null = node; n; n = n.parent) chain.push(n);
   chain.reverse();
@@ -759,7 +876,11 @@ function buildLegs(node: Node, polarName: string): RouteLeg[] {
     const n = chain[i];
     const prev = i > 0 ? chain[i - 1] : null;
     let manoeuvre: 'tack' | 'gybe' | null = null;
-    if (prev && prev.tackSide !== 0 && n.tackSide !== 0 && prev.tackSide !== n.tackSide) {
+    // A motorboat crossing the wind has done nothing. Leaving the sailing
+    // test to run would have every alteration of course through the wind line
+    // reported as a tack, and a night-time one counted as work the off-watch
+    // was woken for — a passage summary describing a boat that is not there.
+    if (propulsion !== 'power' && prev && prev.tackSide !== 0 && n.tackSide !== 0 && prev.tackSide !== n.tackSide) {
       // Crossing the wind forward of the beam is a tack, behind it a gybe.
       manoeuvre = (prev.twaDeg + n.twaDeg) / 2 < 90 ? 'tack' : 'gybe';
     }
@@ -819,6 +940,93 @@ function engineUse(
   };
 }
 
+/**
+ * The engine block of the result, for either kind of vessel.
+ *
+ * Under sail this is `engineUse` unchanged: hours are counted only over the
+ * legs the search chose to motor, and there is no litre figure unless a burn
+ * rate was given.
+ *
+ * Under power the counting is different in a way worth being explicit about.
+ * The engine ran for the whole passage — every leg is a motoring leg — so the
+ * hours are simply the elapsed time, and the fuel follows from the burn rate
+ * rather than from any per-leg decision. That is also why weather costs a
+ * motorboat fuel: a head sea does not reduce the burn, it lengthens the
+ * passage the burn is multiplied by.
+ */
+function propulsionReport(
+  legs: RouteLeg[],
+  propulsion: Propulsion,
+  motoring: MotoringOptions | undefined,
+  fuel: FuelOptions | undefined,
+  ranOutOfFuel: boolean
+): Pick<
+  RouteResult,
+  'propulsion' | 'motoringHours' | 'fuelLitres' | 'usableFuelLitres' | 'ranOutOfFuel'
+> {
+  if (propulsion !== 'power') {
+    return {
+      propulsion,
+      ...engineUse(legs, motoring),
+      usableFuelLitres: null,
+      ranOutOfFuel: false
+    };
+  }
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const hours =
+    first && last ? Math.max(0, (Date.parse(last.time) - Date.parse(first.time)) / 3_600_000) : 0;
+  const burn = fuel && Number.isFinite(fuel.litresPerHour) ? fuel.litresPerHour : null;
+  return {
+    propulsion,
+    motoringHours: Math.round(hours * 100) / 100,
+    fuelLitres: burn === null ? null : Math.round(hours * burn * 10) / 10,
+    usableFuelLitres:
+      fuel && Number.isFinite(fuel.usableLitres) ? Math.round(fuel.usableLitres * 10) / 10 : null,
+    ranOutOfFuel
+  };
+}
+
+/**
+ * What a routed motorboat is and is not promising.
+ *
+ * Deliberately not the sailing boat's engine warning. That one is about an
+ * auxiliary being used more than its owner meant; this one is about the only
+ * thing moving the vessel, and the number that matters is not how much of the
+ * tank the passage spends but how little is left over when it is wrong.
+ */
+function powerWarnings(fuel: FuelOptions | undefined, legs: RouteLeg[], ranOutOfFuel: boolean): string[] {
+  const notes = [
+    'This passage is planned at one throttle setting the whole way. A real skipper throttles up ' +
+      'to make a window and back off when it turns nasty, and neither is modelled here — so read ' +
+      'the timings as what this vessel does if nobody touches the levers.'
+  ];
+  if (!fuel) return notes;
+
+  const { fuelLitres } = propulsionReport(legs, 'power', undefined, fuel, false);
+  if (ranOutOfFuel) {
+    notes.push(
+      `This vessel runs out of usable fuel before it gets there. It is planned against ` +
+        `${Math.round(fuel.usableLitres)} litres — the tank less the reserve you asked to keep — ` +
+        'and no departure time fixes a passage that is simply beyond its range. The answers are ' +
+        'more fuel, a stop on the way, or a shorter leg.'
+    );
+    return notes;
+  }
+  if (fuelLitres !== null && fuel.usableLitres > 0) {
+    const spent = fuelLitres / fuel.usableLitres;
+    if (spent > 0.8) {
+      notes.push(
+        `It plans ${Math.round(fuelLitres)} of the ${Math.round(fuel.usableLitres)} usable litres ` +
+          'aboard, so it arrives on the reserve and nothing else. Weather that slows the vessel ' +
+          'does not slow the burn — an extra day of head sea is an extra day of fuel at the same ' +
+          'litres an hour, and this figure has no room in it for one.'
+      );
+    }
+  }
+  return notes;
+}
+
 function worstCurrent(legs: RouteLeg[]): number | null {
   let worst: number | null = null;
   for (const leg of legs) {
@@ -865,11 +1073,33 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     motoring,
     currents,
     retainFronts = false,
-    frontIntervalSteps = 1
+    frontIntervalSteps = 1,
+    propulsion = 'sail',
+    fuel
   } = options;
 
+  const isMotorVessel = propulsion === 'power';
+  /**
+   * Hours the tank is good for, under power. Null when no tank was given,
+   * which leaves the passage bounded only by `maxHours` — wrong, and loudly
+   * warned about, but better than refusing to plan at all for somebody who has
+   * not filled the field in yet.
+   */
+  const fuelHours =
+    isMotorVessel && fuel && fuel.litresPerHour > 0 && fuel.usableLitres > 0
+      ? fuel.usableLitres / fuel.litresPerHour
+      : null;
+  let ranOutOfFuel = false;
+
+  // Crossing the wind is work under sail and nothing at all under power, so
+  // neither the ordinary penalty nor the night watch policy applies to a
+  // motorboat. Neutralised here, once, rather than tested at each of the four
+  // places downstream that would otherwise have to remember.
+  const manoeuvreCost = isMotorVessel ? 0 : manoeuvrePenaltyMinutes;
+  const nightPolicy = isMotorVessel ? undefined : nightManoeuvre;
+
   const avoiding = Boolean(obstacles && obstacles.count > 0);
-  const warnings: string[] = [avoiding ? COARSE_LAND_WARNING : NO_LAND_WARNING];
+  const warnings: string[] = [avoiding ? coarseLandWarning(propulsion) : noLandWarning(propulsion)];
   if (polar.generic) {
     warnings.push(
       `Timings come from a generic polar (${polar.name}), not this boat's measured performance — ` +
@@ -962,8 +1192,11 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         warnings,
         polarName: polar.name,
         maxWaveHeightM: null,
+        propulsion,
         motoringHours: null,
         fuelLitres: null,
+        usableFuelLitres: null,
+        ranOutOfFuel: false,
         maxCurrentKts: null,
         fronts: []
       };
@@ -1011,6 +1244,19 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     let calm = 0;
     let tooRough = 0;
     let forbiddenAtNight = 0;
+    let outOfFuel = 0;
+
+    /**
+     * The tank, as a wall the frontier may not expand past.
+     *
+     * Applied to the expansion only, never to the arrival test: a vessel with
+     * forty minutes of fuel left and half an hour to run does get there, and
+     * cutting the search at the last whole step would report that passage as
+     * out of range. So fuel stops the search carrying ON, and the endgame is
+     * still allowed to finish inside whatever is left.
+     */
+    const fuelStopsExpansion =
+      fuelHours !== null && (nextTime - departure) / 3_600_000 > fuelHours;
 
     for (const node of frontier) {
       const sample = wind(node.lat, node.lon, node.timeMs);
@@ -1018,11 +1264,13 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       // Whether the engine is an option from HERE, which is not the same as
       // whether the boat has one: fuel is spent along a route, so a node deep
       // into a passage may have burned what an earlier one still had.
-      const canMotor = Boolean(motoring) && node.motorHours < motoring!.enduranceHours;
+      const canMotor = !isMotorVessel && Boolean(motoring) && node.motorHours < motoring!.enduranceHours;
       // A calm is not a headwind. Both leave the boat going nowhere, but only
       // one of them is fixed by waiting for a shift, so they must not share a
-      // message. Neither stops a boat with fuel left.
-      if (sample.speedKts <= 0 && !canMotor) { calm++; continue; }
+      // message. Neither stops a boat with fuel left — and neither stops a
+      // motorboat at all, for which a flat calm is the best water it will see
+      // all passage rather than a reason to give up on the position.
+      if (sample.speedKts <= 0 && !canMotor && !isMotorVessel) { calm++; continue; }
 
       // The current here, and the wind the sails actually feel because of it.
       //
@@ -1154,6 +1402,12 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       /** What the boat does on a heading, and whether the engine is doing it. */
       const speedIn = (headingDeg: number, twaDeg: number): { speed: number; motoring: boolean } => {
         const sailed = sailedOn(headingDeg, twaDeg);
+        // Under power there is no second option to weigh: the polar already
+        // IS the engine at its throttle setting, with the windage taken off
+        // it, and `inSea` has taken the sea off that. Every leg is a motoring
+        // leg, which is what makes the fuel arithmetic downstream simply the
+        // elapsed time.
+        if (isMotorVessel) return { speed: sailed, motoring: true };
         if (!engineOn) return { speed: sailed, motoring: false };
         const motored = inSea(motoring!.speedKts, headingDeg);
         // Still take the sails where they happen to beat the engine — a boat
@@ -1172,7 +1426,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
 
       // Whether the crew here is working in the dark. One test per position:
       // every course leaving it does so at the same moment.
-      const darkHere = nightManoeuvre ? isNightAt(node.lat, node.lon, node.timeMs) : false;
+      const darkHere = nightPolicy ? isNightAt(node.lat, node.lon, node.timeMs) : false;
 
       const toDestination = toDest;
       const remaining = distanceNm(node.lat, node.lon, destination.lat, destination.lon);
@@ -1208,7 +1462,15 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       const arrivalBlocked =
         avoiding && obstacles!.blocks(node.lat, node.lon, destination.lat, destination.lon) !== null;
 
-      if (closingVmg > 0 && remaining <= closingVmg * stepHours && !arrivalBlocked) {
+      // Arriving on fumes is still arriving; arriving after the tank is empty
+      // is not. Measured to the moment of landfall rather than to the end of
+      // the step, so the last part-hour of fuel is available to finish on.
+      const arrivalOutOfFuel =
+        fuelHours !== null &&
+        closingVmg > 0 &&
+        (node.timeMs - departure) / 3_600_000 + remaining / closingVmg > fuelHours;
+
+      if (closingVmg > 0 && remaining <= closingVmg * stepHours && !arrivalBlocked && !arrivalOutOfFuel) {
         const arrivalMs = node.timeMs + (remaining / closingVmg) * 3_600_000;
         const arrivalHours = remaining / closingVmg;
         const arrival: Node = {
@@ -1230,7 +1492,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           ...streamOf(),
           groundSpeedKts: closingGround || closingVmg
         };
-        const legs = buildLegs(arrival, polar.name);
+        const legs = buildLegs(arrival, polar.name, propulsion);
         return {
           reachedDestination: true,
           legs,
@@ -1241,18 +1503,24 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
             ...warnings,
             ...seaStateWarnings(waves, waveSampleCount, seaLimit),
             ...currentWarnings(currents, currentSampleCount, legs),
-            ...motoringWarnings(motoring, legs),
-            ...watchWarnings(nightManoeuvre, legs)
+            ...(isMotorVessel
+              ? powerWarnings(fuel, legs, false)
+              : [...motoringWarnings(motoring, legs), ...watchWarnings(nightPolicy, legs)])
           ],
           polarName: polar.name,
           maxWaveHeightM: worstSeas(legs),
           maxCurrentKts: worstCurrent(legs),
           fronts,
-          ...engineUse(legs, motoring)
+          ...propulsionReport(legs, propulsion, motoring, fuel, false)
         };
       }
 
       for (let heading = 0; heading < 360; heading += headingResolutionDeg) {
+        // The tank is empty: this position is as far as the vessel gets, so
+        // nothing expands from it. Counted rather than silently skipped, so
+        // the empty step below can name fuel as the reason instead of blaming
+        // the weather for something the weather did not do.
+        if (fuelStopsExpansion) { outOfFuel++; break; }
         if (angleBetween(heading, toDestination) > maxOffCourseDeg) continue;
 
         const twa = angleBetween(heading, windForSails.directionDeg);
@@ -1263,13 +1531,13 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         // the crew is busy, so the same hour covers less ground.
         const side = relativeSide(heading, windForSails.directionDeg);
         const manoeuvring = node.tackSide !== 0 && side !== 0 && side !== node.tackSide;
-        let penaltyMinutes = manoeuvring ? manoeuvrePenaltyMinutes : 0;
-        if (manoeuvring && nightManoeuvre && darkHere) {
+        let penaltyMinutes = manoeuvring ? manoeuvreCost : 0;
+        if (manoeuvring && nightPolicy && darkHere) {
           // Which manoeuvre this is, by the same test `buildLegs` uses: across
           // the wind forward of the beam is a tack, behind it a gybe.
           const gybing = (node.twaDeg + twa) / 2 >= 90;
           const nightCost =
-            (gybing ? nightManoeuvre.gybePenaltyMinutes : nightManoeuvre.tackPenaltyMinutes) ?? 0;
+            (gybing ? nightPolicy.gybePenaltyMinutes : nightPolicy.tackPenaltyMinutes) ?? 0;
           if (!Number.isFinite(nightCost)) { forbiddenAtNight++; continue; }
           penaltyMinutes += nightCost;
         }
@@ -1310,6 +1578,18 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
 
     if (!candidates.length) {
       const where = step === 0 ? 'from the starting position' : 'from the last position reached';
+      // Fuel first, and on its own, because it is the one cause here that no
+      // other departure and no other forecast will fix. Every other reason a
+      // route stops short is about the weather; this one is about the vessel.
+      if (outOfFuel) {
+        ranOutOfFuel = true;
+        warnings.push(
+          `The usable fuel aboard runs out after about ${Math.round(fuelHours!)} hours under way, ` +
+            'short of the destination. This is the vessel\'s range, not the weather: a different ' +
+            'departure will not reach it either.'
+        );
+        break;
+      }
       // Said first and on its own terms, because it is the one cause here the
       // skipper chose: the limit is a setting, and "your limit stopped this"
       // is a different sentence from "the sea stopped this".
@@ -1411,13 +1691,16 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
     }
   }
 
-  if (!warnings.some((w) => w.startsWith('The route stalled') || w.startsWith('No forecast wind'))) {
+  if (
+    !ranOutOfFuel &&
+    !warnings.some((w) => w.startsWith('The route stalled') || w.startsWith('No forecast wind'))
+  ) {
     warnings.push(
       `The destination was not reached within ${maxHours} hours; this is the best progress found.`
     );
   }
 
-  const legs = buildLegs(best, polar.name);
+  const legs = buildLegs(best, polar.name, propulsion);
   return {
     reachedDestination: false,
     legs,
@@ -1428,13 +1711,14 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       ...warnings,
       ...seaStateWarnings(waves, waveSampleCount, seaLimit),
       ...currentWarnings(currents, currentSampleCount, legs),
-      ...motoringWarnings(motoring, legs),
-      ...watchWarnings(nightManoeuvre, legs)
+      ...(isMotorVessel
+        ? powerWarnings(fuel, legs, ranOutOfFuel)
+        : [...motoringWarnings(motoring, legs), ...watchWarnings(nightPolicy, legs)])
     ],
     polarName: polar.name,
     maxWaveHeightM: worstSeas(legs),
     maxCurrentKts: worstCurrent(legs),
     fronts,
-    ...engineUse(legs, motoring)
+    ...propulsionReport(legs, propulsion, motoring, fuel, ranOutOfFuel)
   };
 }

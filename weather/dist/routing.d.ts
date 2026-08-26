@@ -147,6 +147,48 @@ export interface MotoringOptions {
     /** Litres per hour, carried only so the result can report fuel burned. */
     fuelLitresPerHour?: number | null;
 }
+/**
+ * How the vessel is driven, which decides what "routing" even means here.
+ *
+ * Under sail the search is looking FOR wind: the polar is the boat's whole
+ * performance, a calm is a disaster, and the crossings of the wind a route
+ * implies — tacks and gybes — are work somebody has to do on deck at whatever
+ * hour they fall.
+ *
+ * Under power it is looking to AVOID weather: the polar is a throttle setting
+ * the wind and sea can only take away from, a calm is the best day of the
+ * passage, and crossing the wind means nothing at all because there is
+ * nothing to sheet in. What replaces the manoeuvre bookkeeping is fuel, and it
+ * is a harder constraint than any of it — a sailing boat out of fuel is a
+ * sailing boat, and a motorboat out of fuel is adrift.
+ *
+ * Defaults to sail, so every existing caller behaves exactly as it did.
+ */
+export type Propulsion = 'sail' | 'power';
+/**
+ * The tank, when the engine is the only thing moving the vessel.
+ *
+ * Not `MotoringOptions`. That describes a sailing boat's auxiliary — an engine
+ * switched on when the sails give up, whose speed is a separate number from
+ * the polar's, and whose running out means falling back on sail. None of those
+ * is true here: the polar IS the engine, it runs the whole passage, and
+ * running out ends it. Sharing one type between the two would mean every
+ * reader of it first having to work out which kind of vessel they were
+ * looking at.
+ */
+export interface FuelOptions {
+    /** Litres per hour at the modelled throttle setting. */
+    litresPerHour: number;
+    /**
+     * Litres this passage may actually spend — the tank LESS its reserve.
+     *
+     * The subtraction happens before this is handed over, deliberately: the
+     * router should never be in a position to plan the reserve away, and one
+     * number it must not exceed is harder to get wrong than a capacity plus a
+     * percentage it has to remember to combine.
+     */
+    usableLitres: number;
+}
 /** One position on a front: reachable at that time, and whether it is clear. */
 export interface FrontPoint {
     lat: number;
@@ -241,10 +283,38 @@ export interface RouteResult {
      * water.
      */
     maxWaveHeightM: number | null;
+    /**
+     * How the vessel this route was computed for is driven.
+     *
+     * Carried out rather than left for the caller to remember, because almost
+     * everything downstream reads differently depending on it: "3 manoeuvres"
+     * is meaningless under power, "12 hours motoring" is the whole passage
+     * rather than a rescue, and a calm is good news instead of bad.
+     */
+    propulsion: Propulsion;
     /** Hours run under power, or null when the engine was not offered. */
     motoringHours: number | null;
     /** Litres burned, where a burn rate was given. */
     fuelLitres: number | null;
+    /**
+     * Litres the passage was allowed to spend — the tank less its reserve —
+     * under power. Null under sail, where the tank is stated in hours instead.
+     *
+     * Reported so a result can say "268 of 380 litres" rather than leaving a
+     * burn figure with nothing to be a fraction of.
+     */
+    usableFuelLitres: number | null;
+    /**
+     * True where the search was stopped by the tank rather than by the clock,
+     * the coast or the sea.
+     *
+     * A distinct outcome and not a detail. Every other reason a route falls
+     * short is about the weather and is answered by choosing another departure;
+     * this one is about the vessel, and no departure fixes it. It means the
+     * passage as asked for is beyond this vessel's range, and the honest
+     * response is more fuel, a stop on the way, or a shorter passage.
+     */
+    ranOutOfFuel: boolean;
     /** Strongest current met anywhere on the route, or null if none was known. */
     maxCurrentKts: number | null;
     /**
@@ -395,8 +465,42 @@ export interface RouteOptions {
      * silently motored through every calm would flatter one of them badly. Given
      * this, the search treats the engine as a resource with a bottom to it — it
      * burns endurance, and a boat out of fuel is a sailing boat again.
+     *
+     * Ignored under power, where the engine is not an option the search takes
+     * but the thing moving the vessel. Use `fuel` for that.
      */
     motoring?: MotoringOptions;
+    /**
+     * Sail or power. Default sail.
+     *
+     * Under power the search changes in four ways, all of them consequences of
+     * there being no sails rather than settings:
+     *
+     *   - The polar is a throttle setting. Build it with `powerPolar`, which
+     *     charges windage against it; the sea is charged on top by the same
+     *     `seaState` path a sailing boat uses, with `powerSeaState` supplying
+     *     the coefficients.
+     *   - A calm is not a stall. The search does not give up on a position with
+     *     no forecast wind, because no wind is exactly the weather a motorboat
+     *     wants.
+     *   - Tacks and gybes do not exist. Manoeuvre penalties and the night watch
+     *     policy are both ignored, and legs come back with `manoeuvre: null` —
+     *     charging a motorboat two minutes for crossing the wind, or refusing to
+     *     let it do so at 0300, would be inventing work nobody does.
+     *   - Fuel is a wall, not a budget. See `fuel`.
+     */
+    propulsion?: Propulsion;
+    /**
+     * The tank, under power. Required to bound the passage; without it the
+     * search will happily route a vessel a thousand miles past empty.
+     *
+     * Unlike the sailing boat's `motoring`, running out here does not change how
+     * the vessel moves — it stops it. So the frontier simply ends where the fuel
+     * does: the route comes back short, `ranOutOfFuel` says why, and the
+     * warnings say how far it got. That is the truthful answer to "can this
+     * vessel make this passage", and it is one only a hard limit can give.
+     */
+    fuel?: FuelOptions;
 }
 /**
  * Compute a weather-optimal route.

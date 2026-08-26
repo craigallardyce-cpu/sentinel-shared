@@ -36,8 +36,19 @@ export type {
   CurrentSample,
   CurrentSampler,
   SeaStateOptions,
-  MotoringOptions
+  MotoringOptions,
+  Propulsion,
+  FuelOptions
 } from './routing.js';
+
+export {
+  powerPolar,
+  powerSeaState,
+  powerRangeFrom,
+  windageLossFraction,
+  isUsablePowerProfile
+} from './powerPerformance.js';
+export type { PowerProfile, PowerRange } from './powerPerformance.js';
 
 export { compareSecondOpinion } from './secondOpinion.js';
 export type { SecondOpinion, DepartureOutcome } from './secondOpinion.js';

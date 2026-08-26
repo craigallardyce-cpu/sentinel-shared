@@ -44,8 +44,34 @@ export interface PassageSummary {
     /** Worst gust anywhere on the passage, where the model published gusts. */
     maxGustKts: number | null;
   };
-  /** Share of time close-hauled, reaching and running. Sums to 1. */
-  pointOfSail: { upwind: number; reaching: number; downwind: number };
+  /**
+   * Share of time close-hauled, reaching and running. Sums to 1.
+   *
+   * NULL UNDER POWER, and that is the honest answer rather than a missing
+   * one. A motorboat has no points of sail: it steers the course it wants and
+   * the wind angle that results is a fact about the weather, not about how the
+   * vessel is being worked. Reporting "38% upwind" for a trawler would be a
+   * number with no meaning behind it, and the risk is not that it looks odd —
+   * it is that a reader who trusts it starts making decisions with it. What
+   * replaces it is `seaAngle`, which is the question a motorboat owner was
+   * actually asking.
+   */
+  pointOfSail: { upwind: number; reaching: number; downwind: number } | null;
+  /**
+   * Share of the sea-covered time meeting the waves on the bow, on the beam
+   * and from astern. Null where the marine forecast reached none of it.
+   *
+   * The distribution that matters to any vessel and matters most to a
+   * motorboat. A metre and a half on the bow is a day of slamming, throttling
+   * back and a fuel bill; the same sea from astern is a fast, rolly, cheap
+   * passage. Wave height alone cannot tell those two apart, and for a
+   * motorboat there is no point-of-sail figure standing in for it.
+   *
+   * Fractions are of the time the sea was actually known, not of the whole
+   * passage, so they sum to 1 and read as "of the water we can see". Pair with
+   * `seaStateCoverage` to know how much of the passage that was.
+   */
+  seaAngle: { head: number; beam: number; following: number } | null;
   windBands: Band[];
   waveBands: Band[];
   /**
@@ -183,6 +209,16 @@ export interface SummaryOptions {
    * tank from the one that constrained the route.
    */
   motoring?: { enduranceHours?: number | null; fuelLitresPerHour?: number | null } | null;
+  /**
+   * The tank, under power, passed through from the router for the same reason
+   * `motoring` is: so the summary cannot describe a different tank from the
+   * one that bounded the route.
+   *
+   * Separate from `motoring` because it means something different. That one
+   * describes an auxiliary a sailing boat may or may not have used; this one
+   * describes the fuel the whole passage ran on.
+   */
+  fuel?: { litresPerHour?: number | null; usableLitres?: number | null } | null;
 }
 
 /**
@@ -231,6 +267,17 @@ const RESONANCE_HIGH = 1.25;
 /** Upwind below this true wind angle, downwind above the other. */
 const REACHING_FROM_DEG = 60;
 const REACHING_TO_DEG = 120;
+
+/**
+ * Where a head sea becomes a beam sea, and a beam sea a following one.
+ *
+ * Measured against where the waves come FROM, so 0 is dead on the bow. The
+ * same 60/120 split the wind uses, deliberately: a skipper who has learnt what
+ * "on the beam" means from one of these distributions should not find it
+ * meaning something else in the other.
+ */
+const SEA_ON_THE_BOW_DEG = 60;
+const SEA_ABAFT_THE_BEAM_DEG = 120;
 
 /** Where hard-upwind starts: close-hauled, and enough breeze to be wet. */
 const HARD_UPWIND_TWA_DEG = 60;
@@ -363,6 +410,12 @@ export function summarisePassage(
   let windAgainstCurrentHours = 0;
   let currentKnownHours = 0;
   let motoringHours = 0;
+  let headSeaHours = 0;
+  let beamSeaHours = 0;
+  let followingSeaHours = 0;
+  // A motorboat has no points of sail, so the wind-angle split is not
+  // computed for one — see `pointOfSail`.
+  const underSail = route.propulsion !== 'power';
 
   const windSamples: Array<{ value: number; hours: number }> = [];
   const waveSamples: Array<{ value: number; hours: number }> = [];
@@ -416,6 +469,12 @@ export function summarisePassage(
       waveSamples.push({ value: leg.waveHeightM, hours: h });
       seaHours += h;
 
+      if (leg.waveAngleDeg !== null) {
+        if (leg.waveAngleDeg < SEA_ON_THE_BOW_DEG) headSeaHours += h;
+        else if (leg.waveAngleDeg <= SEA_ABAFT_THE_BEAM_DEG) beamSeaHours += h;
+        else followingSeaHours += h;
+      }
+
       if (rollPeriodS !== null && leg.wavePeriodS !== null && leg.waveAngleDeg !== null) {
         const te = encounterPeriodS(leg.wavePeriodS, leg.waveAngleDeg, leg.boatSpeedKts);
         if (te === null) resonanceUnknownHours += h;
@@ -432,6 +491,16 @@ export function summarisePassage(
     Number.isFinite(v) && (v as number) > 0 ? (v as number) : null;
   const endurance = positive(options.motoring?.enduranceHours);
   const burn = positive(options.motoring?.fuelLitresPerHour);
+  // Under power the tank is stated in litres and the hours are derived from
+  // it, which is the other way round from the sailing boat's auxiliary. The
+  // router's own figure is the fallback, so a caller that forgot to pass the
+  // fuel still gets the number the route was actually held to.
+  const fuelBurn = positive(options.fuel?.litresPerHour);
+  const usableLitres = positive(options.fuel?.usableLitres) ?? positive(route.usableFuelLitres);
+  const powerEndurance =
+    usableLitres !== null && fuelBurn !== null
+      ? Math.round((usableLitres / fuelBurn) * 100) / 100
+      : null;
 
   return {
     hours: Math.round(hours * 100) / 100,
@@ -441,11 +510,21 @@ export function summarisePassage(
       meanKts: hours > 0 ? Math.round((windHours / hours) * 10) / 10 : 0,
       maxGustKts: maxGustKts === null ? null : Math.round(maxGustKts * 10) / 10
     },
-    pointOfSail: {
-      upwind: round3(upwind / hours),
-      reaching: round3(reaching / hours),
-      downwind: round3(downwind / hours)
-    },
+    pointOfSail: underSail
+      ? {
+          upwind: round3(upwind / hours),
+          reaching: round3(reaching / hours),
+          downwind: round3(downwind / hours)
+        }
+      : null,
+    seaAngle:
+      seaHours > 0
+        ? {
+            head: round3(headSeaHours / seaHours),
+            beam: round3(beamSeaHours / seaHours),
+            following: round3(followingSeaHours / seaHours)
+          }
+        : null,
     windBands: distribute(WIND_BANDS_KTS, 'kt', windSamples),
     waveBands: distribute(WAVE_BANDS_M, 'm', waveSamples),
     hardUpwind: {
@@ -477,10 +556,17 @@ export function summarisePassage(
             hours: Math.round(motoringHours * 100) / 100,
             fraction: round3(motoringHours / hours),
             fuelLitres: route.fuelLitres,
-            enduranceHours: endurance,
-            usableLitres:
-              endurance !== null && burn !== null ? Math.round(endurance * burn) : null,
-            intoLandfall: Boolean(route.legs[route.legs.length - 1]?.motoring)
+            enduranceHours: underSail ? endurance : powerEndurance,
+            usableLitres: underSail
+              ? endurance !== null && burn !== null
+                ? Math.round(endurance * burn)
+                : null
+              : usableLitres,
+            // Trivially true under power, where every leg is an engine leg, so
+            // it is reported only for a sailing boat — the fact it exists to
+            // carry is "this passage FINISHES under power", and a motorboat
+            // finishing under power is not news.
+            intoLandfall: underSail && Boolean(route.legs[route.legs.length - 1]?.motoring)
           },
     landfall: landfallOf(route),
     rollResonance:

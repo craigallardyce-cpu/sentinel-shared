@@ -34,7 +34,23 @@ function interpolationSlot(values, target) {
  */
 export function boatSpeed(polar, twaDeg, twsKts) {
     const twa = foldTwa(twaDeg);
-    if (!Number.isFinite(twsKts) || twsKts <= 0)
+    /**
+     * A flat calm is answered by the table, not by this guard.
+     *
+     * It used to short-circuit at `twsKts <= 0`, which was a true statement
+     * about a sailing boat smuggled into a function that does not only describe
+     * sailing boats. A motorboat's diagram is a throttle setting with the
+     * windage taken off it, and its lightest column IS 0 knots — so zero wind is
+     * a value that table has a real answer for, and returning 0 instead left a
+     * motorboat becalmed in the one condition it most wants.
+     *
+     * Sailing polars are untouched, and not by accident. Their lightest column
+     * is 4-6 knots, so zero wind falls below it and the light-air ramp further
+     * down multiplies the answer by twsKts / lightest = 0. A sailing boat still
+     * stops in a calm; it now stops because its own polar says so rather than
+     * because of a guard that could not tell the two kinds of vessel apart.
+     */
+    if (!Number.isFinite(twsKts) || twsKts < 0)
         return 0;
     const a = interpolationSlot(polar.twaValues, twa);
     const s = interpolationSlot(polar.twsValues, twsKts);
