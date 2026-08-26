@@ -742,10 +742,12 @@ function seaStateWarnings(
     ];
   }
   const notes = [
-    'Sea state is charged against the boat as a coarse speed penalty from wave height and the ' +
-      'angle it meets the boat at. It is a reasonable curve for a cruising boat, not this boat ' +
-      'measured in a seaway, and it ignores wave period entirely — a short steep sea costs far ' +
-      'more than a long swell of the same height. Treat a rough-weather ETA as the optimistic end.'
+    'Sea state is charged against the boat as a coarse speed penalty from wave height, the angle ' +
+      'it meets the boat at, and — where the forecast carries a period — the steepness those two ' +
+      'imply, so a short sea costs more than a long swell of the same height. It is a reasonable ' +
+      'curve for a cruising boat, not this boat measured in a seaway: neither the coefficient, nor ' +
+      'the angle shape, nor the steepness term came from anything sailed. Treat a rough-weather ' +
+      'ETA as the optimistic end.'
   ];
   if (seaLimit !== null) {
     notes.push(
