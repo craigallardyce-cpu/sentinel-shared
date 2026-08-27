@@ -113,11 +113,47 @@ describe('parseNmeaSentence', () => {
     expect(parseNmeaSentence(sentence)).toBeNull();
   });
 
-  it('parses depth from a DBT sentence', () => {
+  it('parses depth from a DBT sentence as a below-transducer reading', () => {
     const sentence = withChecksum('SDDBT,032.4,f,009.9,M,005.4,F');
     const result = parseNmeaSentence(sentence);
     expect(result).not.toBeNull();
-    expect(result.depthFeet).toBeCloseTo(32.4, 6);
+    // DBT is reported on its own datum rather than as depthFeet, so it cannot
+    // silently contradict a DPT reading measured from the waterline.
+    expect(result.depthBelowTransducerFeet).toBeCloseTo(32.4, 6);
+    expect(result.depthFeet).toBeUndefined();
+
+    // With no offset known it still reaches the consumer unchanged.
+    const live = createNmeaLiveData();
+    handleNmeaSentence(sentence, live);
+    expect(live.depth).toBeCloseTo(32.4, 6);
+  });
+
+  it('holds one depth across a DBT/DPT pair', () => {
+    // DBT measures from the transducer and DPT from the waterline, so a sounder
+    // sending both used to make the reported depth square-wave between them by
+    // the transducer's mounting depth — 1.6 ft on the boat this came from.
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIDPT,4.9,0.5'), live);
+    const afterDpt = live.depth;
+    handleNmeaSentence(withChecksum('IIDBT,16.1,f,4.9,M,2.7,F'), live);
+    const afterDbt = live.depth;
+    expect(afterDpt).toBeCloseTo((4.9 + 0.5) * 3.28084, 3);
+    expect(afterDbt).toBeCloseTo(afterDpt, 1);
+  });
+
+  it('uses a bare DBT reading as-is until DPT gives the offset', () => {
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIDBT,16.1,f,4.9,M,2.7,F'), live);
+    expect(live.depth).toBeCloseTo(16.1, 3);
+    expect(live.depth_offset_ft).toBeNull();
+  });
+
+  it('does not apply the transducer offset to DBS', () => {
+    // DBS already measures from the surface.
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIDPT,4.9,0.5'), live);
+    handleNmeaSentence(withChecksum('SDDBS,17.7,f,5.4,M,2.9,F'), live);
+    expect(live.depth).toBeCloseTo(17.7, 3);
   });
 
   it('parses true wind from an MWD sentence', () => {

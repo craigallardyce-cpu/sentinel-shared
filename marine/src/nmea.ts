@@ -15,7 +15,14 @@ export interface NmeaLiveData {
   lon: number | null;
   w_speed: number | null;
   w_dir: number | null;
+  /** Depth of water below the waterline, in feet. See `depth_offset_ft`. */
   depth: number | null;
+  /**
+   * How far the transducer sits below the waterline, in feet, as reported by
+   * DPT. Kept so that DBT — which measures from the transducer rather than the
+   * surface — can be raised to the same datum instead of contradicting DPT.
+   */
+  depth_offset_ft: number | null;
   sentenceCount: number;
   lastUpdate: number;
 }
@@ -27,6 +34,7 @@ export function createNmeaLiveData(): NmeaLiveData {
     w_speed: null,
     w_dir: null,
     depth: null,
+    depth_offset_ft: null,
     sentenceCount: 0,
     lastUpdate: 0
   };
@@ -217,19 +225,31 @@ export function parseNmeaSentence(sentence: string): any {
     };
   }
 
+  /**
+   * DBT measures from the transducer, DPT from the waterline. A sounder that
+   * sends both used to make the reported depth alternate between the two on
+   * every cycle — a square wave of however deep the transducer is mounted.
+   * DBT is therefore reported as its own quantity and raised to the waterline
+   * in handleNmeaSentence, once DPT has said how far down the transducer is.
+   *
+   * DBK (below keel) and DBS (below surface) are left on their own datum: the
+   * transducer offset does not apply to either.
+   */
   if (type === 'DBT' || type === 'DBK' || type === 'DBS') {
     const feetStr = parts[1];
     const metersStr = parts[3];
+    let feet: number | undefined;
     if (feetStr) {
-      const feet = parseFloat(feetStr);
-      if (!isNaN(feet)) {
-        return { waterDepth: feet * 0.3048, depthFeet: feet };
-      }
+      const parsedFeet = parseFloat(feetStr);
+      if (!isNaN(parsedFeet)) feet = parsedFeet;
     } else if (metersStr) {
       const meters = parseFloat(metersStr);
-      if (!isNaN(meters)) {
-        return { waterDepth: meters, depthFeet: meters * 3.28084 };
-      }
+      if (!isNaN(meters)) feet = meters * 3.28084;
+    }
+    if (feet !== undefined) {
+      return type === 'DBT'
+        ? { waterDepth: feet * 0.3048, depthBelowTransducerFeet: feet }
+        : { waterDepth: feet * 0.3048, depthFeet: feet };
     }
   }
 
@@ -245,8 +265,16 @@ export function parseNmeaSentence(sentence: string): any {
         }
       }
       if (!isNaN(meters)) {
+        // Field 1 is measured from the transducer; field 2 is how far the
+        // transducer sits below the waterline. Their sum is the depth of water,
+        // which is the datum the rest of the fleet works in (scope adds bow
+        // roller height to it, so it has to start at the surface).
         const finalDepthMeters = meters + offset;
-        return { waterDepth: finalDepthMeters, depthFeet: finalDepthMeters * 3.28084 };
+        return {
+          waterDepth: finalDepthMeters,
+          depthFeet: finalDepthMeters * 3.28084,
+          transducerOffsetFeet: offset * 3.28084
+        };
       }
     }
   }
@@ -419,8 +447,18 @@ export function handleNmeaSentence(sentence: string, liveData: NmeaLiveData): vo
     updated = true;
   }
 
+  if (parsed.transducerOffsetFeet !== undefined) {
+    liveData.depth_offset_ft = parsed.transducerOffsetFeet;
+  }
+
   if (parsed.depthFeet !== undefined) {
     liveData.depth = parsed.depthFeet;
+    updated = true;
+  } else if (parsed.depthBelowTransducerFeet !== undefined) {
+    // Raise a below-transducer sounding to the waterline so it agrees with DPT.
+    // With no offset yet the raw reading is the best available, and erring
+    // shallow is the safe direction for a grounding alarm.
+    liveData.depth = parsed.depthBelowTransducerFeet + (liveData.depth_offset_ft ?? 0);
     updated = true;
   }
 

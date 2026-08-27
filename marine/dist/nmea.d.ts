@@ -11,7 +11,14 @@ export interface NmeaLiveData {
     lon: number | null;
     w_speed: number | null;
     w_dir: number | null;
+    /** Depth of water below the waterline, in feet. See `depth_offset_ft`. */
     depth: number | null;
+    /**
+     * How far the transducer sits below the waterline, in feet, as reported by
+     * DPT. Kept so that DBT — which measures from the transducer rather than the
+     * surface — can be raised to the same datum instead of contradicting DPT.
+     */
+    depth_offset_ft: number | null;
     sentenceCount: number;
     lastUpdate: number;
 }
