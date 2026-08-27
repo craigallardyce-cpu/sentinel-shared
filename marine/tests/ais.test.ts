@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAisSentence, calculateTargetMetrics, getUpdatedAisTargets, SEED_TARGET_DEFINITIONS } from '../src/ais.js';
+import { parseAisSentence, calculateTargetMetrics, getUpdatedAisTargets } from '../src/ais.js';
 
 /**
  * Independent bit-level AIVDM encoder (the inverse of the module's private
@@ -150,19 +150,27 @@ describe('calculateTargetMetrics', () => {
 });
 
 describe('getUpdatedAisTargets', () => {
-  it('seeds baseline demo targets on first call', () => {
+  it('invents no targets of its own', () => {
+    // This used to inject three demo vessels at fixed offsets from own ship.
+    // They followed the boat around, so any proximity limit wide enough to
+    // reach them alarmed permanently about vessels that were not there, and
+    // every caller needed its own filter to ignore them. An empty feed must
+    // show an empty list.
     const { targetsList, targetsMap } = getUpdatedAisTargets(new Map(), 41.0, -71.0);
-    expect(targetsList.length).toBe(SEED_TARGET_DEFINITIONS.length);
-    expect(targetsMap.size).toBe(SEED_TARGET_DEFINITIONS.length);
+    expect(targetsList).toEqual([]);
+    expect(targetsMap.size).toBe(0);
   });
 
   it('excludes a target matching the configured own MMSI', () => {
-    const seedMmsi = SEED_TARGET_DEFINITIONS[0].mmsi;
-    const { targetsList } = getUpdatedAisTargets(new Map(), 41.0, -71.0, 0, 0, seedMmsi);
-    expect(targetsList.find(t => t.mmsi === seedMmsi)).toBeUndefined();
+    const ownMmsi = '235123456';
+    const map = new Map<string, any>([
+      [ownMmsi, { mmsi: ownMmsi, lat: 41.01, lon: -71.01, sog: 0, cog: 0, lastSeen: Date.now() }]
+    ]);
+    const { targetsList } = getUpdatedAisTargets(map, 41.0, -71.0, 0, 0, ownMmsi);
+    expect(targetsList.find(t => t.mmsi === ownMmsi)).toBeUndefined();
   });
 
-  it('purges non-seed targets that have gone stale', () => {
+  it('purges targets that have gone stale', () => {
     const staleMap = new Map<string, any>([
       ['999999999', { mmsi: '999999999', lat: 41.01, lon: -71.01, sog: 0, cog: 0, lastSeen: Date.now() - 700000 }]
     ]);

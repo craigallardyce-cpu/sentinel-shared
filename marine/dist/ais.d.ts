@@ -30,18 +30,6 @@ export interface TargetMetrics {
 export declare function parseAisSentence(sentence: string): AisTargetData | null;
 /** Calculates CPA, TCPA, Range, Bearing, and Threat Level between Own Ship and Target. */
 export declare function calculateTargetMetrics(ownLat: number, ownLon: number, ownSog: number | undefined, ownCog: number | undefined, tgtLat: number, tgtLon: number, tgtSog?: number, tgtCog?: number): TargetMetrics;
-/** Baseline proximal demo targets, offset relative to own ship position. */
-export declare const SEED_TARGET_DEFINITIONS: {
-    id: string;
-    mmsi: string;
-    name: string;
-    callSign: string;
-    type: string;
-    dLat: number;
-    dLon: number;
-    cog: number;
-    sog: number;
-}[];
 /** Generates or updates the target list, recalculating relative motion against own ship. */
 export declare function getUpdatedAisTargets(currentTargetsMap: Map<string, any>, ownShipLat: number, ownShipLon: number, ownShipSog?: number, ownShipCog?: number, ownMmsi?: string | null, options?: {
     /**

@@ -328,43 +328,6 @@ export function calculateTargetMetrics(
   };
 }
 
-/** Baseline proximal demo targets, offset relative to own ship position. */
-export const SEED_TARGET_DEFINITIONS = [
-  {
-    id: 't-1',
-    mmsi: '235123456',
-    name: 'ULTIMATE',
-    callSign: 'WDE8192',
-    type: 'AIS Class A',
-    dLat: 0.017, // ~ 1.0 NM North
-    dLon: 0.022, // ~ 1.2 NM East
-    cog: 288,
-    sog: 18.5
-  },
-  {
-    id: 't-2',
-    mmsi: '235987654',
-    name: 'FURY',
-    callSign: 'WDJ9284',
-    type: 'AIS Class B',
-    dLat: -0.025, // ~ 1.5 NM South
-    dLon: 0.035, // ~ 2.0 NM East
-    cog: 58,
-    sog: 12.2
-  },
-  {
-    id: 't-3',
-    mmsi: '366112233',
-    name: 'PEGASUS',
-    callSign: 'WDK2938',
-    type: 'AIS Class A',
-    dLat: 0.010, // ~ 0.6 NM North
-    dLon: -0.028, // ~ 1.5 NM West
-    cog: 112,
-    sog: 21.0
-  }
-];
-
 /** Generates or updates the target list, recalculating relative motion against own ship. */
 export function getUpdatedAisTargets(
   currentTargetsMap: Map<string, any>,
@@ -385,34 +348,12 @@ export function getUpdatedAisTargets(
 ): { targetsList: any[]; targetsMap: Map<string, any> } {
   const updatedMap = new Map(currentTargetsMap);
 
-  // Ensure baseline seed targets exist if not present
-  SEED_TARGET_DEFINITIONS.forEach(seed => {
-    if (!updatedMap.has(seed.mmsi)) {
-      const tgtLat = ownShipLat + seed.dLat;
-      const tgtLon = ownShipLon + seed.dLon;
-      updatedMap.set(seed.mmsi, {
-        id: seed.id,
-        mmsi: seed.mmsi,
-        name: seed.name,
-        callSign: seed.callSign,
-        type: seed.type,
-        lat: tgtLat,
-        lon: tgtLon,
-        cog: seed.cog,
-        sog: seed.sog,
-        heading: seed.cog,
-        lastSeen: Date.now()
-      });
-    }
-  });
-
   const now = Date.now();
   const result: any[] = [];
 
   for (const [mmsi, target] of updatedMap.entries()) {
-    // Purge non-baseline targets after 10 minutes of no updates
-    const isSeed = SEED_TARGET_DEFINITIONS.some(s => s.mmsi === mmsi);
-    if (!isSeed && now - (target.lastSeen || 0) > 600000) {
+    // Purge targets after 10 minutes of no updates
+    if (now - (target.lastSeen || 0) > 600000) {
       updatedMap.delete(mmsi);
       continue;
     }
@@ -449,7 +390,7 @@ export function getUpdatedAisTargets(
       const dLatNM = (target.lat - ownShipLat) * 60;
       const dLonNM = (target.lon - ownShipLon) * 60 * Math.cos(((ownShipLat + target.lat) / 2) * Math.PI / 180);
       const proximityNM = Math.sqrt(dLatNM * dLatNM + dLonNM * dLonNM);
-      if (proximityNM < 0.03 && !isSeed) {
+      if (proximityNM < 0.03) {
         continue;
       }
     }
