@@ -4,7 +4,9 @@ import {
   parseNmeaLatitude,
   parseNmeaLongitude,
   formatCoords,
-  parseNmeaSentence
+  parseNmeaSentence,
+  handleNmeaSentence,
+  createNmeaLiveData
 } from '../src/nmea.js';
 
 /**
@@ -132,5 +134,44 @@ describe('parseNmeaSentence', () => {
     expect(result).not.toBeNull();
     expect(result.awa).toBe('45° STBD');
     expect(result.aws).toBeCloseTo(12.0, 6);
+  });
+
+  it('prefers the true direction over the magnetic one in MWD', () => {
+    const sentence = withChecksum('WIMWD,232.8,T,246.8,M,14.1,N,7.3,M');
+    const result = parseNmeaSentence(sentence);
+    expect(result.twd).toBeCloseTo(232.8, 6);
+  });
+
+  it('does not read an MWV wind angle as a wind direction', () => {
+    // Both references are angles off the bow, not compass bearings.
+    for (const ref of ['R', 'T']) {
+      const result = parseNmeaSentence(withChecksum(`WIMWV,021.3,${ref},014.1,N,A`));
+      expect(result).not.toBeNull();
+      expect(result.twd).toBeUndefined();
+      expect(result.awd).toBeUndefined();
+    }
+  });
+
+  it('does not read a VWR wind angle as a wind direction', () => {
+    const result = parseNmeaSentence(withChecksum('IIVWR,024.5,R,014.7,N,,,,'));
+    expect(result).not.toBeNull();
+    expect(result.awd).toBeUndefined();
+  });
+
+  it('holds one wind direction across a full MWV/MWV/MWD cycle', () => {
+    // The regression in full: one second of a real feed, head to wind. Every
+    // sentence used to move w_dir, so it flipped ~160 degrees three times a
+    // second. Only the MWD carries a direction, so only it should.
+    const live = createNmeaLiveData();
+    const seen = new Set<number>();
+    for (const s of [
+      withChecksum('IIMWV,024.5,R,014.7,N,A'),
+      withChecksum('IIMWV,021.3,T,014.1,N,A'),
+      withChecksum('IIMWD,232.8,T,246.8,M,14.1,N,7.3,M'),
+    ]) {
+      handleNmeaSentence(s, live);
+      if (live.w_dir !== null) seen.add(live.w_dir);
+    }
+    expect([...seen]).toEqual([232.8]);
   });
 });

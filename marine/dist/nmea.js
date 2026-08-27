@@ -227,15 +227,32 @@ export function parseNmeaSentence(sentence) {
         };
     }
     if (type === 'MWD') {
+        // Field 1 is the direction the wind blows FROM relative to true north,
+        // field 3 the same relative to magnetic north. Prefer true; plenty of
+        // instruments populate only one of the two, so fall back rather than
+        // reporting a magnetic bearing as a true one.
+        const windDirTrue = parseFloat(parts[1]);
         const windDirMag = parseFloat(parts[3]);
+        const windDir = !isNaN(windDirTrue) ? windDirTrue : (!isNaN(windDirMag) ? windDirMag : undefined);
         const windSpeedKnots = parseFloat(parts[5]);
         return {
-            awd: !isNaN(windDirMag) ? windDirMag : undefined,
-            twd: !isNaN(windDirMag) ? windDirMag : undefined,
+            awd: windDir,
+            twd: windDir,
             aws: !isNaN(windSpeedKnots) ? windSpeedKnots : undefined,
             tws: !isNaN(windSpeedKnots) ? windSpeedKnots : undefined
         };
     }
+    /**
+     * MWV gives a wind ANGLE measured from the bow, for both references: 'R' is
+     * apparent, 'T' is the true wind corrected for boat speed but still expressed
+     * relative to the vessel. Neither is a compass direction.
+     *
+     * Writing that angle into awd/twd — which feed `w_dir`, the direction the wind
+     * is blowing from — made the reported wind direction flip several times a
+     * second on any feed carrying both MWV and MWD, since each sentence
+     * overwrote the other with a different quantity. On a boat head to wind the
+     * two differ by roughly the vessel's heading.
+     */
     if (type === 'MWV') {
         const angle = parseFloat(parts[1]);
         const reference = parts[2] ? parts[2].toUpperCase() : ''; // R = Relative, T = True
@@ -258,15 +275,15 @@ export function parseNmeaSentence(sentence) {
                 if (angle > 180) {
                     awaStr = `${(360 - angle).toFixed(0)}° PORT`;
                 }
+                // MWV reports an angle off the bow, not a compass bearing, so it must
+                // not populate awd/twd — see the note on the MWV block above.
                 return {
                     awa: awaStr,
-                    awd: angle,
                     aws: parseFloat(speedKnots.toFixed(1))
                 };
             }
             else if (reference === 'T') {
                 return {
-                    twd: angle,
                     tws: parseFloat(speedKnots.toFixed(1))
                 };
             }
@@ -296,9 +313,9 @@ export function parseNmeaSentence(sentence) {
                 speed = parsed * 1.94384;
         }
         if (angle !== null && speed !== null) {
+            // VWR is a bow-relative angle too, so like MWV it sets no direction.
             return {
                 awa: angleStr + (lr === 'L' ? '° PORT' : '° STBD'),
-                awd: angle,
                 aws: speed
             };
         }
