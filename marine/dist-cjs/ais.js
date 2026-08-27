@@ -265,9 +265,31 @@ function calculateTargetMetrics(ownLat, ownLon, ownSog = 0, ownCog = 0, tgtLat, 
         threatLevel
     };
 }
-/** Generates or updates the target list, recalculating relative motion against own ship. */
-function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShipSog = 0, ownShipCog = 0, ownMmsi, options) {
+/**
+ * Generates or updates the target list, recalculating relative motion against
+ * own ship.
+ *
+ * Own ship is identified by IDENTITY ONLY — never by how close a target is.
+ * A vessel is recognised as ourselves when it arrives as AIVDO, when it carries
+ * an MMSI already latched from an AIVDO sentence, or when its MMSI is one the
+ * caller names in `ownMmsi`. Nothing else removes a target.
+ *
+ * There was once a fallback here that dropped anything within 0.03 NM as a
+ * presumed own-ship echo. It is gone, and must not come back: the nearest
+ * vessel is the one an anchor watch exists to warn about, and a rule that
+ * silently hides whatever comes closest defeats the alarm at exactly the moment
+ * it matters. A boat anchoring 50 m away is not an echo. When identity is
+ * genuinely unknown the right outcome is a spurious extra target the skipper
+ * can see and dismiss, not a real one nobody is told about.
+ *
+ * `ownMmsi` accepts several identities so a caller can offer everything it
+ * knows at once — configured, from the vessel profile, and learned from AIVDO.
+ */
+function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShipSog = 0, ownShipCog = 0, ownMmsi) {
     const updatedMap = new Map(currentTargetsMap);
+    const ownMmsis = new Set((Array.isArray(ownMmsi) ? ownMmsi : [ownMmsi])
+        .map(m => (m === null || m === undefined ? '' : String(m).trim()))
+        .filter(m => m.length > 0));
     const now = Date.now();
     const result = [];
     for (const [mmsi, target] of updatedMap.entries()) {
@@ -276,9 +298,8 @@ function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShip
             updatedMap.delete(mmsi);
             continue;
         }
-        // Do not show vessel's own AIS target (from AIVDO or matching configured own MMSI)
-        const isOwnMmsi = ownMmsi && String(mmsi).trim() === String(ownMmsi).trim();
-        if (target.isOwnVessel || isOwnMmsi) {
+        // Own ship, by identity: flagged from AIVDO, or an MMSI the caller named.
+        if (target.isOwnVessel || ownMmsis.has(String(mmsi).trim())) {
             continue;
         }
         // Skip targets that do not have valid coordinates yet
@@ -288,25 +309,6 @@ function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShip
             isNaN(target.lon) ||
             (target.lat === 0 && target.lon === 0)) {
             continue;
-        }
-        // Proximity-based own vessel suppression: if a target is within ~55 meters
-        // (0.03 NM) of own GPS position, it's almost certainly the vessel's own
-        // AIS transponder being rebroadcast as AIVDM by the NMEA multiplexer.
-        //
-        // This is a fallback for not knowing which MMSI is ours. When the caller
-        // supplies ownMmsi, the exact check above has already removed own ship, and
-        // keeping this radius would only blind the caller to genuine close-quarters
-        // targets — a boat anchoring 50 m away is exactly what a proximity alarm is
-        // for. It is skipped entirely for receive-only vessels, which cannot echo
-        // themselves. Callers that pass neither keep the old behaviour unchanged.
-        const ownShipTransmits = options?.ownShipTransmits !== false;
-        if (!ownMmsi && ownShipTransmits) {
-            const dLatNM = (target.lat - ownShipLat) * 60;
-            const dLonNM = (target.lon - ownShipLon) * 60 * Math.cos(((ownShipLat + target.lat) / 2) * Math.PI / 180);
-            const proximityNM = Math.sqrt(dLatNM * dLatNM + dLonNM * dLonNM);
-            if (proximityNM < 0.03) {
-                continue;
-            }
         }
         const safeSog = typeof target.sog === 'number' && !isNaN(target.sog) ? target.sog : 0;
         const safeCog = typeof target.cog === 'number' && !isNaN(target.cog) ? target.cog : 0;

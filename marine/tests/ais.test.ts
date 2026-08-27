@@ -170,6 +170,50 @@ describe('getUpdatedAisTargets', () => {
     expect(targetsList.find(t => t.mmsi === ownMmsi)).toBeUndefined();
   });
 
+  it('keeps a target that is very close but is not us', () => {
+    // The rule this pins down: proximity must never remove a target. A boat
+    // anchoring alongside is the single most important thing an anchor watch
+    // can show, and a blanket 0.03 NM cutoff used to swallow it whole.
+    const closeMmsi = '338204512';   // ~40 ft away, no own MMSI supplied
+    const map = new Map<string, any>([
+      [closeMmsi, { mmsi: closeMmsi, lat: 41.0 + 0.00011, lon: -71.0, sog: 0, cog: 0, lastSeen: Date.now() }]
+    ]);
+    const { targetsList } = getUpdatedAisTargets(map, 41.0, -71.0);
+    expect(targetsList.find(t => t.mmsi === closeMmsi)).toBeDefined();
+  });
+
+  it('removes own ship by identity however close or far it is', () => {
+    const own = '316001234';
+    for (const dLat of [0.00011, 0.5]) {
+      const map = new Map<string, any>([
+        [own, { mmsi: own, lat: 41.0 + dLat, lon: -71.0, sog: 0, cog: 0, lastSeen: Date.now() }]
+      ]);
+      const { targetsList } = getUpdatedAisTargets(map, 41.0, -71.0, 0, 0, own);
+      expect(targetsList.find(t => t.mmsi === own)).toBeUndefined();
+    }
+  });
+
+  it('accepts several own-ship identities at once', () => {
+    // Callers know their MMSI from settings, the vessel profile and AIVDO, and
+    // should be able to offer all of them rather than picking one.
+    const configured = '316001234', latched = '338204512', other = '367445890';
+    const map = new Map<string, any>([
+      [configured, { mmsi: configured, lat: 41.01, lon: -71.0, sog: 0, cog: 0, lastSeen: Date.now() }],
+      [latched, { mmsi: latched, lat: 41.02, lon: -71.0, sog: 0, cog: 0, lastSeen: Date.now() }],
+      [other, { mmsi: other, lat: 41.03, lon: -71.0, sog: 0, cog: 0, lastSeen: Date.now() }]
+    ]);
+    const { targetsList } = getUpdatedAisTargets(map, 41.0, -71.0, 0, 0, [configured, null, latched]);
+    expect(targetsList.map(t => t.mmsi)).toEqual([other]);
+  });
+
+  it('removes an AIVDO-flagged target regardless of range', () => {
+    const map = new Map<string, any>([
+      ['316009999', { mmsi: '316009999', lat: 41.4, lon: -71.0, sog: 0, cog: 0, isOwnVessel: true, lastSeen: Date.now() }]
+    ]);
+    const { targetsList } = getUpdatedAisTargets(map, 41.0, -71.0);
+    expect(targetsList).toEqual([]);
+  });
+
   it('purges targets that have gone stale', () => {
     const staleMap = new Map<string, any>([
       ['999999999', { mmsi: '999999999', lat: 41.01, lon: -71.01, sog: 0, cog: 0, lastSeen: Date.now() - 700000 }]
