@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShieldAlert, AlertCircle, X, ChevronRight, Waves, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -62,14 +62,6 @@ export default function AlertsPanel({
 }: AlertsPanelProps) {
   const [showBulletin, setShowBulletin] = useState(false);
   const [selectedAlertIndex, setSelectedAlertIndex] = useState(0);
-  const [bulletinTime, setBulletinTime] = useState(new Date());
-
-  // Live clock for bulletin footer
-  useEffect(() => {
-    if (!showBulletin) return;
-    const interval = setInterval(() => setBulletinTime(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, [showBulletin]);
 
   if (!weatherData) return null;
 
@@ -329,9 +321,15 @@ export default function AlertsPanel({
 
               </main>
 
-              {/* Floating Footer Clock */}
+              {/* Carries when the forecast was fetched, and nothing else.
+                  This was a live wall clock labelled UTC, which was wrong twice over:
+                  toLocaleTimeString renders the viewer's *local* time, and the periods
+                  above are named in local terms ("Tonight", "Friday"), so a UTC stamp
+                  under them invited arithmetic errors. What matters here is the age of
+                  the forecast, not the time of day. formatSyncDateTime is the same
+                  helper the collapsed card uses, so the two now agree. */}
               <footer className={`px-6 py-4 border-t flex items-center justify-end shrink-0 font-mono text-[11px] tracking-widest select-none bg-bg-panel/40 ${borderDividerClass} ${textColorMuted}`}>
-                <span className="animate-pulse">{bulletinTime.toLocaleTimeString([], { hour12: false })} UTC</span>
+                <span>Synced {formatSyncDateTime(lastSync)}</span>
               </footer>
             </motion.div>
           )}
