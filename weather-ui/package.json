@@ -1,8 +1,8 @@
 {
   "name": "@sentinel/weather-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Shared NWS weather alert/forecast React components for the Mariner Sentinel fleet.",
+  "description": "Shared weather UI for the Mariner Sentinel fleet: NWS alert/forecast React components, the wind colour scale, and the chart's wind-animation and radar layers.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,18 +16,25 @@
     "build": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.23.24"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@sentinel/weather": "^0.1.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-leaflet": "^5.0.0"
+  },
+  "devDependencies": {
+    "@sentinel/weather": "file:../weather",
+    "@types/leaflet": "^1.9.21",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-leaflet": "^5.0.0",
     "typescript": "^5.8.2"
   }
 }
