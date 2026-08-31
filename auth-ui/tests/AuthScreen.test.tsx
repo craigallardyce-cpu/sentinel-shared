@@ -68,8 +68,8 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
       signOut: vi.fn(async () => ({ error: null }))
     },
     from: vi.fn((table: string) => {
-      if (table === 'user_subscriptions') return makeQueryBuilder({ data: subscriptions, error: null });
-      if (table === 'user_bundles') return makeQueryBuilder({ data: bundles, error: null });
+      if (table === 'active_user_subscriptions') return makeQueryBuilder({ data: subscriptions, error: null });
+      if (table === 'active_user_bundles') return makeQueryBuilder({ data: bundles, error: null });
       if (table === 'bundle_tier_mappings') return makeQueryBuilder({ data: bundleMappings, error: null });
       if (table === 'devices') return makeQueryBuilder({ data: devices, error: null });
       throw new Error(`Unexpected table: ${table}`);

@@ -105,6 +105,14 @@ export function hasFeature(accessStorageKey, featureKey) {
  * every active tier they hold for it — directly subscribed or through a
  * bundle — unioned over tier_features.
  *
+ * Reads the `active_user_*` views rather than the tables behind them. Those
+ * views apply both halves of "still entitled" — a status of active or
+ * trialing, and a `current_period_end` that has not passed — using the
+ * database's own clock, so a device with its clock wound back cannot extend a
+ * trial, and an expired one needs no job to revoke it: it simply stops being
+ * returned. The views are security_invoker, so the caller's RLS still confines
+ * them to their own rows.
+ *
  * Throws when the lookup cannot be completed (offline, permissions), so the
  * caller can keep the previous cache rather than overwrite it with less.
  */
@@ -122,19 +130,17 @@ export async function fetchEntitlements(supabase, userId, productId) {
     };
     // Directly held tiers.
     const { data: subs, error: subsError } = await supabase
-        .from('user_subscriptions')
+        .from('active_user_subscriptions')
         .select('tiers(id, name, product_id)')
-        .eq('user_id', userId)
-        .eq('status', 'active');
+        .eq('user_id', userId);
     if (subsError)
         throw subsError;
     (subs ?? []).forEach((s) => addTier(s.tiers));
     // Tiers reached through an active bundle.
     const { data: bundles, error: bundlesError } = await supabase
-        .from('user_bundles')
+        .from('active_user_bundles')
         .select('bundle_tier_id')
-        .eq('user_id', userId)
-        .eq('status', 'active');
+        .eq('user_id', userId);
     if (bundlesError)
         throw bundlesError;
     const bundleTierIds = (bundles ?? []).map((b) => b.bundle_tier_id).filter(Boolean);

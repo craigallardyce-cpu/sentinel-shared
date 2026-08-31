@@ -292,15 +292,18 @@ export function AuthScreen({
    *
    * Distinguishing the two is the whole point: "we could not check" keeps you working,
    * "you do not have one" does not.
+   *
+   * Reads the `active_user_*` views, which filter to a status of active or trialing
+   * with an unexpired `current_period_end`, on the database's clock. A 30-day trial
+   * therefore lapses on its own here, with no status flip to schedule.
    */
   const hasActiveSubscription = async (userId: string): Promise<boolean> => {
     let hasAccess = false;
 
     const { data: subs, error: subsError } = await supabase
-      .from('user_subscriptions')
+      .from('active_user_subscriptions')
       .select('*, tiers(product_id)')
-      .eq('user_id', userId)
-      .eq('status', 'active');
+      .eq('user_id', userId);
 
     if (subsError) throw subsError;
 
@@ -310,10 +313,9 @@ export function AuthScreen({
 
     if (!hasAccess) {
       const { data: userBundles, error: bundlesError } = await supabase
-        .from('user_bundles')
+        .from('active_user_bundles')
         .select('bundle_tier_id')
-        .eq('user_id', userId)
-        .eq('status', 'active');
+        .eq('user_id', userId);
 
       if (bundlesError) throw bundlesError;
 

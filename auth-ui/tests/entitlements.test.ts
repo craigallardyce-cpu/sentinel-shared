@@ -74,14 +74,14 @@ describe('hasFeature', () => {
 describe('fetchEntitlements', () => {
   it('resolves features for a directly held tier of this product', async () => {
     const supabase = makeMockSupabase({
-      user_subscriptions: {
+      active_user_subscriptions: {
         data: [
           { tiers: { id: 'tier-basic', name: 'Basic', product_id: PRODUCT } },
           { tiers: { id: 'tier-other', name: 'Premium', product_id: 'other-product' } }
         ],
         error: null
       },
-      user_bundles: { data: [], error: null },
+      active_user_bundles: { data: [], error: null },
       tier_features: {
         data: [
           { features: { feature_key: 'anchor_alarm' } },
@@ -99,8 +99,8 @@ describe('fetchEntitlements', () => {
 
   it('resolves tiers reached through an active bundle', async () => {
     const supabase = makeMockSupabase({
-      user_subscriptions: { data: [], error: null },
-      user_bundles: { data: [{ bundle_tier_id: 'suite-premium' }], error: null },
+      active_user_subscriptions: { data: [], error: null },
+      active_user_bundles: { data: [{ bundle_tier_id: 'suite-premium' }], error: null },
       bundle_tier_mappings: {
         data: [
           { tiers: { id: 'tier-premium', name: 'Premium', product_id: PRODUCT } },
@@ -119,10 +119,30 @@ describe('fetchEntitlements', () => {
     expect(ent.tierNames).toEqual(['Premium']);
   });
 
+  // The expiry half of "still entitled" is applied by the active_user_* views,
+  // on the database's clock, so a lapsed trial stops being returned without any
+  // status flip to schedule. That only holds while this reads the views: pointed
+  // back at the base tables it would hand a 30-day trial permanent access, which
+  // is precisely the bug the views exist to prevent.
+  it('reads the entitlement views, not the tables behind them', async () => {
+    const supabase = makeMockSupabase({
+      user_subscriptions: {
+        data: [{ tiers: { id: 'tier-basic', name: 'Basic', product_id: PRODUCT } }],
+        error: null
+      },
+      user_bundles: { data: [{ bundle_tier_id: 'suite-premium' }], error: null },
+      tier_features: { data: [{ features: { feature_key: 'anchor_alarm' } }], error: null }
+    });
+
+    const ent = await fetchEntitlements(supabase, 'user-1', PRODUCT);
+    expect(ent.features).toEqual([]);
+    expect(ent.tierNames).toEqual([]);
+  });
+
   it('returns an empty grant when the user holds no tier for this product', async () => {
     const supabase = makeMockSupabase({
-      user_subscriptions: { data: [], error: null },
-      user_bundles: { data: [], error: null }
+      active_user_subscriptions: { data: [], error: null },
+      active_user_bundles: { data: [], error: null }
     });
     const ent = await fetchEntitlements(supabase, 'user-1', PRODUCT);
     expect(ent.features).toEqual([]);
@@ -131,14 +151,14 @@ describe('fetchEntitlements', () => {
 
   it('dedupes features granted by more than one tier', async () => {
     const supabase = makeMockSupabase({
-      user_subscriptions: {
+      active_user_subscriptions: {
         data: [
           { tiers: { id: 'tier-a', name: 'Basic', product_id: PRODUCT } },
           { tiers: { id: 'tier-b', name: 'Premium', product_id: PRODUCT } }
         ],
         error: null
       },
-      user_bundles: { data: [], error: null },
+      active_user_bundles: { data: [], error: null },
       tier_features: {
         data: [
           { features: { feature_key: 'anchor_alarm' } },
@@ -154,7 +174,7 @@ describe('fetchEntitlements', () => {
 
   it('throws when a lookup fails, so callers keep their previous cache', async () => {
     const supabase = makeMockSupabase({
-      user_subscriptions: { data: null, error: new Error('offline') }
+      active_user_subscriptions: { data: null, error: new Error('offline') }
     });
     await expect(fetchEntitlements(supabase, 'user-1', PRODUCT)).rejects.toThrow('offline');
   });
@@ -163,11 +183,11 @@ describe('fetchEntitlements', () => {
 describe('refreshEntitlements', () => {
   it('writes the cache on success', async () => {
     const supabase = makeMockSupabase({
-      user_subscriptions: {
+      active_user_subscriptions: {
         data: [{ tiers: { id: 'tier-basic', name: 'Basic', product_id: PRODUCT } }],
         error: null
       },
-      user_bundles: { data: [], error: null },
+      active_user_bundles: { data: [], error: null },
       tier_features: { data: [{ features: { feature_key: 'anchor_alarm' } }], error: null }
     });
 
@@ -179,7 +199,7 @@ describe('refreshEntitlements', () => {
   it('leaves the previous cache standing on failure', async () => {
     writeEntitlements(KEY, { features: ['n2k_stream'], tierNames: ['Premium'], fetchedAt: 1 });
     const supabase = makeMockSupabase({
-      user_subscriptions: { data: null, error: new Error('offline') }
+      active_user_subscriptions: { data: null, error: new Error('offline') }
     });
 
     expect(await refreshEntitlements(supabase, 'user-1', PRODUCT, KEY)).toBe(false);
