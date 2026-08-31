@@ -10,6 +10,14 @@ export interface WeatherAlert {
     effective?: string;
     ends?: string;
     distance?: number;
+    /**
+     * Issuing NWS office, e.g. "NWS Melbourne FL", straight from the feed.
+     * Deliberately optional and never defaulted: both apps also synthesise
+     * advisories from forecast wording, and those have no office behind them.
+     * Rendered only when present, so an inferred advisory never borrows NWS's
+     * name for a call NWS did not make.
+     */
+    senderName?: string;
 }
 export interface WeatherData {
     locName?: string;

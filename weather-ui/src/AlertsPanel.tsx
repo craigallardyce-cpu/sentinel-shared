@@ -15,6 +15,14 @@ export interface WeatherAlert {
   effective?: string;
   ends?: string;
   distance?: number;
+  /**
+   * Issuing NWS office, e.g. "NWS Melbourne FL", straight from the feed.
+   * Deliberately optional and never defaulted: both apps also synthesise
+   * advisories from forecast wording, and those have no office behind them.
+   * Rendered only when present, so an inferred advisory never borrows NWS's
+   * name for a call NWS did not make.
+   */
+  senderName?: string;
 }
 
 export interface WeatherData {
@@ -274,6 +282,11 @@ export default function AlertsPanel({
                                 <span className={`text-[11px] font-mono uppercase tracking-widest ${textColorMuted}`}>
                                   {weatherData.alerts![selectedAlertIndex].headline}
                                 </span>
+                                {weatherData.alerts![selectedAlertIndex].senderName && (
+                                  <span className={`text-[11px] font-mono uppercase tracking-widest ${textColorCyan}`}>
+                                    Issued by {weatherData.alerts![selectedAlertIndex].senderName}
+                                  </span>
+                                )}
                               </div>
 
                               <div className="space-y-4 font-mono text-xs leading-relaxed uppercase">
