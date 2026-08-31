@@ -42,6 +42,8 @@ export interface AlertsPanelProps {
         borderDividerClass?: string;
         bulletinBtnClass?: string;
         bulletinOverlayBgClass?: string;
+        zonePanelClass?: string;
+        zoneChipClass?: string;
         timelineTheme?: any;
     };
 }

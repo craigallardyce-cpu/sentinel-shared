@@ -49,6 +49,8 @@ export interface AlertsPanelProps {
     borderDividerClass?: string;
     bulletinBtnClass?: string;
     bulletinOverlayBgClass?: string;
+    zonePanelClass?: string;
+    zoneChipClass?: string;
     timelineTheme?: any;
   };
 }
@@ -82,6 +84,8 @@ export default function AlertsPanel({
   const borderDividerClassThick = theme?.borderDividerClass || 'border-border-color/30';
   const bulletinBtnClass = theme?.bulletinBtnClass || 'text-cyan hover:text-cyan/80 bg-bg-card border border-border-color hover:border-text-muted';
   const bulletinOverlayBgClass = theme?.bulletinOverlayBgClass || 'bg-bg-app';
+  const zonePanelClass = theme?.zonePanelClass || 'bg-bg-card/40 border-border-color/30 border-l-4 border-l-cyan';
+  const zoneChipClass = theme?.zoneChipClass || 'text-cyan bg-cyan/10 border-cyan/20';
 
   return (
     <>
@@ -183,7 +187,40 @@ export default function AlertsPanel({
 
               {/* Scrollable Document Body */}
               <main className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 custom-scrollbar">
-                
+
+                {/* Which area this bulletin actually covers.
+                    Rendered only when the feed supplied both the place and the zone. It has no
+                    defaults on purpose: the version this replaced in HarborSentinel fell back to
+                    "Rhode Island Sound" / "ANZ235" and printed a fixed NOAA regional office, so a
+                    vessel anywhere else was told, confidently, that its forecast came from southern
+                    New England. An absent header is the honest answer; a guessed one is not. The
+                    third line is `source`, which the feed does supply, rather than a coverage-area
+                    description nothing reports. */}
+                {weatherData.locName && weatherData.marineZone && (
+                  <section className={`relative p-6 md:p-8 rounded-xl border overflow-hidden text-left ${zonePanelClass}`}>
+                    <div className="absolute top-0 right-0 p-6 opacity-20 pointer-events-none" aria-hidden="true">
+                      <ShieldAlert className={textColorCyan} size={56} />
+                    </div>
+                    <div className="relative z-10">
+                      <span className={`block text-[11px] font-bold uppercase tracking-[0.3em] ${textColorCyan}`}>
+                        Reporting area centre
+                      </span>
+                      <h3 className="mt-2 text-2xl md:text-3xl font-extrabold tracking-tight">
+                        {weatherData.locName}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-3 flex-wrap">
+                        <span className={`font-mono text-xs px-2 py-0.5 rounded-md border uppercase ${zoneChipClass}`}>
+                          Zone {weatherData.marineZone}
+                        </span>
+                        <span className="w-1 h-1 rounded-full bg-border-color/50" aria-hidden="true"></span>
+                        <span className={`text-[11px] font-mono uppercase tracking-widest ${textColorMuted}`}>
+                          {weatherData.source}
+                        </span>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
                 {/* ACTIVE NWS WARNINGS/ALERTS */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-4 px-2 select-none">
@@ -267,6 +304,14 @@ export default function AlertsPanel({
                                 <span className={`block opacity-50 ${textColorMuted}`}>Urgency</span>
                                 <span className={`font-bold uppercase ${textColorSecondary}`}>{weatherData.alerts![selectedAlertIndex].urgency || 'Immediate'}</span>
                               </div>
+                              {weatherData.alerts![selectedAlertIndex].effective && (
+                                <div>
+                                  <span className={`block opacity-50 ${textColorMuted}`}>Effective</span>
+                                  <span className={`font-bold uppercase ${textColorSecondary}`}>
+                                    {new Date(weatherData.alerts![selectedAlertIndex].effective!).toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
                               <div>
                                 <span className={`block opacity-50 ${textColorMuted}`}>Effective Until</span>
                                 <span className={`font-bold uppercase ${textColorSecondary}`}>
