@@ -16,6 +16,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,6 +63,25 @@ const warn = (area, msg) => record('WARN', area, msg);
 const exists = (p) => fs.existsSync(p);
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const readText = (p) => fs.readFileSync(p, 'utf8');
+
+/**
+ * Run git inside sentinel-shared. Returns trimmed stdout, or null if git is
+ * missing or the command fails -- including the deliberate non-zero exits of
+ * query commands like `cat-file -e` and `merge-base --is-ancestor`, where null
+ * simply means "no". Callers degrade instead of crashing, so a checkout without
+ * usable git history still runs every other check.
+ */
+function git(args) {
+  try {
+    return execFileSync('git', args, {
+      cwd: SHARED_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
 
 function walk(dir, out = [], depth = 0) {
   if (depth > 8 || !exists(dir)) return out;
@@ -260,27 +280,46 @@ for (const app of presentApps.filter((a) => a.mirrorsBackendDeps)) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. The workflow pins sentinel-shared by SHA. Flag when that pin has fallen
-//    behind, since apps would otherwise silently ship stale shared code.
+// 7. The workflow pins sentinel-shared by SHA.
+//
+//    A pin only means anything against what is PUBLISHED. actions/checkout
+//    fetches the pinned ref from GitHub, so a SHA that exists only on somebody's
+//    machine does not produce a stale build -- it produces no build at all, in
+//    all three apps at once.
+//
+//    This check used to compare the pin against local HEAD, and was wrong in
+//    both directions: it warned whenever the shared repo had unpushed commits
+//    (including deliberate WIP that must never be released), while staying
+//    silent on the one case that actually breaks CI. Compare against
+//    origin/main, and treat an unpublished pin as a failure rather than a nag.
 // ---------------------------------------------------------------------------
-const headFile = path.join(SHARED_ROOT, '.git', 'HEAD');
-let sharedHead = null;
-if (exists(headFile)) {
-  const head = readText(headFile).trim();
-  if (head.startsWith('ref: ')) {
-    const refPath = path.join(SHARED_ROOT, '.git', head.slice(5).trim());
-    if (exists(refPath)) sharedHead = readText(refPath).trim();
-  } else sharedHead = head;
-}
-if (sharedHead) {
-  for (const app of presentApps) {
-    const wf = path.join(ROOT, app.name, '.github/workflows/build.yml');
-    if (!exists(wf)) continue;
-    const m = readText(wf).match(/repository:\s*\S*sentinel-shared[\s\S]{0,400}?ref:\s*([0-9a-f]{7,40})/);
-    if (!m) { warn('pin', `${app.name}: shared checkout is not pinned to a SHA`); continue; }
-    if (!sharedHead.startsWith(m[1]) && !m[1].startsWith(sharedHead.slice(0, m[1].length))) {
-      warn('pin', `${app.name}: workflow pins sentinel-shared@${m[1].slice(0, 7)} but local HEAD is ${sharedHead.slice(0, 7)} — releases will not include newer shared changes`);
-    }
+const publishedHead = git(['rev-parse', 'origin/main']);
+// Ancestry is meaningless in a shallow clone, so downgrade to a warning there
+// rather than accusing a perfectly good pin of being unpushed.
+const shallow = git(['rev-parse', '--is-shallow-repository']) === 'true';
+
+for (const app of presentApps) {
+  const wf = path.join(ROOT, app.name, '.github/workflows/build.yml');
+  if (!exists(wf)) continue;
+  const m = readText(wf).match(/repository:\s*\S*sentinel-shared[\s\S]{0,400}?ref:\s*([0-9a-f]{7,40})/);
+  if (!m) { warn('pin', `${app.name}: shared checkout is not pinned to a SHA`); continue; }
+
+  const pin = m[1];
+  if (!publishedHead) {
+    warn('pin', `${app.name}: cannot resolve sentinel-shared origin/main, so the pin ${pin.slice(0, 7)} could not be checked`);
+    continue;
+  }
+  if (publishedHead.startsWith(pin)) continue; // pinned to the published tip
+
+  const known = git(['cat-file', '-e', `${pin}^{commit}`]) !== null;
+  const published = known && !shallow && git(['merge-base', '--is-ancestor', pin, 'origin/main']) !== null;
+
+  if (!known || shallow) {
+    warn('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)}, which this checkout cannot verify is on the remote — confirm it is pushed`);
+  } else if (!published) {
+    fail('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)}, which has never been pushed — actions/checkout cannot fetch it and the release build will fail`);
+  } else {
+    warn('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)} but origin/main is ${publishedHead.slice(0, 7)} — releases will not include newer shared changes`);
   }
 }
 
