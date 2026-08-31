@@ -17,8 +17,16 @@ export interface AisTargetData {
   lastSeen?: number;
 }
 
+/**
+ * Relative-motion figures for one target against own ship.
+ *
+ * Every angle here is TRUE, not magnetic. Bearings are derived from geographic
+ * coordinates and COG comes straight off the AIS report, which is referenced to
+ * true north; no magnetic variation is applied anywhere in this module.
+ */
 export interface TargetMetrics {
   rangeVal: number;
+  /** True bearing to the target, degrees 0-360. */
   bearingVal: number;
   cpaVal: number;
   tcpaVal: number;
@@ -27,6 +35,32 @@ export interface TargetMetrics {
   cpa: string;
   tcpa: string;
   threatLevel: 'SAFE' | 'ADVISORY';
+}
+
+/**
+ * A decoded target after getUpdatedAisTargets has enriched it with relative
+ * motion against own ship.
+ *
+ * The display strings are deliberately named apart from the numeric fields they
+ * are derived from. `heading` stays what the decoder produced -- the target's
+ * true heading in degrees -- and is no longer overwritten with a formatted
+ * course string, which had made it a number by declaration and a string in
+ * practice. Anything needing course over ground should read the numeric `cog`.
+ */
+export interface AisTargetEnriched extends AisTargetData, TargetMetrics {
+  id: string;
+  name: string;
+  sog: number;
+  cog: number;
+  /** [lat, lon], convenient for Leaflet. */
+  coords: [number, number];
+  /** SOG formatted for display, e.g. "5.2 kts". */
+  sogText: string;
+  /**
+   * COG formatted for display, e.g. "045° T". True, not magnetic: AIS position
+   * reports carry COG relative to true north and nothing here applies variation.
+   */
+  cogText: string;
 }
 
 // Multi-sentence AIVDM buffer store (indexed by sequence ID)
@@ -355,7 +389,7 @@ export function getUpdatedAisTargets(
   ownShipSog = 0,
   ownShipCog = 0,
   ownMmsi?: string | string[] | null
-): { targetsList: any[]; targetsMap: Map<string, any> } {
+): { targetsList: AisTargetEnriched[]; targetsMap: Map<string, any> } {
   const updatedMap = new Map(currentTargetsMap);
 
   const ownMmsis = new Set(
@@ -365,7 +399,7 @@ export function getUpdatedAisTargets(
   );
 
   const now = Date.now();
-  const result: any[] = [];
+  const result: AisTargetEnriched[] = [];
 
   for (const [mmsi, target] of updatedMap.entries()) {
     // Purge targets after 10 minutes of no updates
@@ -411,8 +445,8 @@ export function getUpdatedAisTargets(
       cog: safeCog,
       id: target.id || `t-${mmsi}`,
       coords: [target.lat, target.lon],
-      speed: `${safeSog.toFixed(1)} kts`,
-      heading: `${Math.round(safeCog).toString().padStart(3, '0')}° M`,
+      sogText: `${safeSog.toFixed(1)} kts`,
+      cogText: `${Math.round(safeCog).toString().padStart(3, '0')}° T`,
       ...metrics
     };
 

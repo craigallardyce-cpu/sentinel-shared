@@ -320,8 +320,8 @@ function getUpdatedAisTargets(currentTargetsMap, ownShipLat, ownShipLon, ownShip
             cog: safeCog,
             id: target.id || `t-${mmsi}`,
             coords: [target.lat, target.lon],
-            speed: `${safeSog.toFixed(1)} kts`,
-            heading: `${Math.round(safeCog).toString().padStart(3, '0')}° M`,
+            sogText: `${safeSog.toFixed(1)} kts`,
+            cogText: `${Math.round(safeCog).toString().padStart(3, '0')}° T`,
             ...metrics
         };
         result.push(fullTargetObj);
