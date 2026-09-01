@@ -51,6 +51,7 @@ describe('the fleet registry', () => {
       'display.day_brightness',
       'display.keep_awake',
       'display.night_brightness',
+      'display.night_mode',
       'logbook.quick_tap_presets',
       'units.metric',
       'vhf.monitor_audio',
@@ -264,5 +265,35 @@ describe('legacy values that a device store cannot reach on its own', () => {
       stores: [createDeviceStore(memoryStorage({ vessel_use_metric: '0' }), { app: 'ocean', registry: FLEET_SETTINGS })],
     });
     expect(chose.resolve('units.metric')).toEqual({ value: false, source: 'device' });
+  });
+});
+
+describe('VesselKeeper', () => {
+  /*
+    Three of its four settings were the fleet's own under names of its own; the
+    fourth was a setting the registry had never declared at all.
+  */
+  it('reaches its keys through settings that already existed', () => {
+    const legacyFor = (key: string) => FLEET_SETTINGS.get(key).legacy?.['vessel-keeper'];
+    expect(legacyFor('display.day_brightness')).toEqual(['vesselkeeper_day_brightness']);
+    expect(legacyFor('display.night_brightness')).toEqual(['vesselkeeper_night_brightness']);
+    expect(legacyFor('connection.backend_url')).toEqual(['vesselkeeper_server_url']);
+  });
+
+  it('contributed one the fleet was missing', () => {
+    // VesselKeeper persists night mode. HarborSentinel and OceanSentinel hold it
+    // in useState(false), so it resets to day on every restart -- which on a boat
+    // at night is a bright screen thrown at whoever is on watch.
+    const nightMode = FLEET_SETTINGS.get('display.night_mode');
+    expect(nightMode.default).toBe(false);
+    expect(nightMode.scopes).toEqual(['device']);
+    expect(nightMode.legacy?.['vessel-keeper']).toEqual(['vesselkeeper_night_mode']);
+    expect(nightMode.legacy?.harbor).toBeUndefined();
+    expect(nightMode.legacy?.ocean).toBeUndefined();
+  });
+
+  it('shares the brightness values the other two already agreed on', () => {
+    expect(FLEET_SETTINGS.get('display.day_brightness').default).toBe(100);
+    expect(FLEET_SETTINGS.get('display.night_brightness').default).toBe(60);
   });
 });

@@ -130,14 +130,42 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         type: (0, valueTypes_js_1.intType)({ min: 20, max: 100 }),
         default: 100,
         label: 'Day brightness',
-        legacy: { harbor: ['day_brightness'], ocean: ['day_brightness'] },
+        legacy: {
+            harbor: ['day_brightness'],
+            ocean: ['day_brightness'],
+            'vessel-keeper': ['vesselkeeper_day_brightness'],
+        },
     }),
     'display.night_brightness': (0, registry_js_1.defineSetting)({
         scopes: ['device'],
         type: (0, valueTypes_js_1.intType)({ min: 10, max: 100 }),
         default: 60,
         label: 'Night brightness',
-        legacy: { harbor: ['night_brightness'], ocean: ['night_brightness'] },
+        legacy: {
+            harbor: ['night_brightness'],
+            ocean: ['night_brightness'],
+            'vessel-keeper': ['vesselkeeper_night_brightness'],
+        },
+    }),
+    'display.night_mode': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: valueTypes_js_1.boolType,
+        /*
+          A toggle, so it must declare one. False is day.
+    
+          Declaring this turned up a real difference between the apps rather than
+          merely a naming one: VesselKeeper persists night mode, and HarborSentinel
+          and OceanSentinel do not -- both hold it in `useState(false)`, so it resets
+          to day on every restart. On a boat at night that means relaunching the app
+          throws a bright screen at whoever is on watch, which is the one thing the
+          red-shifted palette exists to prevent. Neither app reads this yet; the
+          setting is declared where it belongs so that fixing them is a two-line
+          change rather than a third key name.
+        */
+        default: false,
+        label: 'Night mode',
+        description: 'Red-shifted palette that preserves night vision.',
+        legacy: { 'vessel-keeper': ['vesselkeeper_night_mode'] },
     }),
     'display.keep_awake': (0, registry_js_1.defineSetting)({
         scopes: ['device'],
@@ -243,7 +271,11 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         label: 'Backend address',
         description: 'Leave empty to run standalone on this device.',
         placeholder: 'http://…',
-        legacy: { harbor: ['vessel_backend_api_url'], ocean: ['vessel_backend_api_url'] },
+        legacy: {
+            harbor: ['vessel_backend_api_url'],
+            ocean: ['vessel_backend_api_url'],
+            'vessel-keeper': ['vesselkeeper_server_url'],
+        },
     }),
     'connection.tile_proxy_url': (0, registry_js_1.defineSetting)({
         scopes: ['device'],

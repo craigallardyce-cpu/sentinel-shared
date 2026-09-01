@@ -45,6 +45,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'display.night_brightness': import("./types.js").SettingSpec<number> & {
         default: number | ((platform: import("./types.js").PlatformContext) => number);
     };
+    'display.night_mode': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
     'display.keep_awake': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
     };
