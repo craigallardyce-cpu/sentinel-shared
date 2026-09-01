@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FLEET_SETTINGS = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.DEFAULT_VESSEL_SLUG = exports.createVesselStore = exports.createCloudStore = exports.createAccountStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
+exports.FLEET_SETTINGS = exports.migrateLegacyKeys = exports.DEFAULT_MARKER_KEY = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.DEFAULT_VESSEL_SLUG = exports.createVesselStore = exports.createCloudStore = exports.createAccountStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
 var types_js_1 = require("./types.js");
 Object.defineProperty(exports, "SCOPE_ORDER", { enumerable: true, get: function () { return types_js_1.SCOPE_ORDER; } });
 var valueTypes_js_1 = require("./valueTypes.js");
@@ -28,5 +28,8 @@ Object.defineProperty(exports, "DEFAULT_VESSEL_SLUG", { enumerable: true, get: f
 var deviceStore_js_1 = require("./deviceStore.js");
 Object.defineProperty(exports, "createDeviceStore", { enumerable: true, get: function () { return deviceStore_js_1.createDeviceStore; } });
 Object.defineProperty(exports, "DEFAULT_PREFIX", { enumerable: true, get: function () { return deviceStore_js_1.DEFAULT_PREFIX; } });
+var migrate_js_1 = require("./migrate.js");
+Object.defineProperty(exports, "DEFAULT_MARKER_KEY", { enumerable: true, get: function () { return migrate_js_1.DEFAULT_MARKER_KEY; } });
+Object.defineProperty(exports, "migrateLegacyKeys", { enumerable: true, get: function () { return migrate_js_1.migrateLegacyKeys; } });
 var fleet_js_1 = require("./fleet.js");
 Object.defineProperty(exports, "FLEET_SETTINGS", { enumerable: true, get: function () { return fleet_js_1.FLEET_SETTINGS; } });

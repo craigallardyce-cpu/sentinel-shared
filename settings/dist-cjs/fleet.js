@@ -253,6 +253,107 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         legacy: { harbor: ['vessel_tile_proxy_url'] },
     }),
     // ---------------------------------------------------------------------------
+    // VHF monitoring. OceanSentinel's, and a good illustration of why one scope
+    // could never have covered a group: the tuning belongs to the radio and the
+    // machine it is plugged into, while the retention policy deletes recordings
+    // from every device on the account and therefore cannot be per-device.
+    // ---------------------------------------------------------------------------
+    'vhf.retention_days': (0, registry_js_1.defineSetting)({
+        /*
+          Account, and already treated as such before this package existed: the
+          comment in OceanSentinel's AppContext says the pruning it drives "reaches
+          every device on this account", which is why it was the one setting anybody
+          had put in the cloud. Zero means keep transcripts forever, so it is a real
+          value rather than an absence -- but it is still the owner's policy to set.
+        */
+        scopes: ['account'],
+        type: (0, valueTypes_js_1.intType)({ min: 0, max: 3650 }),
+        label: 'Keep VHF recordings for',
+        description: 'Deletes older recordings everywhere. Blank keeps them forever.',
+        placeholder: 'days',
+        legacy: { ocean: ['vhf_retention_days'] },
+    }),
+    'vhf.squelch_threshold_db': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.numberType)({ min: -100, max: 0 }),
+        label: 'Squelch threshold',
+        placeholder: 'dB',
+        legacy: { ocean: ['vhf_squelch_threshold'] },
+    }),
+    'vhf.hangover_ms': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.intType)({ min: 0, max: 30000 }),
+        label: 'Hangover time',
+        description: 'How long the receiver keeps recording after a transmission ends.',
+        placeholder: 'milliseconds',
+        legacy: { ocean: ['hangover_time'] },
+    }),
+    'vhf.monitor_audio': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: valueTypes_js_1.boolType,
+        /*
+          The one genuinely platform-dependent default in the fleet, and the reason
+          `default` may be a function at all. OceanSentinel's own comment records
+          why: a phone or tablet's microphone is usually the input, so playing it
+          back through the built-in speaker feeds the mic straight into itself. A PC
+          on a radio's line-out wants to hear the traffic.
+        */
+        default: (platform) => !platform.native,
+        label: 'Monitor audio through the speaker',
+        legacy: { ocean: ['vhf_monitor_audio'] },
+    }),
+    // ---------------------------------------------------------------------------
+    // Log book.
+    // ---------------------------------------------------------------------------
+    'logbook.auto_interval_min': (0, registry_js_1.defineSetting)({
+        scopes: ['account'],
+        type: (0, valueTypes_js_1.intType)({ min: 1, max: 1440 }),
+        label: 'Automatic entry interval',
+        placeholder: 'minutes',
+        legacy: { ocean: ['log_auto_interval'] },
+    }),
+    'logbook.included_nmea': (0, registry_js_1.defineSetting)({
+        scopes: ['account'],
+        /*
+          A closed set rather than free strings: a typo here does not fail, it
+          silently records one fewer field in the log, and a wrong log entry is
+          exactly the kind of quiet error this fleet keeps finding.
+        */
+        type: (0, valueTypes_js_1.listType)((0, valueTypes_js_1.oneOf)(['position', 'cogSog', 'wind', 'depth', 'temp', 'battery'])),
+        label: 'Fields recorded automatically',
+        placeholder: 'choose fields',
+        legacy: { ocean: ['log_included_nmea'] },
+    }),
+    'logbook.quick_tap_presets': (0, registry_js_1.defineSetting)({
+        scopes: ['account'],
+        type: (0, valueTypes_js_1.listType)((0, valueTypes_js_1.stringType)({ maxLength: 60 })),
+        label: 'Quick-tap entries',
+        placeholder: 'add a phrase',
+        legacy: { ocean: ['log_quick_tap_presets'] },
+    }),
+    // ---------------------------------------------------------------------------
+    // Everything else OceanSentinel keeps.
+    // ---------------------------------------------------------------------------
+    'ai.model': (0, registry_js_1.defineSetting)({
+        scopes: ['account'],
+        type: (0, valueTypes_js_1.stringType)({ maxLength: 64 }),
+        label: 'Transcription model',
+        placeholder: 'e.g. gemini-2.5-flash',
+        legacy: { ocean: ['gemini_model'] },
+    }),
+    'alarms.sound_enabled': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        /*
+          Device, not account: whether this screen makes a noise is a property of
+          where the screen is. The one at the nav station should be able to be silent
+          while the one in the cockpit is not.
+        */
+        type: valueTypes_js_1.boolType,
+        default: true,
+        label: 'Alarm sound',
+        legacy: { ocean: ['vessel_alarm_sound_enabled'] },
+    }),
+    // ---------------------------------------------------------------------------
     // Alarms. Host scope, not account: HarborSentinel evaluates the AIS proximity
     // alarm on-device against a local target list, which is why the cloud
     // `system_config` table deliberately has no column for any of these.

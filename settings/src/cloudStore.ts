@@ -22,6 +22,7 @@
  * depends on no Supabase library and three apps install nothing new.
  */
 
+import type { StorageLike } from './deviceStore.js';
 import type { Scope, ScopeStore } from './types.js';
 
 /**
@@ -65,6 +66,17 @@ export interface CloudStoreOptions {
   columnsTable?: { table: string; match: Record<string, string> };
   /** The server-side merge function, and any fixed arguments it takes. */
   merge: { fn: string; args?: Record<string, unknown> };
+  /**
+   * Where to keep the last successful load, so this layer can answer before
+   * `load()` resolves and while there is no network.
+   *
+   * Not an optimisation. Without it a cloud layer is empty on every first render
+   * -- the boat name would appear, blank, and then fill in -- and empty for the
+   * whole session on a boat with no internet, which is most of them. The cached
+   * copy is never authoritative: `load()` replaces it wholesale whenever the
+   * server answers.
+   */
+  cache?: { storage: StorageLike; prefix?: string };
 }
 
 export interface CloudStore extends ScopeStore {
@@ -87,6 +99,39 @@ export function createCloudStore(options: CloudStoreOptions): CloudStore {
   const cache = new Map<string, string>();
   const listeners = new Set<() => void>();
   let loaded = false;
+
+  /*
+    One entry per layer per row. The row identity is in the key so that signing
+    in as somebody else, or switching boats, cannot read back the previous
+    account's settings from a stale cache.
+  */
+  const cacheKey = `${options.cache?.prefix ?? 'sentinel.cloud.'}${scope}.${Object.values(match).join('.')}`;
+
+  function readCache(): void {
+    if (!options.cache) return;
+    try {
+      const raw = options.cache.storage.getItem(cacheKey);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof value === 'string') cache.set(key, value);
+      }
+    } catch {
+      /* Unreadable or corrupt: start empty rather than fail to construct. */
+    }
+  }
+
+  function writeCache(): void {
+    if (!options.cache) return;
+    try {
+      options.cache.storage.setItem(cacheKey, JSON.stringify(Object.fromEntries(cache)));
+    } catch {
+      /* Out of quota or storage disabled; the layer still works for this session. */
+    }
+  }
+
+  readCache();
 
   const notify = () => {
     for (const listener of listeners) listener();
@@ -144,8 +189,17 @@ export function createCloudStore(options: CloudStoreOptions): CloudStore {
           }
         }
 
-        cache.clear();
-        for (const [key, value] of next) cache.set(key, value);
+        /*
+          Only replace the cache when the server actually answered. A failed read
+          leaves whatever was cached in place, which is what keeps a boat with no
+          internet working rather than silently losing every account and vessel
+          setting it had.
+        */
+        if (found) {
+          cache.clear();
+          for (const [key, value] of next) cache.set(key, value);
+          writeCache();
+        }
 
         loaded = true;
         notify();
@@ -180,11 +234,13 @@ export function createCloudStore(options: CloudStoreOptions): CloudStore {
           const { error } = await client.rpc(merge.fn, { ...merge.args, patch: { [key]: raw } });
           if (error) throw new Error(error.message ?? String(error));
         }
+        writeCache();
         notify();
       } catch (cause) {
         // Roll back, or the screen would show a value nothing is holding.
         if (previous === undefined) cache.delete(key);
         else cache.set(key, previous);
+        writeCache();
         notify();
         throw cause;
       }
@@ -205,9 +261,11 @@ export function createCloudStore(options: CloudStoreOptions): CloudStore {
           const { error } = await client.rpc(merge.fn, { ...merge.args, remove_keys: [key] });
           if (error) throw new Error(error.message ?? String(error));
         }
+        writeCache();
         notify();
       } catch (cause) {
         if (previous !== undefined) cache.set(key, previous);
+        writeCache();
         notify();
         throw cause;
       }
@@ -229,7 +287,7 @@ export function createCloudStore(options: CloudStoreOptions): CloudStore {
  * is account-scoped changes every release and a column per setting is how
  * `system_config` reached fourteen of them.
  */
-export function createAccountStore(client: SupabaseLike, userId: string): CloudStore {
+export function createAccountStore(client: SupabaseLike, userId: string, cacheStorage?: StorageLike): CloudStore {
   return createCloudStore({
     scope: 'account',
     client,
@@ -237,6 +295,7 @@ export function createAccountStore(client: SupabaseLike, userId: string): CloudS
     match: { user_id: userId },
     jsonColumn: 'settings',
     merge: { fn: 'merge_user_settings' },
+    cache: cacheStorage ? { storage: cacheStorage } : undefined,
   });
 }
 
@@ -252,7 +311,11 @@ export const DEFAULT_VESSEL_SLUG = 'sentinel';
  * it on `vessels` published the gateway address to every signed-in user of the
  * project, which is not a hypothetical: it was verified before being moved.
  */
-export function createVesselStore(client: SupabaseLike, vesselSlug: string = DEFAULT_VESSEL_SLUG): CloudStore {
+export function createVesselStore(
+  client: SupabaseLike,
+  vesselSlug: string = DEFAULT_VESSEL_SLUG,
+  cacheStorage?: StorageLike
+): CloudStore {
   return createCloudStore({
     scope: 'vessel',
     client,
@@ -268,5 +331,6 @@ export function createVesselStore(client: SupabaseLike, vesselSlug: string = DEF
     },
     columnsTable: { table: 'vessels', match: { vessel_slug: vesselSlug } },
     merge: { fn: 'merge_vessel_settings', args: { slug: vesselSlug } },
+    cache: cacheStorage ? { storage: cacheStorage } : undefined,
   });
 }

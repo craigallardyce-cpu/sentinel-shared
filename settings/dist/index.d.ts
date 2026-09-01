@@ -10,5 +10,7 @@ export { createAccountStore, createCloudStore, createVesselStore, DEFAULT_VESSEL
 export type { CloudStore, CloudStoreOptions, SupabaseLike } from './cloudStore.js';
 export { createDeviceStore, DEFAULT_PREFIX } from './deviceStore.js';
 export type { DeviceStore, DeviceStoreOptions, StorageLike } from './deviceStore.js';
+export { DEFAULT_MARKER_KEY, migrateLegacyKeys } from './migrate.js';
+export type { MigrateLegacyOptions, MigrateLegacyResult } from './migrate.js';
 export { FLEET_SETTINGS } from './fleet.js';
 export type { FleetSettings } from './fleet.js';

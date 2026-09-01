@@ -259,3 +259,70 @@ describe('the whole chain, against the live rows', () => {
     expect(settings.source('units.metric')).toBe('account');
   });
 });
+
+describe('the offline cache', () => {
+  function cacheStorage(seed: Record<string, string> = {}) {
+    const map = new Map(Object.entries(seed));
+    return {
+      map,
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => void map.set(key, value),
+      removeItem: (key: string) => void map.delete(key),
+    };
+  }
+
+  it('answers on the very first render, before load() has resolved', async () => {
+    const storage = cacheStorage();
+    const first = createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage);
+    await first.load();
+
+    // A later boot, same device: the values are there before anything is fetched.
+    const second = createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage);
+    expect(second.loaded).toBe(false);
+    expect(second.get('vessel.name')).toBe('Saorsa');
+    expect(second.get('nmea.gateway.host')).toBe('192.168.86.33');
+  });
+
+  it('keeps working with no network at all', async () => {
+    const storage = cacheStorage();
+    const online = createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage);
+    await online.load();
+
+    // Offline: the read fails, and the cached values must survive it. Losing every
+    // account and vessel setting the moment a boat leaves wifi would be worse than
+    // any staleness.
+    const offline = createVesselStore(fakeClient({}).client, 'sentinel', storage);
+    await expect(offline.load()).resolves.toBe(false);
+    expect(offline.get('vessel.name')).toBe('Saorsa');
+  });
+
+  it('is replaced wholesale when the server answers, so it is never authoritative', async () => {
+    const storage = cacheStorage();
+    await createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage).load();
+
+    const renamed = {
+      vessel_settings: { settings: { 'nmea.gateway.host': '10.10.10.1' } },
+      vessels: { name: 'Saorsaa', mmsi: null, vessel_type: '' },
+    };
+    const store = createVesselStore(fakeClient(renamed).client, 'sentinel', storage);
+    await store.load();
+
+    expect(store.get('vessel.name')).toBe('Saorsaa');
+    expect(store.get('nmea.gateway.host')).toBe('10.10.10.1');
+    // Gone from the row, so gone from the cache -- not left behind as a ghost.
+    expect(store.get('nmea.datahub_url')).toBeUndefined();
+  });
+
+  it('keys the cache by row, so another account cannot read this one back', async () => {
+    const storage = cacheStorage();
+    await createAccountStore(fakeClient(ACCOUNT).client, 'user-1', storage).load();
+
+    const other = createAccountStore(fakeClient({}).client, 'user-2', storage);
+    expect(other.get('units.metric')).toBeUndefined();
+  });
+
+  it('survives a corrupt cache entry rather than failing to construct', () => {
+    const storage = cacheStorage({ 'sentinel.cloud.vessel.sentinel': 'not json' });
+    expect(() => createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage)).not.toThrow();
+  });
+});

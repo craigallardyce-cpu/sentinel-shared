@@ -60,6 +60,19 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'nmea.datahub_url': import("./types.js").SettingSpec<string>;
     'connection.backend_url': import("./types.js").SettingSpec<string>;
     'connection.tile_proxy_url': import("./types.js").SettingSpec<string>;
+    'vhf.retention_days': import("./types.js").SettingSpec<number>;
+    'vhf.squelch_threshold_db': import("./types.js").SettingSpec<number>;
+    'vhf.hangover_ms': import("./types.js").SettingSpec<number>;
+    'vhf.monitor_audio': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'logbook.auto_interval_min': import("./types.js").SettingSpec<number>;
+    'logbook.included_nmea': import("./types.js").SettingSpec<("position" | "cogSog" | "wind" | "depth" | "temp" | "battery")[]>;
+    'logbook.quick_tap_presets': import("./types.js").SettingSpec<string[]>;
+    'ai.model': import("./types.js").SettingSpec<string>;
+    'alarms.sound_enabled': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
     'alarms.ais_proximity.enabled': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
     };

@@ -34,6 +34,42 @@ function createCloudStore(options) {
     const cache = new Map();
     const listeners = new Set();
     let loaded = false;
+    /*
+      One entry per layer per row. The row identity is in the key so that signing
+      in as somebody else, or switching boats, cannot read back the previous
+      account's settings from a stale cache.
+    */
+    const cacheKey = `${options.cache?.prefix ?? 'sentinel.cloud.'}${scope}.${Object.values(match).join('.')}`;
+    function readCache() {
+        if (!options.cache)
+            return;
+        try {
+            const raw = options.cache.storage.getItem(cacheKey);
+            if (!raw)
+                return;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object')
+                return;
+            for (const [key, value] of Object.entries(parsed)) {
+                if (typeof value === 'string')
+                    cache.set(key, value);
+            }
+        }
+        catch {
+            /* Unreadable or corrupt: start empty rather than fail to construct. */
+        }
+    }
+    function writeCache() {
+        if (!options.cache)
+            return;
+        try {
+            options.cache.storage.setItem(cacheKey, JSON.stringify(Object.fromEntries(cache)));
+        }
+        catch {
+            /* Out of quota or storage disabled; the layer still works for this session. */
+        }
+    }
+    readCache();
     const notify = () => {
         for (const listener of listeners)
             listener();
@@ -89,9 +125,18 @@ function createCloudStore(options) {
                         }
                     }
                 }
-                cache.clear();
-                for (const [key, value] of next)
-                    cache.set(key, value);
+                /*
+                  Only replace the cache when the server actually answered. A failed read
+                  leaves whatever was cached in place, which is what keeps a boat with no
+                  internet working rather than silently losing every account and vessel
+                  setting it had.
+                */
+                if (found) {
+                    cache.clear();
+                    for (const [key, value] of next)
+                        cache.set(key, value);
+                    writeCache();
+                }
                 loaded = true;
                 notify();
                 return found;
@@ -127,6 +172,7 @@ function createCloudStore(options) {
                     if (error)
                         throw new Error(error.message ?? String(error));
                 }
+                writeCache();
                 notify();
             }
             catch (cause) {
@@ -135,6 +181,7 @@ function createCloudStore(options) {
                     cache.delete(key);
                 else
                     cache.set(key, previous);
+                writeCache();
                 notify();
                 throw cause;
             }
@@ -157,11 +204,13 @@ function createCloudStore(options) {
                     if (error)
                         throw new Error(error.message ?? String(error));
                 }
+                writeCache();
                 notify();
             }
             catch (cause) {
                 if (previous !== undefined)
                     cache.set(key, previous);
+                writeCache();
                 notify();
                 throw cause;
             }
@@ -180,7 +229,7 @@ function createCloudStore(options) {
  * is account-scoped changes every release and a column per setting is how
  * `system_config` reached fourteen of them.
  */
-function createAccountStore(client, userId) {
+function createAccountStore(client, userId, cacheStorage) {
     return createCloudStore({
         scope: 'account',
         client,
@@ -188,6 +237,7 @@ function createAccountStore(client, userId) {
         match: { user_id: userId },
         jsonColumn: 'settings',
         merge: { fn: 'merge_user_settings' },
+        cache: cacheStorage ? { storage: cacheStorage } : undefined,
     });
 }
 exports.DEFAULT_VESSEL_SLUG = 'sentinel';
@@ -201,7 +251,7 @@ exports.DEFAULT_VESSEL_SLUG = 'sentinel';
  * it on `vessels` published the gateway address to every signed-in user of the
  * project, which is not a hypothetical: it was verified before being moved.
  */
-function createVesselStore(client, vesselSlug = exports.DEFAULT_VESSEL_SLUG) {
+function createVesselStore(client, vesselSlug = exports.DEFAULT_VESSEL_SLUG, cacheStorage) {
     return createCloudStore({
         scope: 'vessel',
         client,
@@ -217,5 +267,6 @@ function createVesselStore(client, vesselSlug = exports.DEFAULT_VESSEL_SLUG) {
         },
         columnsTable: { table: 'vessels', match: { vessel_slug: vesselSlug } },
         merge: { fn: 'merge_vessel_settings', args: { slug: vesselSlug } },
+        cache: cacheStorage ? { storage: cacheStorage } : undefined,
     });
 }

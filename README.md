@@ -198,6 +198,20 @@ would let two devices erase each other's settings.
 
 The `host` layer has no store yet; it lands with the NMEA work.
 
+Cloud layers keep an offline cache of their last successful load, so they answer
+on the first render and keep answering with no network — which on a boat is most
+of the time. A live read replaces it wholesale, so it is never authoritative.
+
+**Adopting loses nothing, but not for free.** A setting declares where it used to
+live per app, and the device store reads those names when the namespaced key is
+absent. That only covers settings declared at `device` scope, because a store is
+never consulted for a scope its setting does not declare — so anything held at
+`account` or `vessel` has its old value sitting in `localStorage` where nothing
+will read it. `migrateLegacyKeys()` carries those up once and records a marker.
+Call it **after** every cloud layer has finished `load()`: a setting reads as
+unconfigured while its layer is still loading, and migrating into that would push
+a stale local value over what the account already holds.
+
 **Status: consumed by nobody.** It is deliberately unwired, so it can be reviewed
 and built against without any app changing behaviour.
 

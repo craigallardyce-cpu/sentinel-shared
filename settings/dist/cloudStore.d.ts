@@ -21,6 +21,7 @@
  * The client is injected, exactly as in `@sentinel/vessel`, so this package
  * depends on no Supabase library and three apps install nothing new.
  */
+import type { StorageLike } from './deviceStore.js';
 import type { Scope, ScopeStore } from './types.js';
 /**
  * Any `@supabase/supabase-js` client, structurally. Deliberately loose: a
@@ -66,6 +67,20 @@ export interface CloudStoreOptions {
         fn: string;
         args?: Record<string, unknown>;
     };
+    /**
+     * Where to keep the last successful load, so this layer can answer before
+     * `load()` resolves and while there is no network.
+     *
+     * Not an optimisation. Without it a cloud layer is empty on every first render
+     * -- the boat name would appear, blank, and then fill in -- and empty for the
+     * whole session on a boat with no internet, which is most of them. The cached
+     * copy is never authoritative: `load()` replaces it wholesale whenever the
+     * server answers.
+     */
+    cache?: {
+        storage: StorageLike;
+        prefix?: string;
+    };
 }
 export interface CloudStore extends ScopeStore {
     /**
@@ -86,7 +101,7 @@ export declare function createCloudStore(options: CloudStoreOptions): CloudStore
  * is account-scoped changes every release and a column per setting is how
  * `system_config` reached fourteen of them.
  */
-export declare function createAccountStore(client: SupabaseLike, userId: string): CloudStore;
+export declare function createAccountStore(client: SupabaseLike, userId: string, cacheStorage?: StorageLike): CloudStore;
 export declare const DEFAULT_VESSEL_SLUG = "sentinel";
 /**
  * The vessel layer: `public.vessels`, one row per boat.
@@ -98,4 +113,4 @@ export declare const DEFAULT_VESSEL_SLUG = "sentinel";
  * it on `vessels` published the gateway address to every signed-in user of the
  * project, which is not a hypothetical: it was verified before being moved.
  */
-export declare function createVesselStore(client: SupabaseLike, vesselSlug?: string): CloudStore;
+export declare function createVesselStore(client: SupabaseLike, vesselSlug?: string, cacheStorage?: StorageLike): CloudStore;

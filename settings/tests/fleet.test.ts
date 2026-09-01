@@ -36,6 +36,8 @@ describe('the fleet registry', () => {
     back one well-meant default at a time.
   */
   it('ships a default only for toggles, brightness and the dim interval', () => {
+    // Every addition here is forced rather than chosen: createRegistry requires a
+    // default on any bool, so a new toggle lands in this list by rule.
     const withDefaults = FLEET_SETTINGS.all()
       .filter((definition) => definition.default !== undefined)
       .map((definition) => definition.key)
@@ -43,12 +45,14 @@ describe('the fleet registry', () => {
 
     expect(withDefaults).toEqual([
       'alarms.ais_proximity.enabled',
+      'alarms.sound_enabled',
       'display.auto_dim',
       'display.auto_dim_minutes',
       'display.day_brightness',
       'display.keep_awake',
       'display.night_brightness',
       'units.metric',
+      'vhf.monitor_audio',
     ]);
   });
 
@@ -220,14 +224,23 @@ describe('legacy values that a device store cannot reach on its own', () => {
     scope. Listing the remainder here is what keeps the difference deliberate: a
     fifth entry has to be argued for rather than appearing by omission.
   */
-  it('names exactly the settings still waiting on a migration to carry their value up', () => {
+  it('names exactly the settings whose legacy value needs migrateLegacyKeys', () => {
     const unreachable = FLEET_SETTINGS.all()
       .filter((definition) => Object.keys(definition.legacy ?? {}).length > 0)
       .filter((definition) => !definition.scopes.includes('device'))
       .map((definition) => definition.key)
       .sort();
 
-    expect(unreachable).toEqual(['vessel.mmsi', 'vessel.name', 'vessel.type']);
+    expect(unreachable).toEqual([
+      'ai.model',
+      'logbook.auto_interval_min',
+      'logbook.included_nmea',
+      'logbook.quick_tap_presets',
+      'vessel.mmsi',
+      'vessel.name',
+      'vessel.type',
+      'vhf.retention_days',
+    ]);
   });
 
   it('keeps a navigator who chose metric on metric', () => {
