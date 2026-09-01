@@ -675,6 +675,116 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 }
 
 // ---------------------------------------------------------------------------
+// 11. Theme adoption.
+//
+//    Colour has been tokenised since v2.8, but type, faces and shadows only
+//    joined it in v2.9, and each of these guards a regression that shipped:
+//      - shadows carried literal Tailwind palette colours, so an element
+//        changed theme at night and its halo stayed in daylight;
+//      - 858 hand-written text-[Npx] values had drifted down to 9px on screens
+//        read at arm's length on a heeled boat;
+//      - two of three apps fetched their faces from fonts.googleapis.com,
+//        which on a boat means falling back to system fonts at anchor;
+//      - HarborSentinel set font-size-adjust that no other app had, so the
+//        same nominal px rendered ~8% smaller there than everywhere else.
+//    The last one is a burndown counter rather than a rule.
+// ---------------------------------------------------------------------------
+const APP_SRC = {
+  OceanSentinel: 'frontend/src',
+  HarborSentinel: 'src',
+  VesselKeeper: 'src',
+};
+const APP_HTML = {
+  OceanSentinel: 'frontend/index.html',
+  HarborSentinel: 'index.html',
+  VesselKeeper: 'index.html',
+};
+const SOURCE_EXT = ['.jsx', '.tsx', '.js', '.ts', '.css'];
+
+// The two colours that mean the same thing in every theme, so they may stay literal.
+const NEUTRAL_SHADOW = /^(?:rgba?\(\s*(?:0\s*,\s*0\s*,\s*0|255\s*,\s*255\s*,\s*255)\b|#(?:000|fff|000000|ffffff)\b)/i;
+const SHADOW_ARBITRARY = /(?:drop-)?shadow-\[[^\]]*\]/g;
+const SHADOW_COLOUR = /(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/g;
+const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
+// A hand-rolled button wearing the fleet's own colours is one @sentinel/ui
+// never got to own. Icon-only affordances are not caught, and should not be.
+const RAW_ACCENT_BUTTON = /<button\b[^>]{0,600}?(?:bg-cyan|bg-primary|text-cyan|bg-bg-card|border-cyan|bg-red|bg-green|bg-warning)/g;
+const stripCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '');
+const sample = (list, n = 3) => list.slice(0, n).join(', ') + (list.length > n ? `, +${list.length - n} more` : '');
+
+for (const app of presentApps) {
+  const srcRel = APP_SRC[app.name];
+  if (!srcRel) continue;
+  const srcDir = path.join(ROOT, app.name, srcRel);
+  if (!exists(srcDir)) continue;
+
+  const files = walk(srcDir).filter((f) => SOURCE_EXT.includes(path.extname(f)));
+  const rel = (f) => path.relative(path.join(ROOT, app.name), f).split(path.sep).join('/');
+
+  const litShadows = [];
+  const smallType = [];
+  const localFaces = [];
+  const rawButtons = [];
+  let arbitraryText = 0;
+
+  for (const f of files) {
+    const src = readText(f);
+
+    for (const cls of src.match(SHADOW_ARBITRARY) ?? []) {
+      for (const colour of cls.match(SHADOW_COLOUR) ?? []) {
+        if (!NEUTRAL_SHADOW.test(colour)) litShadows.push(`${rel(f)} ${colour}`);
+      }
+    }
+
+    for (const m of src.matchAll(ARBITRARY_TEXT)) {
+      arbitraryText++;
+      if (parseFloat(m[1]) < 12) smallType.push(`${rel(f)} ${m[0]}`);
+    }
+
+    for (const m of src.matchAll(RAW_ACCENT_BUTTON)) rawButtons.push(rel(f));
+
+    if (path.extname(f) === '.css') {
+      const css = stripCssComments(src);
+      if (/@font-face\b/.test(css)) localFaces.push(`${rel(f)} @font-face`);
+      if (/^\s*font-size-adjust\s*:/m.test(css)) localFaces.push(`${rel(f)} font-size-adjust`);
+    }
+  }
+
+  if (litShadows.length) {
+    fail('theme', `${app.name}: ${litShadows.length} shadow(s) carry a literal colour instead of a token — ` +
+      `the element follows .theme-night and the glow does not, which is how a teal halo ends up on a ` +
+      `red-adapted bridge. Use var(--color-*-glow), or color-mix on the token for other alphas: ${sample(litShadows)}`);
+  }
+  if (smallType.length) {
+    fail('type', `${app.name}: ${smallType.length} type size(s) below the 12px floor in ` +
+      `@sentinel/theme/type.css — these screens are read at arm's length, in spray, sometimes ` +
+      `through gloves: ${sample(smallType)}`);
+  }
+  if (localFaces.length) {
+    warn('theme', `${app.name}: declares typography that belongs to @sentinel/theme — faces come from ` +
+      `fonts.css and optical size is a fleet-wide property, not a per-app one: ${sample(localFaces)}`);
+  }
+  if (arbitraryText) {
+    warn('type', `${app.name}: ${arbitraryText} hand-written text-[Npx] value(s). All are at or above the ` +
+      `floor, so this is a burndown count, not a fault — prefer the named steps in ` +
+      `@sentinel/theme/type.css as these are touched.`);
+  }
+  if (rawButtons.length) {
+    const files = [...new Set(rawButtons)];
+    warn('ui', `${app.name}: ${rawButtons.length} hand-rolled <button>(s) wearing fleet colours across ` +
+      `${files.length} file(s) — these are the ones @sentinel/ui's Button should own: ${sample(files)}`);
+  }
+
+  const htmlRel = APP_HTML[app.name];
+  const htmlPath = htmlRel ? path.join(ROOT, app.name, htmlRel) : null;
+  if (htmlPath && exists(htmlPath) && /fonts\.googleapis\.com/.test(readText(htmlPath))) {
+    fail('theme', `${app.name}: ${htmlRel} loads fonts from fonts.googleapis.com — these apps run offline ` +
+      `at anchor, where a font fetched over the network is a font that is missing. The faces ship with ` +
+      `@sentinel/theme, which every app already imports.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 const scope = presentApps.length > 1 ? 'full fleet' : `${presentApps[0].name} only (cross-app checks skipped)`;
 console.log(`Fleet drift check — scope: ${scope}\n`);
 const fails = results.filter((r) => r.level === 'FAIL');
