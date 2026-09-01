@@ -292,11 +292,34 @@ for (const app of presentApps.filter((a) => a.mirrorsBackendDeps)) {
 //    (including deliberate WIP that must never be released), while staying
 //    silent on the one case that actually breaks CI. Compare against
 //    origin/main, and treat an unpublished pin as a failure rather than a nag.
+//
+//    Staleness is measured against the last published commit that touched
+//    something an app actually builds against -- not against the tip. Editing
+//    this script, or a README, moves the tip without changing a single byte any
+//    app consumes, and a pin "behind" only such commits is not stale at all.
+//    Warning about it would be noise, and noise in a category teaches the reader
+//    to skip the category, which is how a real warning gets missed.
 // ---------------------------------------------------------------------------
 const publishedHead = git(['rev-parse', 'origin/main']);
 // Ancestry is meaningless in a shallow clone, so downgrade to a warning there
 // rather than accusing a perfectly good pin of being unpushed.
 const shallow = git(['rev-parse', '--is-shallow-repository']) === 'true';
+
+// Paths in sentinel-shared that no app build consumes. Everything else counts,
+// so a new package directory is treated as consumable by default -- the
+// fail-safe direction, since the cost of a spurious warning is far below the
+// cost of silently shipping stale shared code.
+const NOT_CONSUMED = ['scripts/', 'skills/', '*.md', '.gitignore'];
+
+/**
+ * The newest published commit touching a path an app builds against, or null if
+ * that cannot be determined (no git, shallow clone) -- in which case callers
+ * fall back to the tip and simply warn slightly more often.
+ */
+const releaseHead = shallow ? null : git([
+  'rev-list', '-n', '1', 'origin/main', '--', '.',
+  ...NOT_CONSUMED.map((p) => `:(exclude)${p}`),
+]);
 
 for (const app of presentApps) {
   const wf = path.join(ROOT, app.name, '.github/workflows/build.yml');
@@ -318,8 +341,11 @@ for (const app of presentApps) {
     warn('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)}, which this checkout cannot verify is on the remote — confirm it is pushed`);
   } else if (!published) {
     fail('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)}, which has never been pushed — actions/checkout cannot fetch it and the release build will fail`);
+  } else if (releaseHead && git(['merge-base', '--is-ancestor', releaseHead, pin]) !== null) {
+    continue; // behind the tip, but carries every shared change an app builds against
   } else {
-    warn('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)} but origin/main is ${publishedHead.slice(0, 7)} — releases will not include newer shared changes`);
+    const target = releaseHead || publishedHead;
+    warn('pin', `${app.name}: pins sentinel-shared@${pin.slice(0, 7)} but the newest shared change an app builds against is ${target.slice(0, 7)} — releases will not include it`);
   }
 }
 
