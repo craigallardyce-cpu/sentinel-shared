@@ -27,6 +27,7 @@ Projects/
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button`, `Input`/`Select`/`Textarea`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | OceanSentinel, VesselKeeper |
+| `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | (landing; consumed by nobody yet) |
 
 
 ## `@sentinel/theme`
@@ -107,6 +108,60 @@ Column grants decide who may write what (migrations `002` and `007` in the
 MarinerSentinel Website repo): `anon` reads the identity columns and may update
 only `mmsi`/`updated_at`; `authenticated` may also update `name`/`vessel_type`;
 the site secrets are not client-readable at all.
+
+## `@sentinel/settings`
+
+One declaration per setting, in one place, replacing 81 flat `localStorage` keys
+spread over 55 files in two apps. A setting says what it is, what it defaults to,
+and — the load-bearing part — **which layers are allowed to hold it**:
+
+```ts
+'nmea.gateway.host': defineSetting({
+  scopes: ['vessel', 'host', 'device'],
+  type: hostType,
+  default: '10.10.10.1',
+  label: 'NMEA gateway address',
+  legacy: { ocean: ['vessel_nmea_local_host'] },
+})
+```
+
+Reading walks `account → vessel → host → device` and keeps the **last** layer that
+answered, so a device override beats the boat, which beats the account, and the
+declared default is the floor. `resolve()` returns the value *and* which layer it
+came from, which is what lets a settings screen distinguish "from the boat" from
+"set on this device" and offer to clear the override.
+
+That layering is not a nicety. The NMEA gateway has two right answers at once —
+the boat's multiplexer is at a fixed address, and a phone in the cabin reaches it
+through the PC — and having only one place to put it is why HarborSentinel strips
+the host and port out of its payload on Android, so a phone cannot overwrite the
+PC's hardware settings.
+
+Four properties, each answering something that has already gone wrong here:
+
+- **One literal per setting.** The default lives in the declaration, and
+  `createRegistry` refuses one that does not satisfy its own type — on both
+  platform branches. OceanSentinel currently has three different defaults for the
+  NMEA gateway, one of which is a home LAN address.
+- **Partial writes by construction.** `set()` takes one key. There is no
+  object-shaped write, so the shape that made `POST /config` null every omitted
+  field cannot be spelled.
+- **Reads are lenient, writes are strict.** A layer holding a value this build
+  cannot parse is skipped, not fatal — instead of the `NaN` that
+  `parseInt(localStorage.getItem(...))` hands on today. A write that does not
+  parse, or names a scope the setting does not declare, throws.
+- **Adoption loses nothing.** A setting declares where it used to live per app
+  (`harbor_sentinel_keep_awake` and `ocean_sentinel_keep_awake` are one setting),
+  and the device store reads those names when the namespaced key is absent —
+  read-only, so a read never rewrites somebody's storage.
+
+Stores are injected, so the package has no runtime dependencies and adds none to
+the three apps. `@sentinel/settings` currently ships the registry, the validator
+set and the `device` store; the `host` and cloud stores land with the apps that
+need them.
+
+**Status: consumed by nobody.** It is deliberately unwired, so it can be reviewed
+and built against without any app changing behaviour.
 
 ## Review finding H6: investigated, then parked
 

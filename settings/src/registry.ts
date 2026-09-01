@@ -1,0 +1,109 @@
+/**
+ * The registry: the set of settings that exist, and the checks that a
+ * declaration is coherent before anything tries to use it.
+ *
+ * Every check here fails at construction — which means at import, which means at
+ * the app's first render and in CI, rather than on a boat. That placement is the
+ * whole value of the file. A default that does not satisfy its own type is
+ * exactly the class of mistake that shipped a home LAN address as
+ * OceanSentinel's NMEA gateway default, and it is caught here in one line.
+ */
+
+import { SCOPE_ORDER } from './types.js';
+import type { PlatformContext, Scope, SettingDefinition, SettingSpec } from './types.js';
+
+/**
+ * Dotted lower-case segments. A flat namespace with no grammar is how
+ * `night_brightness`, `hangover_time` and `vessel_passages` — a preference, a
+ * tuning constant and a cached list of passages — ended up indistinguishable
+ * from each other in the same store.
+ */
+const KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+
+/** Both platform branches, so a platform-dependent default is checked in full. */
+const PLATFORMS: readonly PlatformContext[] = [{ native: false }, { native: true }];
+
+/** Authoring helper. Identity at runtime; it exists to anchor type inference and JSDoc. */
+export function defineSetting<T>(spec: SettingSpec<T>): SettingSpec<T> {
+  return spec;
+}
+
+/** Resolve a declared default for a platform, whether it is a literal or a function. */
+export function defaultFor<T>(spec: SettingSpec<T>, platform: PlatformContext): T {
+  return typeof spec.default === 'function' ? (spec.default as (p: PlatformContext) => T)(platform) : spec.default;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnySpec = SettingSpec<any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyDefinition = SettingDefinition<any>;
+
+export interface Registry<D extends Record<string, AnySpec>> {
+  /** The specs as authored, for typed lookups by key literal. */
+  readonly specs: D;
+  has(key: string): boolean;
+  /** Throws for an unknown key: a typo in a settings key should not read as "unset". */
+  get(key: string): AnyDefinition;
+  keys(): string[];
+  all(): AnyDefinition[];
+}
+
+export function createRegistry<D extends Record<string, AnySpec>>(specs: D): Registry<D> {
+  const byKey = new Map<string, AnyDefinition>();
+
+  for (const [key, spec] of Object.entries(specs)) {
+    if (!KEY_PATTERN.test(key)) {
+      throw new Error(`Settings: "${key}" is not a valid key (lower-case dotted segments, e.g. nmea.gateway.host).`);
+    }
+    if (byKey.has(key)) {
+      throw new Error(`Settings: "${key}" is declared twice.`);
+    }
+    if (spec.scopes.length === 0) {
+      throw new Error(`Settings: "${key}" declares no scopes, so nothing could ever hold it.`);
+    }
+
+    const seen = new Set<Scope>();
+    for (const scope of spec.scopes) {
+      if (!SCOPE_ORDER.includes(scope)) {
+        throw new Error(`Settings: "${key}" declares unknown scope "${scope}".`);
+      }
+      if (seen.has(scope)) {
+        throw new Error(`Settings: "${key}" declares scope "${scope}" twice.`);
+      }
+      seen.add(scope);
+    }
+
+    /*
+      The default must satisfy its own type.
+
+      Cheap to check and it catches the exact shape of two bugs already in the
+      tree: a port declared as a string, and an address that is not one. Both
+      branches of a platform-dependent default are checked, because the one that
+      only runs on a phone is the one nobody exercises before release.
+    */
+    for (const platform of PLATFORMS) {
+      const value = defaultFor(spec, platform);
+      if (spec.type.parse(value) === undefined) {
+        const where = typeof spec.default === 'function' ? ` (native: ${platform.native})` : '';
+        throw new Error(
+          `Settings: the default for "${key}"${where} is not a valid ${spec.type.name}: ${JSON.stringify(value)}.`
+        );
+      }
+      if (typeof spec.default !== 'function') break;
+    }
+
+    byKey.set(key, { ...spec, key });
+  }
+
+  return {
+    specs,
+    has: (key) => byKey.has(key),
+    get(key) {
+      const definition = byKey.get(key);
+      if (!definition) throw new Error(`Settings: "${key}" is not a declared setting.`);
+      return definition;
+    },
+    keys: () => [...byKey.keys()],
+    all: () => [...byKey.values()],
+  };
+}
