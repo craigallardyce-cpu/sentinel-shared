@@ -85,13 +85,25 @@ export const FLEET_SETTINGS = createRegistry({
     // ---------------------------------------------------------------------------
     'units.metric': defineSetting({
         /*
-          Account rather than vessel: it is a preference of the person reading the
-          screen, not a property of the boat. Two crew on one boat may reasonably
-          disagree, and today they cannot — HarborSentinel syncs `use_metric`
-          through the shared `system_config` row.
+          A preference of the person reading the screen, not a property of the boat —
+          so it follows the account across their devices, and a device may still
+          override it. Both layers are needed and the argument for the second is the
+          same one that rules out `vessel`: two crew on one boat may reasonably
+          disagree, and today they cannot, because HarborSentinel syncs `use_metric`
+          through the one shared `system_config` row.
+    
+          Declaring `device` is also what lets the pre-registry value be read at all.
+          A store is only consulted for a scope the setting declares, so with
+          `account` alone the `vessel_use_metric` below was silently unreachable and
+          a navigator who had chosen metric would have come back to feet.
         */
-        scopes: ['account'],
+        scopes: ['account', 'device'],
         type: boolType,
+        /*
+          False is Imperial, which is what both apps do today: HarborSentinel's
+          column is `use_metric INTEGER DEFAULT 0` and OceanSentinel reads
+          `parseInt(localStorage.getItem('vessel_use_metric') || '0', 10)`.
+        */
         default: false,
         label: 'Metric units',
         legacy: { ocean: ['vessel_use_metric'] },

@@ -203,3 +203,52 @@ describe('a real device adopting the registry', () => {
     expect(settings.source('nmea.gateway.port')).toBe('unset');
   });
 });
+
+describe('legacy values that a device store cannot reach on its own', () => {
+  /*
+    The trap this names.
+
+    The device store falls back to a setting's old localStorage key — but a store
+    is only consulted for a scope the setting declares, so a setting that lives at
+    `vessel` or `account` cannot read its own pre-registry value even though that
+    value is sitting in localStorage. It resolves to its default instead, silently,
+    and the navigator's answer is gone.
+
+    That is fine for a boat name or an MMSI, which genuinely are not per-device and
+    must be lifted into the vessel layer by an explicit one-time migration. It was
+    NOT fine for units, which is a per-reader preference that simply had the wrong
+    scope. Listing the remainder here is what keeps the difference deliberate: a
+    fifth entry has to be argued for rather than appearing by omission.
+  */
+  it('names exactly the settings still waiting on a migration to carry their value up', () => {
+    const unreachable = FLEET_SETTINGS.all()
+      .filter((definition) => Object.keys(definition.legacy ?? {}).length > 0)
+      .filter((definition) => !definition.scopes.includes('device'))
+      .map((definition) => definition.key)
+      .sort();
+
+    expect(unreachable).toEqual(['vessel.mmsi', 'vessel.name', 'vessel.type']);
+  });
+
+  it('keeps a navigator who chose metric on metric', () => {
+    const settings = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [createDeviceStore(memoryStorage({ vessel_use_metric: '1' }), { app: 'ocean', registry: FLEET_SETTINGS })],
+    });
+    expect(settings.resolve('units.metric')).toEqual({ value: true, source: 'device' });
+  });
+
+  it('defaults to Imperial, as both apps do today', () => {
+    const settings = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [createDeviceStore(memoryStorage(), { app: 'harbor', registry: FLEET_SETTINGS })],
+    });
+    expect(settings.resolve('units.metric')).toEqual({ value: false, source: 'default' });
+
+    const chose = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [createDeviceStore(memoryStorage({ vessel_use_metric: '0' }), { app: 'ocean', registry: FLEET_SETTINGS })],
+    });
+    expect(chose.resolve('units.metric')).toEqual({ value: false, source: 'device' });
+  });
+});
