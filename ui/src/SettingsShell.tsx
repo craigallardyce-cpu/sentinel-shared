@@ -22,7 +22,7 @@ export function SettingsSection({ title, icon, description, children, className 
   return (
     <section className={cn('space-y-3', className)}>
       <header>
-        <h3 className="flex items-center gap-2 text-[11px] font-mono font-bold uppercase tracking-wider text-cyan">
+        <h3 className="flex items-center gap-2 text-[13px] font-mono font-bold uppercase tracking-wider text-cyan">
           {icon && <span className="shrink-0" aria-hidden>{icon}</span>}
           {title}
         </h3>

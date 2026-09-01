@@ -22,7 +22,7 @@ export interface WindLegendProps {
 export default function WindLegend({ isLightBg }: WindLegendProps) {
   return (
     <div className="glass-panel rounded-lg px-2.5 py-1.5 flex items-center gap-2 select-none pointer-events-none">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-text-muted">Wind</span>
+      <span className="text-[12px] font-mono uppercase tracking-widest text-text-muted">Wind</span>
       <div className="flex items-end gap-px">
         {WIND_BANDS.map((band) => (
           <div key={band.from} className="flex flex-col items-center gap-1">
@@ -30,11 +30,11 @@ export default function WindLegend({ isLightBg }: WindLegendProps) {
               className="block w-6 sm:w-7 h-1.5 rounded-[1px]"
               style={{ backgroundColor: `rgb(${isLightBg ? band.light : band.dark})` }}
             />
-            <span className="text-[9px] font-mono text-text-muted leading-none">{band.from}</span>
+            <span className="text-[12px] font-mono text-text-muted leading-none">{band.from}</span>
           </div>
         ))}
       </div>
-      <span className="text-[10px] font-mono uppercase tracking-widest text-text-muted">Kts</span>
+      <span className="text-[12px] font-mono uppercase tracking-widest text-text-muted">Kts</span>
     </div>
   );
 }

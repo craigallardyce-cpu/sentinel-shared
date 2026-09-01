@@ -169,7 +169,7 @@ export function Modal({
               )}
             </div>
             {!hideClose && (
-              <Button variant="ghost" size="sm" aria-label="Close" onClick={onClose} className="-mr-2 -mt-1 w-8 px-0">
+              <Button variant="ghost" size="sm" aria-label="Close" onClick={onClose} className="-mr-2 -mt-1 w-10 px-0">
                 <X size={16} />
               </Button>
             )}

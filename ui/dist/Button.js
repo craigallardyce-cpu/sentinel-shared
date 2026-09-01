@@ -8,9 +8,14 @@ const VARIANT = {
     danger: 'bg-red-dim text-red border border-red/40 hover:bg-red/15',
     ghost: 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-card-hover',
 };
+/**
+ * All three apps ship an Android build, where 44px is the working minimum for
+ * anything a wet thumb has to hit. `md` is that 44px; `sm` is 40px and is for
+ * dense chrome (toolbars, table rows), not for a primary action.
+ */
 const SIZE = {
-    sm: 'h-8 px-3 text-xs gap-1.5 rounded-md',
-    md: 'h-10 px-4 text-sm gap-2 rounded-lg',
+    sm: 'h-10 px-3 text-[13px] gap-1.5 rounded-md',
+    md: 'h-11 px-4 text-sm gap-2 rounded-lg',
 };
 /**
  * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY").

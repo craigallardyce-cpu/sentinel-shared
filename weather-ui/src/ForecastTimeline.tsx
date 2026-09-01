@@ -71,19 +71,19 @@ export default function ForecastTimeline({
 
             <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-lg border ${gridBgClass}`}>
               <div className="flex flex-col space-y-1">
-                <span className={`text-[11px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Max Wind (Inc Gusts)</span>
+                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Max Wind (Inc Gusts)</span>
                 <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{period.windRange}</span>
               </div>
               <div className="flex flex-col space-y-1">
-                <span className={`text-[11px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Direction</span>
+                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Direction</span>
                 <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{period.windDirection || 'Variable'}</span>
               </div>
               <div className="flex flex-col space-y-1">
-                <span className={`text-[11px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Temperature</span>
+                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Temperature</span>
                 <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{formatTempRangeString(period.tempRange, tempUnit)}</span>
               </div>
               <div className="flex flex-col space-y-1">
-                <span className={`text-[11px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Precipitation</span>
+                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Precipitation</span>
                 <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{period.precipChance || 'None'}</span>
               </div>
             </div>
@@ -106,17 +106,17 @@ export default function ForecastTimeline({
         <div key={idx} className={`flex flex-col p-3 rounded-lg border space-y-1.5 text-left ${cardBgBorder}`}>
           <div className="flex items-center justify-between">
             <div className="flex flex-col min-w-0">
-              <span className={`text-[11px] font-mono truncate uppercase font-bold ${textMutedClass}`}>{p.periodName}</span>
+              <span className={`text-[13px] font-mono truncate uppercase font-bold ${textMutedClass}`}>{p.periodName}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <Wind size={8} className={`${windIconClass} animate-pulse`} />
-                <span className={`text-[11px] font-mono font-bold ${textPrimaryClass}`}>{p.windRange}</span>
+                <span className={`text-[13px] font-mono font-bold ${textPrimaryClass}`}>{p.windRange}</span>
               </div>
             </div>
             {p.windDirection && (
               <div className="flex flex-col items-end shrink-0">
-                <span className={`text-[11px] font-mono uppercase font-bold ${textMutedClass}`}>Dir</span>
+                <span className={`text-[13px] font-mono uppercase font-bold ${textMutedClass}`}>Dir</span>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className={`text-[11px] font-mono font-bold ${textSecondaryClass}`}>{p.windDirection}</span>
+                  <span className={`text-[13px] font-mono font-bold ${textSecondaryClass}`}>{p.windDirection}</span>
                   <div 
                     style={{ transform: `rotate(${getWindRotation(p.windDirection)}deg)`, transformOrigin: 'center' }} 
                     className="transition-transform duration-500 ease-out flex items-center justify-center w-3 h-3"
@@ -133,7 +133,7 @@ export default function ForecastTimeline({
           </div>
 
           {(p.tempRange || p.precipChance) && (
-            <div className={`flex items-center justify-between pt-1.5 border-t text-[11px] font-mono ${borderDividerClass}`}>
+            <div className={`flex items-center justify-between pt-1.5 border-t text-[13px] font-mono ${borderDividerClass}`}>
               <span className={textOrangeClass}>{formatTempRangeString(p.tempRange, tempUnit)}</span>
               <span className={textCyanClass}>{p.precipChance ? `Precip: ${p.precipChance}` : ''}</span>
             </div>

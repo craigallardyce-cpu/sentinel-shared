@@ -60,7 +60,7 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }: ScopeBa
     <span
       title={DESCRIPTION[source]}
       className={cn(
-        'shrink-0 rounded font-mono text-[9.5px] font-bold uppercase tracking-[0.09em] px-1.5 py-0.5 border',
+        'shrink-0 rounded font-mono text-[12px] font-bold uppercase tracking-[0.09em] px-1.5 py-0.5 border',
         isOverride
           ? 'text-cyan bg-cyan/10 border-cyan/30'
           : 'text-text-muted border-border-color/60 bg-transparent',

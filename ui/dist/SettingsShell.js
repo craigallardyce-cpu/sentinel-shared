@@ -8,7 +8,7 @@ import { UpdatePanel } from './UpdatePanel';
 import { ScopeBadge } from './ScopeBadge';
 /** One settings group: eyebrow title with icon, optional one-line description, then rows. */
 export function SettingsSection({ title, icon, description, children, className }) {
-    return (_jsxs("section", { className: cn('space-y-3', className), children: [_jsxs("header", { children: [_jsxs("h3", { className: "flex items-center gap-2 text-[11px] font-mono font-bold uppercase tracking-wider text-cyan", children: [icon && _jsx("span", { className: "shrink-0", "aria-hidden": true, children: icon }), title] }), description && _jsx("p", { className: "text-xs text-text-muted mt-1", children: description })] }), _jsx("div", { className: "space-y-3", children: children })] }));
+    return (_jsxs("section", { className: cn('space-y-3', className), children: [_jsxs("header", { children: [_jsxs("h3", { className: "flex items-center gap-2 text-[13px] font-mono font-bold uppercase tracking-wider text-cyan", children: [icon && _jsx("span", { className: "shrink-0", "aria-hidden": true, children: icon }), title] }), description && _jsx("p", { className: "text-xs text-text-muted mt-1", children: description })] }), _jsx("div", { className: "space-y-3", children: children })] }));
 }
 /**
  * One settings row: label and description on the left, control on the right, and

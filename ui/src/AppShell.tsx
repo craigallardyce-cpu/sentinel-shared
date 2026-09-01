@@ -24,7 +24,9 @@ export function HeaderButton({ icon, active = false, label, className, ...rest }
     <button
       type="button"
       className={cn(
-        'flex items-center gap-1.5 font-mono text-[11px] font-bold tracking-widest transition-colors duration-150 cursor-pointer min-h-8',
+        // min-h-11 (44px): these are the most-tapped controls in the app and they
+        // sit in a 56px header, so the target can be full-height for free.
+        'flex items-center gap-1.5 font-mono text-[13px] font-bold tracking-widest transition-colors duration-150 cursor-pointer min-h-11',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 rounded-md px-1',
         active ? 'text-cyan drop-shadow-[0_0_8px_var(--color-cyan-glow)]' : 'text-text-muted hover:text-text-primary',
         className
@@ -192,7 +194,7 @@ export function AppShell({
                         <span className="shrink-0 [&>svg]:w-4 [&>svg]:h-4" aria-hidden>{tab.icon}</span>
                         <span className="truncate">{tab.label}</span>
                         {tab.badge !== undefined && tab.badge > 0 && (
-                          <span className="ml-auto bg-warning text-bg-app text-[11px] font-bold min-w-4 h-4 px-1 rounded-full flex items-center justify-center font-mono">
+                          <span className="ml-auto bg-warning text-bg-app text-[12px] font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center font-mono">
                             {tab.badge}
                           </span>
                         )}
@@ -200,7 +202,7 @@ export function AppShell({
                     );
                   })}
                 </nav>
-                {dockFooter && <div className="px-3 text-[11px] font-mono text-text-muted leading-tight">{dockFooter}</div>}
+                {dockFooter && <div className="px-3 text-[13px] font-mono text-text-muted leading-tight">{dockFooter}</div>}
               </div>
             </aside>
           )}
@@ -230,9 +232,9 @@ export function AppShell({
                   )}
                 >
                   <span className="[&>svg]:w-5 [&>svg]:h-5" aria-hidden>{tab.icon}</span>
-                  <span className="text-[11px] mt-1 font-medium">{tab.shortLabel ?? tab.label}</span>
+                  <span className="text-[12px] mt-1 font-medium">{tab.shortLabel ?? tab.label}</span>
                   {tab.badge !== undefined && tab.badge > 0 && (
-                    <span className="absolute top-0 right-1 bg-warning text-bg-app text-[11px] font-bold min-w-4 h-4 px-1 rounded-full flex items-center justify-center font-mono">
+                    <span className="absolute top-0 right-1 bg-warning text-bg-app text-[12px] font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center font-mono">
                       {tab.badge}
                     </span>
                   )}

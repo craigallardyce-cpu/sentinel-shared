@@ -64,7 +64,7 @@ export function Stepper({
     adjust(delta);
   };
 
-  const buttonClass = `flex items-center justify-center w-9 h-9 rounded-lg border ${surfaceClassName} ${colorClass} disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all cursor-pointer shrink-0 touch-manipulation`;
+  const buttonClass = `flex items-center justify-center w-11 h-11 rounded-lg border ${surfaceClassName} ${colorClass} disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all cursor-pointer shrink-0 touch-manipulation`;
 
   return (
     <div className="flex items-center gap-2">

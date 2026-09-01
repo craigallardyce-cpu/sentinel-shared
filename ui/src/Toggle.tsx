@@ -34,7 +34,10 @@ export function Toggle({ checked, onChange, label, description, disabled, switch
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200',
+        // 52x30 rather than the conventional 44x24: this is the control a
+        // watchkeeper flips on a phone at anchor, and 24px was under every
+        // touch-target guideline going. The knob geometry below follows from it.
+        'relative inline-flex h-[30px] w-[52px] shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app',
         'disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
         checked ? 'bg-cyan' : 'bg-bg-highest'
@@ -43,8 +46,10 @@ export function Toggle({ checked, onChange, label, description, disabled, switch
       <span
         aria-hidden
         className={cn(
-          'pointer-events-none inline-block h-5 w-5 rounded-full shadow transition-transform duration-200',
-          checked ? 'translate-x-5 bg-bg-app' : 'translate-x-0 bg-text-secondary'
+          // 26px knob inside a 48x26 content box (52x30 less the 2px border),
+          // so the travel is 48 - 26 = 22px.
+          'pointer-events-none inline-block h-[26px] w-[26px] rounded-full shadow transition-transform duration-200',
+          checked ? 'translate-x-[22px] bg-bg-app' : 'translate-x-0 bg-text-secondary'
         )}
       />
     </button>

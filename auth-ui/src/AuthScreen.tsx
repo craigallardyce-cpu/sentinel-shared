@@ -570,7 +570,7 @@ export function AuthScreen({
               <li>Sign in using your registered email: <strong>{email}</strong>.</li>
               <li>Choose a subscription plan and complete checkout.</li>
             </ol>
-            <p className="text-[11px] text-text-muted italic mt-2 animate-pulse">
+            <p className="text-[13px] text-text-muted italic mt-2 animate-pulse">
               This app will detect your payment and unlock automatically in the background...
             </p>
           </div>
@@ -599,7 +599,7 @@ export function AuthScreen({
               <>
                 <div className="relative flex py-1 items-center">
                   <div className="flex-grow border-t border-border-color"></div>
-                  <span className="flex-shrink mx-4 text-text-muted text-[11px] font-semibold uppercase tracking-wider">or</span>
+                  <span className="flex-shrink mx-4 text-text-muted text-[13px] font-semibold uppercase tracking-wider">or</span>
                   <div className="flex-grow border-t border-border-color"></div>
                 </div>
 
@@ -673,7 +673,7 @@ export function AuthScreen({
             </button>
 
             {isRegistering && (
-              <p className="text-[11px] text-text-secondary text-center leading-relaxed px-4">
+              <p className="text-[13px] text-text-secondary text-center leading-relaxed px-4">
                 Billing setup is handled externally on our website. Creating an account registers your credentials.
               </p>
             )}

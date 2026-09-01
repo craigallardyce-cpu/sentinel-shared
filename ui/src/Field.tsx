@@ -14,8 +14,10 @@ interface FieldChrome {
   fieldClassName?: string;
 }
 
+// h-11 tracks Button's `md`. These sit next to each other in every form and in
+// every modal footer, so the two heights are one decision, not two.
 const CONTROL =
-  'w-full h-10 px-3 text-sm rounded-lg bg-bg-lowest text-text-primary placeholder:text-text-muted border transition-colors ' +
+  'w-full h-11 px-3 text-sm rounded-lg bg-bg-lowest text-text-primary placeholder:text-text-muted border transition-colors ' +
   'focus:outline-none focus:ring-2 focus:ring-cyan/40 disabled:opacity-50 disabled:cursor-not-allowed';
 const CONTROL_OK = 'border-border-color focus:border-cyan';
 const CONTROL_ERR = 'border-red focus:border-red focus:ring-red/30';
