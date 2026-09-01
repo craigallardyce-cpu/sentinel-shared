@@ -439,6 +439,12 @@ if (home && exists(canonicalSkill)) {
 //     Everything below is derived from that registry rather than restated here,
 //     so declaring a setting extends these checks for free.
 //
+//     Both the apps AND the shared packages are scanned. Reading a real install's
+//     storage turned up keys no check knew about -- harborsentinel_access_*,
+//     harbor_sentinel_chart_providers, weather_alerts -- because @sentinel/* wrote
+//     them rather than app source, so a setting could drift there and nothing
+//     would notice.
+//
 //     WARN for now, deliberately. Both apps still carry their pre-registry keys
 //     on purpose -- they are read for one release so an upgrade loses nothing --
 //     and a check that fails on a planned intermediate state teaches people to
@@ -593,6 +599,73 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
     if (undeclared.length) {
       warn('settings', `${app.name}: ${undeclared.length} localStorage key(s) not declared in the registry ` +
         `(cached data and credentials belong here; settings do not): ${some(undeclared, 6)}`);
+    }
+  }
+
+  /*
+    The shared packages, which the app scan above cannot see.
+
+    Reading a real install's storage turned up keys no check knew about --
+    harborsentinel_access_entitlements, harbor_sentinel_chart_providers,
+    weather_alerts and others -- because they are written by @sentinel/* rather
+    than by app source. A setting could drift there and nothing would notice,
+    which is the exact hole this check exists to close.
+
+    The rule is the one @sentinel/settings already follows: a shared package takes
+    a StorageLike and lets the app supply it. Reaching for the localStorage global
+    instead makes a package unusable server-side, untestable without a DOM, and --
+    the reason it matters here -- lets it write keys that neither the registry nor
+    any check can see, because they are composed at runtime from a prop rather
+    than written as literals.
+  */
+  for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
+    if (!dir.isDirectory() || ['scripts', '.git', '.github', 'node_modules'].includes(dir.name)) continue;
+    const pkgSrc = path.join(SHARED_ROOT, dir.name, 'src');
+    if (!exists(pkgSrc)) continue;
+
+    const globalUses = [];
+    const ownedKeys = [];
+
+    for (const file of walk(pkgSrc).filter((f) => /\.(t|j)sx?$/.test(f))) {
+      const rel = `${dir.name}/${path.relative(pkgSrc, file).replace(/\\/g, '/')}`;
+      let inBlockComment = false;
+
+      readText(file).split(/\r?\n/).forEach((line, i) => {
+        const wasInBlockComment = inBlockComment;
+        const opensBlock = line.lastIndexOf('/*');
+        const closesBlock = line.lastIndexOf('*/');
+        if (inBlockComment) {
+          if (closesBlock !== -1) inBlockComment = false;
+        } else if (opensBlock !== -1 && closesBlock < opensBlock) {
+          inBlockComment = true;
+        }
+        if (wasInBlockComment || inBlockComment || line.trim().startsWith('//') || line.trim().startsWith('*')) return;
+
+        if (/\blocalStorage\s*\./.test(line)) globalUses.push(`${rel}:${i + 1}`);
+
+        /*
+          Not for the registry itself. @sentinel/settings is where these names are
+          DECLARED -- that is the whole job -- and its column map happens to
+          contain `vessel_type`, which is a Postgres column that collides with one
+          of OceanSentinel's old key names.
+        */
+        if (dir.name !== 'settings') {
+          for (const m of line.matchAll(/['"`]([A-Za-z0-9_.]+)['"`]/g)) {
+            if (allLegacyKeys.has(m[1])) ownedKeys.push(`${rel}:${i + 1} -> ${m[1]}`);
+          }
+        }
+      });
+    }
+
+    const some = (list, n) => list.slice(0, n).join(', ') + (list.length > n ? `, +${list.length - n} more` : '');
+
+    if (globalUses.length) {
+      warn('settings', `@sentinel/${dir.name}: ${globalUses.length} direct use(s) of the localStorage global — ` +
+        `take a StorageLike from the app instead, as @sentinel/settings does, or the keys it writes stay invisible ` +
+        `to the registry and to this check: ${some(globalUses, 3)}`);
+    }
+    if (ownedKeys.length) {
+      warn('settings', `@sentinel/${dir.name}: writes a key the registry owns, from a package all three apps install: ${some(ownedKeys, 3)}`);
     }
   }
 }
