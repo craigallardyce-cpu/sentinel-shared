@@ -80,7 +80,8 @@ export function createSettingsStore(options) {
     function resolveKey(key) {
         const definition = registry.get(key);
         let value = defaultFor(definition, platform);
-        let source = 'default';
+        // Only toggles declare a default, so almost everything starts here.
+        let source = value === undefined ? 'unset' : 'default';
         // Broadest first; the last layer to answer wins.
         for (const scope of SCOPE_ORDER) {
             const parsed = readAt(key, scope);
@@ -100,6 +101,9 @@ export function createSettingsStore(options) {
         },
         source(key) {
             return resolveKey(key).source;
+        },
+        isConfigured(key) {
+            return resolveKey(key).source !== 'unset';
         },
         isSetAt(key, scope) {
             return readAt(key, scope) !== undefined;

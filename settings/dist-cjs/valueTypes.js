@@ -20,7 +20,6 @@ exports.stringType = stringType;
 exports.intType = intType;
 exports.numberType = numberType;
 exports.oneOf = oneOf;
-exports.hostTypeWith = hostTypeWith;
 exports.urlType = urlType;
 exports.listType = listType;
 /**
@@ -45,11 +44,17 @@ function text(raw) {
     const trimmed = raw.trim();
     return trimmed.length > 0 ? trimmed : null;
 }
+/**
+ * Empty is absence, uniformly across this file.
+ *
+ * Since settings carry no defaults, "" and "never set" would otherwise be two
+ * spellings of the same state, and a screen would have to know which one it was
+ * looking at. There is one: a field somebody has cleared is a field that is
+ * unset, and clearing one calls `clear()` rather than writing "".
+ */
 function stringType(options = {}) {
-    const { allowEmpty = false, maxLength = 512 } = options;
+    const { maxLength = 512 } = options;
     return make('string', (raw) => {
-        if (allowEmpty && typeof raw === 'string' && raw.trim().length === 0)
-            return '';
         const value = text(raw);
         if (value === null)
             return undefined;
@@ -115,40 +120,42 @@ function oneOf(values) {
         return value !== null && allowed.has(value) ? value : undefined;
     }, (value) => value);
 }
-function makeHost(options = {}) {
-    const { allowEmpty = false } = options;
-    return make('host', (raw) => {
-        if (allowEmpty && typeof raw === 'string' && raw.trim().length === 0)
-            return '';
-        const value = text(raw);
-        if (value === null)
-            return undefined;
-        if (/\s/.test(value) || value.includes('/') || value.includes('@'))
-            return undefined;
-        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value))
-            return undefined;
-        if (value.startsWith('['))
-            return /^\[[0-9a-f:]+\]$/i.test(value) ? value : undefined;
-        if (value.includes(':'))
-            return undefined;
-        return /^[a-z0-9._-]+$/i.test(value) ? value : undefined;
-    }, (value) => value);
-}
-function hostTypeWith(options = {}) {
-    return makeHost(options);
-}
-exports.hostType = makeHost();
+/**
+ * A hostname or address with no scheme and no port.
+ *
+ * Both apps accept a scheme and a `host:port` in the same field and then strip
+ * them at the far end — HarborSentinel's `POST /config` runs a loop peeling
+ * `tcp://` and friends off the front and a regex pulling the port off the back.
+ * That normalisation belongs at the edge where a person types, not in the store:
+ * by the time a value is being written, a host is a host.
+ *
+ * A bare IPv6 literal must be bracketed. Unbracketed, `fe80::1` is
+ * indistinguishable from a `host:port` pair, and `splitPoolKey` in
+ * `@sentinel/marine` splits pool keys on the rightmost colon on exactly that
+ * assumption.
+ */
+exports.hostType = make('host', (raw) => {
+    const value = text(raw);
+    if (value === null)
+        return undefined;
+    if (/\s/.test(value) || value.includes('/') || value.includes('@'))
+        return undefined;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value))
+        return undefined;
+    if (value.startsWith('['))
+        return /^\[[0-9a-f:]+\]$/i.test(value) ? value : undefined;
+    if (value.includes(':'))
+        return undefined;
+    return /^[a-z0-9._-]+$/i.test(value) ? value : undefined;
+}, (value) => value);
 exports.portType = make('port', (raw) => intType({ min: 1, max: 65535 }).parse(raw), (value) => String(value));
 /**
- * An absolute URL. Empty is allowed where it carries meaning — an unset backend
- * URL is how both apps say "standalone, no PC to talk to", and that is a value
- * rather than a gap.
+ * An absolute URL. An unset backend URL is how both apps say "standalone, no PC
+ * to talk to" — which is absence, not an empty string.
  */
 function urlType(options = {}) {
-    const { allowEmpty = false, protocols = ['http:', 'https:'] } = options;
+    const { protocols = ['http:', 'https:'] } = options;
     return make('url', (raw) => {
-        if (allowEmpty && typeof raw === 'string' && raw.trim().length === 0)
-            return '';
         const value = text(raw);
         if (value === null)
             return undefined;
@@ -165,20 +172,18 @@ function urlType(options = {}) {
     }, (value) => value);
 }
 /**
- * Nine digits, or empty for "not known".
+ * Exactly nine digits, or nothing.
  *
- * The fallback matters more here than anywhere else in this file. A wrong MMSI
+ * The rejection matters more here than anywhere else in this file. A wrong MMSI
  * does not fail loudly — it silently stops own ship being suppressed from the
- * AIS proximity alarm, so the boat sets off its own alarm. Falling back to
- * "not known" is safe, because the alarm refuses to run at all without one;
- * falling back to a half-typed number is not.
+ * AIS proximity alarm, so the boat sets off its own alarm. Leaving it unset is
+ * safe, because the alarm refuses to run at all without one; a half-typed
+ * number is not.
  */
 exports.mmsiType = make('mmsi', (raw) => {
-    if (raw === null || raw === undefined)
+    const value = text(raw);
+    if (value === null)
         return undefined;
-    const value = String(raw).trim();
-    if (value.length === 0)
-        return '';
     return /^\d{9}$/.test(value) ? value : undefined;
 }, (value) => value);
 /**

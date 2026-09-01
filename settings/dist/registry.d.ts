@@ -11,8 +11,11 @@
 import type { PlatformContext, SettingDefinition, SettingSpec } from './types.js';
 /** Authoring helper. Identity at runtime; it exists to anchor type inference and JSDoc. */
 export declare function defineSetting<T>(spec: SettingSpec<T>): SettingSpec<T>;
-/** Resolve a declared default for a platform, whether it is a literal or a function. */
-export declare function defaultFor<T>(spec: SettingSpec<T>, platform: PlatformContext): T;
+/**
+ * Resolve a declared default for a platform, or `undefined` when the setting
+ * declares none — which is almost all of them. See `SettingSpec.default`.
+ */
+export declare function defaultFor<T>(spec: SettingSpec<T>, platform: PlatformContext): T | undefined;
 export type AnySpec = SettingSpec<any>;
 export type AnyDefinition = SettingDefinition<any>;
 export interface Registry<D extends Record<string, AnySpec>> {

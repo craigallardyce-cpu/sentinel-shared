@@ -2,18 +2,34 @@
 /**
  * The fleet's declared settings.
  *
- * Every default here was read out of the working tree rather than chosen, and
- * where the apps disagreed the comment says so and says which one won. That is
- * the point of the file: after this, there is one answer per setting, and the
- * disagreement is visible in the history instead of spread across six files.
+ * **Almost nothing here has a default, and that is the design.** A default is a
+ * value nobody chose, and every one this fleet shipped turned out to be wrong
+ * for every install but the developer's: a home LAN address as the NMEA gateway
+ * (`192.168.86.33`, in OceanSentinel's AppContext.jsx), a specific real boat as
+ * the boat name, one operator's endpoint as a hosted relay. Each looked like a
+ * helpful head start, and each was invisible — a pre-filled field reads as a
+ * configured field, so nobody corrects it and nothing reports it.
  *
- * **Scope so far.** This declares the settings that both apps share, plus the
- * ones the NMEA work touches. OceanSentinel's own groups — the VHF tuning, the
- * log book, the twenty-odd `alarm_*` thresholds — are declared when Ocean adopts
- * the registry, because several of them are not settings at all (`vessel_logs`,
+ * So the owner supplies the values only the owner knows, and until they do a
+ * setting is `unset`: a state the settings screen shows as an empty field with
+ * a `placeholder`, and that consuming code has to handle rather than mistake for
+ * a decision.
+ *
+ * Two things keep a default, and both are values the app needs before anybody
+ * has opened the settings: an on/off toggle, which has to be one way or the
+ * other (the registry enforces that a `bool` declares one), and screen
+ * brightness, which the first frame has to render at. Nothing else does, and the
+ * fleet test names the exceptions so that list cannot quietly grow.
+ *
+ * Where the apps disagreed about a value, the comment still says so — the record
+ * of the disagreement is worth keeping even now that nothing inherits its answer.
+ *
+ * **Scope so far.** This declares the settings both apps share, plus the ones the
+ * NMEA work touches. OceanSentinel's own groups — the VHF tuning, the log book,
+ * the twenty-odd `alarm_*` thresholds — are declared when Ocean adopts the
+ * registry, because several of them are not settings at all (`vessel_logs`,
  * `vessel_passages` and `vessel_custom_routes` are cached records living in the
- * same flat namespace) and deciding which is which is that step's work, not
- * something to guess at here.
+ * same flat namespace) and deciding which is which is that step's work.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FLEET_SETTINGS = void 0;
@@ -21,52 +37,50 @@ const registry_js_1 = require("./registry.js");
 const valueTypes_js_1 = require("./valueTypes.js");
 exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
     // ---------------------------------------------------------------------------
-    // Vessel — facts about the boat. Shared by every app on the account, which is
-    // exactly what they are not today: the boat's name lives in HarborSentinel's
-    // SQLite, in the cloud `system_config`, in `public.vessels`, and again in
-    // OceanSentinel's `vessel_boat_name`.
+    // Vessel — facts about the boat, and the clearest case for having no defaults:
+    // nobody but the owner knows any of them. Today the boat's name lives in
+    // HarborSentinel's SQLite, in the cloud `system_config`, in `public.vessels`,
+    // and again in OceanSentinel's `vessel_boat_name`.
     // ---------------------------------------------------------------------------
     'vessel.name': (0, registry_js_1.defineSetting)({
         scopes: ['vessel'],
         type: (0, valueTypes_js_1.stringType)({ maxLength: 64 }),
         /*
-          Three defaults existed: 'Sentinel' (OceanSentinel), 'S/V Sentinel' (the
-          `public.vessels` column default) and 'Saorsaa' (HarborSentinel's
-          DEFAULTS.BOAT_NAME). The last is a specific real boat and is the same class
-          of mistake as shipping a home LAN address — a developer's own value reaching
-          every install. The neutral one wins.
+          Three defaults existed and none survives: 'Sentinel' (OceanSentinel),
+          'S/V Sentinel' (the `public.vessels` column default) and 'Saorsaa'
+          (HarborSentinel's DEFAULTS.BOAT_NAME — a specific real boat, reaching
+          every install).
         */
-        default: 'Sentinel',
         label: 'Boat name',
         description: 'Shared with every Mariner Sentinel app on this account.',
+        placeholder: 'Your boat',
         legacy: { ocean: ['vessel_boat_name'] },
     }),
     'vessel.mmsi': (0, registry_js_1.defineSetting)({
         scopes: ['vessel'],
         type: valueTypes_js_1.mmsiType,
-        default: '',
         label: 'MMSI',
         description: 'Nine digits. Suppresses own ship from AIS proximity alarms.',
+        placeholder: '9 digits',
         legacy: { ocean: ['vessel_mmsi'] },
     }),
     'vessel.type': (0, registry_js_1.defineSetting)({
         scopes: ['vessel'],
-        type: (0, valueTypes_js_1.stringType)({ allowEmpty: true, maxLength: 64 }),
+        type: (0, valueTypes_js_1.stringType)({ maxLength: 64 }),
         /*
-          Empty means "never said", which `propulsionFor` in @sentinel/vessel reads as
-          sail — the behaviour every existing install already has. Declaring a
-          concrete default here would silently change that for anyone who never set it.
+          Unset means "never said", which `propulsionFor` in @sentinel/vessel reads
+          as sail — the behaviour every existing install already has.
         */
-        default: '',
         label: 'Vessel type',
+        placeholder: 'e.g. Sloop',
         legacy: { ocean: ['vessel_type'] },
     }),
     'vessel.bow_roller_height_ft': (0, registry_js_1.defineSetting)({
         scopes: ['vessel'],
         type: (0, valueTypes_js_1.numberType)({ min: 0, max: 60 }),
-        default: 5.5,
         label: 'Bow roller height',
         description: 'Height above the waterline, in feet. Used to correct anchor rode scope.',
+        placeholder: 'feet',
     }),
     // ---------------------------------------------------------------------------
     // Units and display.
@@ -75,8 +89,8 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         /*
           Account rather than vessel: it is a preference of the person reading the
           screen, not a property of the boat. Two crew on one boat may reasonably
-          disagree, and today they cannot — HarborSentinel syncs `use_metric` through
-          the shared `system_config` row.
+          disagree, and today they cannot — HarborSentinel syncs `use_metric`
+          through the shared `system_config` row.
         */
         scopes: ['account'],
         type: valueTypes_js_1.boolType,
@@ -84,6 +98,20 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         label: 'Metric units',
         legacy: { ocean: ['vessel_use_metric'] },
     }),
+    /*
+      Brightness keeps its defaults, and is the one group besides the toggles that
+      does.
+  
+      The argument for stripping a default does not apply here: these are not facts
+      about a boat that only the owner knows, they are what the screen has to be set
+      to before anyone has opened the settings at all. Unset would mean the first
+      frame has no brightness to render at, and each app would answer that with its
+      own literal — putting back the scattered defaults this package removes, in the
+      one place a wrong value is merely inconvenient rather than dangerous.
+  
+      Both apps already agree on 100 and 60, so nothing is being chosen here that
+      was not already true.
+    */
     'display.day_brightness': (0, registry_js_1.defineSetting)({
         scopes: ['device'],
         type: (0, valueTypes_js_1.intType)({ min: 20, max: 100 }),
@@ -120,25 +148,30 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
     'display.auto_dim_minutes': (0, registry_js_1.defineSetting)({
         scopes: ['device'],
         type: (0, valueTypes_js_1.intType)({ min: 1, max: 120 }),
-        default: 5,
         label: 'Dim after',
+        placeholder: 'minutes',
         legacy: { harbor: ['harbor_sentinel_auto_dim_minutes'], ocean: ['ocean_sentinel_auto_dim_minutes'] },
     }),
     // ---------------------------------------------------------------------------
     // NMEA. The group that forced the layered design, and the one the pool
     // extraction waits on: `resolveNmeaTarget` in @sentinel/marine currently takes
     // HarborSentinel's SQLite row shape, and should take these instead.
+    //
+    // There is no remote gateway here. A device off the boat reaches the same
+    // local address over the VPN, so a `nmea.remote.*` group would be a second
+    // address for one gateway — exactly the shape this package exists to stop.
+    // HarborSentinel's `nmea_remote_host` / `nmea_remote_port` columns are never
+    // selectable as a source and can go with it.
     // ---------------------------------------------------------------------------
     'nmea.source': (0, registry_js_1.defineSetting)({
         scopes: ['vessel', 'host', 'device'],
         /*
-          Only two values are ever written, in either app, despite HarborSentinel
-          carrying `nmea_remote_host` and `nmea_remote_port` columns — there is no
-          'NMEA REMOTE' source. The remote gateway is reachable but not selectable,
-          which is worth knowing before anyone treats those columns as live.
+          Only two values are ever written, in either app. No default: which
+          instruments a boat has is not something to assume, and an app that
+          silently picked 'NMEA LOCAL' would sit waiting on a gateway that may not
+          exist rather than asking.
         */
         type: (0, valueTypes_js_1.oneOf)(['NMEA LOCAL', 'DEVICE GPS']),
-        default: 'NMEA LOCAL',
         label: 'Instrument source',
         legacy: { ocean: ['vessel_data_source'] },
     }),
@@ -148,77 +181,53 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
           about the boat (`vessel`); a PC running the backend may reach it
           differently (`host`); a phone in the cabin reaches it through that PC
           (`device`). HarborSentinel currently fakes the missing layers by stripping
-          the host and port out of its payload on Android so a phone cannot overwrite
-          the PC's hardware settings — a workaround this declaration retires.
+          the host and port out of its payload on Android so a phone cannot
+          overwrite the PC's hardware settings — a workaround this declaration
+          retires.
         */
         scopes: ['vessel', 'host', 'device'],
         type: valueTypes_js_1.hostType,
         /*
           OceanSentinel had three defaults for this one value: '192.168.86.33' in
           AppContext.jsx, '10.10.10.1' in SettingsModal.jsx and '10.10.10.1' in
-          NMEAMonitor.jsx. The first is a home LAN address and it ships. The gateway
-          most boats actually have wins, which is also DEFAULT_NMEA_TARGET in
-          @sentinel/marine — the same constant, finally in one place.
+          NMEAMonitor.jsx. The first is a home LAN address and it shipped. None is
+          inherited — the address of a boat's multiplexer is the owner's to give,
+          and a wrong one looks exactly like a gateway that is switched off.
         */
-        default: '10.10.10.1',
         label: 'NMEA gateway address',
+        placeholder: 'e.g. 10.10.10.1',
         legacy: { ocean: ['vessel_nmea_local_host'] },
     }),
     'nmea.gateway.port': (0, registry_js_1.defineSetting)({
         scopes: ['vessel', 'host', 'device'],
         type: valueTypes_js_1.portType,
-        default: 11102,
         label: 'NMEA gateway port',
+        placeholder: 'e.g. 11102',
         legacy: { ocean: ['vessel_nmea_local_port'] },
-    }),
-    'nmea.remote.host': (0, registry_js_1.defineSetting)({
-        scopes: ['vessel', 'host'],
-        type: (0, valueTypes_js_1.hostTypeWith)({ allowEmpty: true }),
-        /*
-          Empty on purpose, and the one place this file deliberately does NOT carry
-          the value the apps use today.
-    
-          A hosted relay address is deployment configuration for one operator, not a
-          fact about how the fleet works — unlike the boat-side gateway, which really
-          is the same 10.10.10.1 on most installs. It also has no per-phone answer,
-          hence no device scope. Whoever runs a relay supplies its address at the
-          vessel or host layer; sentinel-shared is a public repository and has no
-          business shipping somebody's endpoint as a default.
-        */
-        default: '',
-        label: 'Remote gateway address',
-        description: 'Optional internet-reachable NMEA relay. Empty means none.',
-    }),
-    'nmea.remote.port': (0, registry_js_1.defineSetting)({
-        scopes: ['vessel', 'host'],
-        type: valueTypes_js_1.portType,
-        default: 11102,
-        label: 'Remote gateway port',
     }),
     'nmea.datahub_url': (0, registry_js_1.defineSetting)({
         scopes: ['vessel', 'host'],
         type: (0, valueTypes_js_1.urlType)(),
-        default: 'http://10.10.10.1:11102',
         label: 'Data hub URL',
+        placeholder: 'http://…',
     }),
     // ---------------------------------------------------------------------------
     // How this device reaches its backend. Correctly per-device in both apps
-    // already — the one thing both got right, and by agreement rather than luck:
-    // an empty value is how each app says "standalone, no PC to talk to".
+    // already — and unset is meaningful here: no backend address means standalone.
     // ---------------------------------------------------------------------------
     'connection.backend_url': (0, registry_js_1.defineSetting)({
         scopes: ['device'],
-        type: (0, valueTypes_js_1.urlType)({ allowEmpty: true }),
-        default: '',
+        type: (0, valueTypes_js_1.urlType)(),
         label: 'Backend address',
-        description: 'Empty runs standalone on this device.',
+        description: 'Leave empty to run standalone on this device.',
+        placeholder: 'http://…',
         legacy: { harbor: ['vessel_backend_api_url'], ocean: ['vessel_backend_api_url'] },
     }),
     'connection.tile_proxy_url': (0, registry_js_1.defineSetting)({
         scopes: ['device'],
-        type: (0, valueTypes_js_1.urlType)({ allowEmpty: true }),
-        default: '',
+        type: (0, valueTypes_js_1.urlType)(),
         label: 'Chart tile proxy',
+        placeholder: 'http://…',
         legacy: { harbor: ['vessel_tile_proxy_url'] },
     }),
     // ---------------------------------------------------------------------------
@@ -238,23 +247,23 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
           The bounds are AIS_PROXIMITY.MIN_LIMIT_NM and MAX_LIMIT_NM from
           HarborSentinel's shared/constants.ts, where the comment records why they
           exist: the first version of this feature sent roughly a thousand Telegram
-          messages in one night at anchor. The default is DEFAULT_LIMIT_FT (50 ft)
-          converted with the FT_PER_NM constant from the same file.
+          messages in one night at anchor. The bounds stay; the ring size does not,
+          because how close is too close depends on the boat and the anchorage.
         */
         type: (0, valueTypes_js_1.numberType)({ min: 0.008, max: 5 }),
-        default: 50 / 6076.12,
         label: 'AIS proximity limit',
+        placeholder: 'nautical miles',
     }),
     'alarms.wind_limit_kt': (0, registry_js_1.defineSetting)({
         scopes: ['host'],
         type: (0, valueTypes_js_1.numberType)({ min: 0, max: 100 }),
-        default: 25,
         label: 'Wind alarm limit',
+        placeholder: 'knots',
     }),
     'alarms.depth_limit_ft': (0, registry_js_1.defineSetting)({
         scopes: ['host'],
         type: (0, valueTypes_js_1.numberType)({ min: 0, max: 200 }),
-        default: 7,
         label: 'Depth alarm limit',
+        placeholder: 'feet',
     }),
 });

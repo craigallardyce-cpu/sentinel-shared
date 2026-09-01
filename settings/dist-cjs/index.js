@@ -1,12 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FLEET_SETTINGS = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostTypeWith = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
+exports.FLEET_SETTINGS = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
 var types_js_1 = require("./types.js");
 Object.defineProperty(exports, "SCOPE_ORDER", { enumerable: true, get: function () { return types_js_1.SCOPE_ORDER; } });
 var valueTypes_js_1 = require("./valueTypes.js");
 Object.defineProperty(exports, "boolType", { enumerable: true, get: function () { return valueTypes_js_1.boolType; } });
 Object.defineProperty(exports, "hostType", { enumerable: true, get: function () { return valueTypes_js_1.hostType; } });
-Object.defineProperty(exports, "hostTypeWith", { enumerable: true, get: function () { return valueTypes_js_1.hostTypeWith; } });
 Object.defineProperty(exports, "intType", { enumerable: true, get: function () { return valueTypes_js_1.intType; } });
 Object.defineProperty(exports, "listType", { enumerable: true, get: function () { return valueTypes_js_1.listType; } });
 Object.defineProperty(exports, "mmsiType", { enumerable: true, get: function () { return valueTypes_js_1.mmsiType; } });

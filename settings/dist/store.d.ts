@@ -33,16 +33,30 @@ export interface SettingsStoreOptions<D extends Record<string, AnySpec>> {
     platform?: PlatformContext;
 }
 export interface Resolved<T> {
-    value: T;
-    /** Which layer answered. `default` means none did. */
+    /** `undefined` when nothing has been configured — see `source`. */
+    value: T | undefined;
+    /**
+     * Which layer answered. `default` only ever appears for an on/off toggle;
+     * `unset` means nobody has supplied a value yet, which is a normal state and
+     * the one a settings screen should show as an empty field.
+     */
     source: Source;
 }
 export interface SettingsStore<D extends Record<string, AnySpec>> {
-    /** The resolved value. Never throws for a declared key; always returns something. */
-    get<K extends keyof D & string>(key: K): SettingValue<D[K]>;
+    /**
+     * The resolved value, or `undefined` when nothing has been configured. Never
+     * throws for a declared key.
+     *
+     * Handling `undefined` is deliberate friction: it is the compiler asking what
+     * the app should do before an owner has told it their MMSI or their gateway
+     * address, instead of letting a guessed value flow silently into an alarm.
+     */
+    get<K extends keyof D & string>(key: K): SettingValue<D[K]> | undefined;
     /** The resolved value plus where it came from, for "set on this device / from the boat". */
     resolve<K extends keyof D & string>(key: K): Resolved<SettingValue<D[K]>>;
     source(key: string): Source;
+    /** False while a setting is still `unset`. */
+    isConfigured(key: string): boolean;
     /** True when this layer holds a usable value — i.e. there is an override to clear. */
     isSetAt(key: string, scope: Scope): boolean;
     /** The scopes this setting may be written to, narrowest last. */

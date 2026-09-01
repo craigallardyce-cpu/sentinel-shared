@@ -39,7 +39,22 @@ describe('createRegistry', () => {
     ).toThrow(/twice/);
   });
 
-  describe('the default must satisfy its own type', () => {
+  describe('defaults', () => {
+    it('are optional, because almost nothing should carry one', () => {
+      const registry = createRegistry({
+        'nmea.gateway.host': defineSetting({ scopes: ['vessel'], type: hostType, label: 'Host' }),
+      });
+      expect(registry.get('nmea.gateway.host').default).toBeUndefined();
+    });
+
+    it('are required for a toggle, since a switch has to be on or off', () => {
+      expect(() =>
+        createRegistry({ 'display.keep_awake': defineSetting({ scopes: ['device'], type: boolType, label: 'x' }) })
+      ).toThrow(/is a toggle, so it must declare a default/);
+    });
+  });
+
+  describe('a declared default must satisfy its own type', () => {
     it('catches a port declared as something that is not one', () => {
       expect(() =>
         createRegistry({

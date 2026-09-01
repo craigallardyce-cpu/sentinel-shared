@@ -112,37 +112,49 @@ the site secrets are not client-readable at all.
 ## `@sentinel/settings`
 
 One declaration per setting, in one place, replacing 81 flat `localStorage` keys
-spread over 55 files in two apps. A setting says what it is, what it defaults to,
-and — the load-bearing part — **which layers are allowed to hold it**:
+spread over 55 files in two apps. A setting says what it is, which layers are
+allowed to hold it, and — usually — nothing about what it should be:
 
 ```ts
 'nmea.gateway.host': defineSetting({
   scopes: ['vessel', 'host', 'device'],
   type: hostType,
-  default: '10.10.10.1',
   label: 'NMEA gateway address',
+  placeholder: 'e.g. 10.10.10.1',
   legacy: { ocean: ['vessel_nmea_local_host'] },
 })
 ```
 
+**Almost nothing has a default, and that is the design.** A default is a value
+nobody chose, and every one this fleet shipped was wrong for every install but
+the developer's: a home LAN address as the NMEA gateway, a specific real boat as
+the boat name. Each looked like a helpful head start and each was invisible, because
+a pre-filled field reads as a configured field. So a setting the owner is the
+authority on stays `unset` until they set it, `get()` returns `undefined`, and
+`placeholder` is what tells them the shape of value that belongs there.
+
+Two kinds keep a default, because the app needs a value before anybody has opened
+the settings: on/off toggles, which have to be one way or the other, and screen
+brightness, which the first frame has to render at. `createRegistry` requires a
+default on every `bool`, and a fleet test names the full list so it cannot quietly
+grow.
+
 Reading walks `account → vessel → host → device` and keeps the **last** layer that
-answered, so a device override beats the boat, which beats the account, and the
-declared default is the floor. `resolve()` returns the value *and* which layer it
-came from, which is what lets a settings screen distinguish "from the boat" from
-"set on this device" and offer to clear the override.
+answered, so a device override beats the boat, which beats the account. `resolve()`
+returns the value *and* its `source` — a scope, `default`, or `unset` — which is what
+lets a settings screen distinguish "from the boat" from "set on this device" from
+"nobody has said yet", and offer to clear an override.
 
 That layering is not a nicety. The NMEA gateway has two right answers at once —
 the boat's multiplexer is at a fixed address, and a phone in the cabin reaches it
 through the PC — and having only one place to put it is why HarborSentinel strips
 the host and port out of its payload on Android, so a phone cannot overwrite the
-PC's hardware settings.
+PC's hardware settings. There is deliberately no `nmea.remote.*` group: a device
+off the boat reaches the same local address over the VPN, so a second address for
+one gateway would be the shape this package exists to prevent.
 
-Four properties, each answering something that has already gone wrong here:
+Four more properties, each answering something that has already gone wrong here:
 
-- **One literal per setting.** The default lives in the declaration, and
-  `createRegistry` refuses one that does not satisfy its own type — on both
-  platform branches. OceanSentinel currently has three different defaults for the
-  NMEA gateway, one of which is a home LAN address.
 - **Partial writes by construction.** `set()` takes one key. There is no
   object-shaped write, so the shape that made `POST /config` null every omitted
   field cannot be spelled.
@@ -150,6 +162,9 @@ Four properties, each answering something that has already gone wrong here:
   cannot parse is skipped, not fatal — instead of the `NaN` that
   `parseInt(localStorage.getItem(...))` hands on today. A write that does not
   parse, or names a scope the setting does not declare, throws.
+- **Empty is absence, uniformly.** A cleared field is an unset field; the UI calls
+  `clear()` rather than writing `''`, so no screen has to ask which kind of nothing
+  it is looking at.
 - **Adoption loses nothing.** A setting declares where it used to live per app
   (`harbor_sentinel_keep_awake` and `ocean_sentinel_keep_awake` are one setting),
   and the device store reads those names when the namespaced key is absent —

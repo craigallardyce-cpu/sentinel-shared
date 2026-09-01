@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   boolType,
   hostType,
-  hostTypeWith,
   intType,
   listType,
   mmsiType,
@@ -99,10 +98,10 @@ describe('port', () => {
 });
 
 describe('mmsi', () => {
-  it('takes nine digits or nothing at all', () => {
+  it('takes nine digits, and reads empty as not configured', () => {
     expect(mmsiType.parse('367123456')).toBe('367123456');
-    expect(mmsiType.parse('')).toBe('');
-    expect(mmsiType.parse('   ')).toBe('');
+    expect(mmsiType.parse('')).toBeUndefined();
+    expect(mmsiType.parse('   ')).toBeUndefined();
   });
 
   it('rejects a half-typed number rather than storing it', () => {
@@ -125,9 +124,9 @@ describe('url', () => {
     expect(urlType().parse('http://boat.local/')).toBe('http://boat.local');
   });
 
-  it('treats empty as a value only when asked, since that is how both apps say "standalone"', () => {
+  it('reads empty as absence, which is how both apps say "standalone"', () => {
     expect(urlType().parse('')).toBeUndefined();
-    expect(urlType({ allowEmpty: true }).parse('')).toBe('');
+    expect(urlType().parse('   ')).toBeUndefined();
   });
 });
 
@@ -154,11 +153,14 @@ describe('list', () => {
   });
 });
 
-describe('host, allowEmpty', () => {
-  it('treats empty as "no address configured" only when asked', () => {
-    expect(hostType.parse('')).toBeUndefined();
-    expect(hostTypeWith({ allowEmpty: true }).parse('')).toBe('');
-    expect(hostTypeWith({ allowEmpty: true }).parse('relay.example.com')).toBe('relay.example.com');
-    expect(hostTypeWith({ allowEmpty: true }).parse('tcp://relay.example.com')).toBeUndefined();
+describe('empty is absence, uniformly', () => {
+  it('holds for every string-shaped type, so "" and unset are never two states', () => {
+    // Settings carry no defaults, so a cleared field is an unset field: the UI
+    // calls clear() rather than writing "". Two spellings of nothing would make
+    // a screen ask which one it was looking at.
+    for (const type of [stringType(), hostType, urlType(), mmsiType]) {
+      expect(type.parse(''), type.name).toBeUndefined();
+      expect(type.parse('   '), type.name).toBeUndefined();
+    }
   });
 });

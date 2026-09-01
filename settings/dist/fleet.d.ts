@@ -1,18 +1,34 @@
 /**
  * The fleet's declared settings.
  *
- * Every default here was read out of the working tree rather than chosen, and
- * where the apps disagreed the comment says so and says which one won. That is
- * the point of the file: after this, there is one answer per setting, and the
- * disagreement is visible in the history instead of spread across six files.
+ * **Almost nothing here has a default, and that is the design.** A default is a
+ * value nobody chose, and every one this fleet shipped turned out to be wrong
+ * for every install but the developer's: a home LAN address as the NMEA gateway
+ * (`192.168.86.33`, in OceanSentinel's AppContext.jsx), a specific real boat as
+ * the boat name, one operator's endpoint as a hosted relay. Each looked like a
+ * helpful head start, and each was invisible — a pre-filled field reads as a
+ * configured field, so nobody corrects it and nothing reports it.
  *
- * **Scope so far.** This declares the settings that both apps share, plus the
- * ones the NMEA work touches. OceanSentinel's own groups — the VHF tuning, the
- * log book, the twenty-odd `alarm_*` thresholds — are declared when Ocean adopts
- * the registry, because several of them are not settings at all (`vessel_logs`,
+ * So the owner supplies the values only the owner knows, and until they do a
+ * setting is `unset`: a state the settings screen shows as an empty field with
+ * a `placeholder`, and that consuming code has to handle rather than mistake for
+ * a decision.
+ *
+ * Two things keep a default, and both are values the app needs before anybody
+ * has opened the settings: an on/off toggle, which has to be one way or the
+ * other (the registry enforces that a `bool` declares one), and screen
+ * brightness, which the first frame has to render at. Nothing else does, and the
+ * fleet test names the exceptions so that list cannot quietly grow.
+ *
+ * Where the apps disagreed about a value, the comment still says so — the record
+ * of the disagreement is worth keeping even now that nothing inherits its answer.
+ *
+ * **Scope so far.** This declares the settings both apps share, plus the ones the
+ * NMEA work touches. OceanSentinel's own groups — the VHF tuning, the log book,
+ * the twenty-odd `alarm_*` thresholds — are declared when Ocean adopts the
+ * registry, because several of them are not settings at all (`vessel_logs`,
  * `vessel_passages` and `vessel_custom_routes` are cached records living in the
- * same flat namespace) and deciding which is which is that step's work, not
- * something to guess at here.
+ * same flat namespace) and deciding which is which is that step's work.
  */
 export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'vessel.name': import("./types.js").SettingSpec<string>;
@@ -25,11 +41,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'display.keep_awake': import("./types.js").SettingSpec<boolean>;
     'display.auto_dim': import("./types.js").SettingSpec<boolean>;
     'display.auto_dim_minutes': import("./types.js").SettingSpec<number>;
-    'nmea.source': import("./types.js").SettingSpec<string>;
+    'nmea.source': import("./types.js").SettingSpec<"NMEA LOCAL" | "DEVICE GPS">;
     'nmea.gateway.host': import("./types.js").SettingSpec<string>;
     'nmea.gateway.port': import("./types.js").SettingSpec<number>;
-    'nmea.remote.host': import("./types.js").SettingSpec<string>;
-    'nmea.remote.port': import("./types.js").SettingSpec<number>;
     'nmea.datahub_url': import("./types.js").SettingSpec<string>;
     'connection.backend_url': import("./types.js").SettingSpec<string>;
     'connection.tile_proxy_url': import("./types.js").SettingSpec<string>;

@@ -17,12 +17,46 @@ function memoryStorage(seed: Record<string, string> = {}): StorageLike & { map: 
 
 describe('the fleet registry', () => {
   /*
-    Constructing it at all is the gate: createRegistry checks that every declared
-    default satisfies its own type, on both platform branches. Importing this
-    module is therefore the assertion that no default in the fleet is wrong.
+    Constructing it at all is the gate: createRegistry checks that every toggle
+    declares a default, and that any default declared satisfies its own type on
+    both platform branches.
   */
   it('constructs, which means every declared default parses', () => {
     expect(FLEET_SETTINGS.keys().length).toBeGreaterThan(0);
+  });
+
+  /*
+    The rule the file rests on, with its exceptions named rather than implied.
+
+    Everything a boat's owner is the authority on stays unset until they say so.
+    What is left carries a default only because the app needs a value before
+    anyone has opened the settings at all: a switch has to be on or off, and the
+    first frame has to render at some brightness. Listing them here is what stops
+    that list growing back one well-meant default at a time.
+  */
+  it('ships a default only for toggles and screen brightness', () => {
+    const withDefaults = FLEET_SETTINGS.all()
+      .filter((definition) => definition.default !== undefined)
+      .map((definition) => definition.key)
+      .sort();
+
+    expect(withDefaults).toEqual([
+      'alarms.ais_proximity.enabled',
+      'display.auto_dim',
+      'display.day_brightness',
+      'display.keep_awake',
+      'display.night_brightness',
+      'units.metric',
+    ]);
+  });
+
+  it('gives every setting without a default something to show in an empty field', () => {
+    for (const definition of FLEET_SETTINGS.all()) {
+      if (definition.default !== undefined) continue;
+      // An enum offers its own choices, so it needs no placeholder.
+      if (definition.type.name.startsWith('oneOf')) continue;
+      expect(definition.placeholder, definition.key).toBeTruthy();
+    }
   });
 
   it('gives every setting a label and at least one scope', () => {
@@ -49,29 +83,32 @@ describe('the fleet registry', () => {
 });
 
 describe('the settings that had drifted', () => {
-  it('has one NMEA gateway default, and it is not the home LAN address that shipped', () => {
-    const host = FLEET_SETTINGS.get('nmea.gateway.host');
-    expect(host.default).toBe('10.10.10.1');
-    expect(host.default).not.toBe('192.168.86.33');
-    expect(FLEET_SETTINGS.get('nmea.gateway.port').default).toBe(11102);
+  it('inherits none of the three gateway addresses the apps disagreed on', () => {
+    // '192.168.86.33' in AppContext.jsx, '10.10.10.1' in SettingsModal.jsx and
+    // NMEAMonitor.jsx. The address of a boat's own multiplexer is the owner's
+    // to give, and a wrong one looks exactly like a gateway that is switched off.
+    expect(FLEET_SETTINGS.get('nmea.gateway.host').default).toBeUndefined();
+    expect(FLEET_SETTINGS.get('nmea.gateway.port').default).toBeUndefined();
+    expect(FLEET_SETTINGS.get('nmea.gateway.host').placeholder).toBeTruthy();
   });
 
-  it('agrees with DEFAULT_NMEA_TARGET in @sentinel/marine', () => {
-    // Kept as a literal rather than an import so this package stays dependency-free;
-    // the drift checker is what will hold the two together.
-    expect({
-      host: FLEET_SETTINGS.get('nmea.gateway.host').default,
-      port: String(FLEET_SETTINGS.get('nmea.gateway.port').default),
-    }).toEqual({ host: '10.10.10.1', port: '11102' });
+  it('has no remote gateway at all', () => {
+    // A device off the boat reaches the same local address over the VPN, so a
+    // second address for one gateway would be the shape this package prevents.
+    expect(FLEET_SETTINGS.has('nmea.remote.host')).toBe(false);
+    expect(FLEET_SETTINGS.has('nmea.remote.port')).toBe(false);
+    expect(FLEET_SETTINGS.keys().filter((key) => key.includes('remote'))).toEqual([]);
   });
 
   it('lets the gateway be held at the three layers the phone/PC split needs', () => {
     expect(FLEET_SETTINGS.get('nmea.gateway.host').scopes).toEqual(['vessel', 'host', 'device']);
   });
 
-  it('does not default the boat name to a specific real boat', () => {
-    expect(FLEET_SETTINGS.get('vessel.name').default).toBe('Sentinel');
-    expect(FLEET_SETTINGS.get('vessel.name').default).not.toBe('Saorsaa');
+  it('leaves the boat name and MMSI for the owner to give', () => {
+    // Three defaults existed: 'Sentinel', 'S/V Sentinel' and 'Saorsaa' — the
+    // last a specific real boat, reaching every install.
+    expect(FLEET_SETTINGS.get('vessel.name').default).toBeUndefined();
+    expect(FLEET_SETTINGS.get('vessel.mmsi').default).toBeUndefined();
   });
 
   it('keeps the one setting the two apps named differently readable in both', () => {
@@ -118,13 +155,22 @@ describe('a real device adopting the registry', () => {
     expect(settings.get('connection.backend_url')).toBe('http://192.168.1.50:3000');
   });
 
-  it('gives a fresh OceanSentinel install the declared gateway, not the home LAN one', () => {
+  it('leaves a fresh install unset rather than pointing it at a guess', () => {
     const settings = createSettingsStore({
       registry: FLEET_SETTINGS,
       stores: [createDeviceStore(memoryStorage(), { app: 'ocean', registry: FLEET_SETTINGS })],
       platform: { native: true },
     });
-    expect(settings.resolve('nmea.gateway.host')).toEqual({ value: '10.10.10.1', source: 'default' });
+
+    expect(settings.resolve('nmea.gateway.host')).toEqual({ value: undefined, source: 'unset' });
+    expect(settings.isConfigured('nmea.gateway.host')).toBe(false);
+    expect(settings.isConfigured('vessel.name')).toBe(false);
+
+    // The two kinds that still answer: a switch has to be one way or the other,
+    // and the first frame has to render at some brightness.
+    expect(settings.resolve('display.keep_awake')).toEqual({ value: false, source: 'default' });
+    expect(settings.resolve('display.day_brightness')).toEqual({ value: 100, source: 'default' });
+    expect(settings.resolve('display.night_brightness')).toEqual({ value: 60, source: 'default' });
   });
 
   it('ignores a corrupt stored brightness instead of handing on a NaN', () => {
@@ -137,14 +183,21 @@ describe('a real device adopting the registry', () => {
         }),
       ],
     });
-    expect(settings.get('display.night_brightness')).toBe(60);
+    // Brightness is one of the two things that still falls back to a default.
+    expect(settings.resolve('display.night_brightness')).toEqual({ value: 60, source: 'default' });
   });
-});
 
-describe('what this public package deliberately does not ship', () => {
-  it('carries no relay endpoint as a default', () => {
-    // sentinel-shared is public. A hosted relay address is one operator's
-    // deployment configuration and is supplied at the vessel or host layer.
-    expect(FLEET_SETTINGS.get('nmea.remote.host').default).toBe('');
+  it('reports a corrupt value on a setting with no default as unset, not as a guess', () => {
+    const settings = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [
+        createDeviceStore(memoryStorage({ 'sentinel.nmea.gateway.port': 'not a port' }), {
+          app: 'ocean',
+          registry: FLEET_SETTINGS,
+        }),
+      ],
+    });
+    expect(settings.get('nmea.gateway.port')).toBeUndefined();
+    expect(settings.source('nmea.gateway.port')).toBe('unset');
   });
 });

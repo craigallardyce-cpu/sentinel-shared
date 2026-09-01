@@ -41,17 +41,22 @@ function text(raw: unknown): string | null {
 }
 
 export interface StringOptions {
-  /** Treat `''` as a real value rather than as absence. Off by default. */
-  allowEmpty?: boolean;
   maxLength?: number;
 }
 
+/**
+ * Empty is absence, uniformly across this file.
+ *
+ * Since settings carry no defaults, "" and "never set" would otherwise be two
+ * spellings of the same state, and a screen would have to know which one it was
+ * looking at. There is one: a field somebody has cleared is a field that is
+ * unset, and clearing one calls `clear()` rather than writing "".
+ */
 export function stringType(options: StringOptions = {}): SettingType<string> {
-  const { allowEmpty = false, maxLength = 512 } = options;
+  const { maxLength = 512 } = options;
   return make<string>(
     'string',
     (raw) => {
-      if (allowEmpty && typeof raw === 'string' && raw.trim().length === 0) return '';
       const value = text(raw);
       if (value === null) return undefined;
       return value.length <= maxLength ? value : undefined;
@@ -146,17 +151,9 @@ export function oneOf<T extends string>(values: readonly T[]): SettingType<T> {
  * `@sentinel/marine` splits pool keys on the rightmost colon on exactly that
  * assumption.
  */
-export interface HostOptions {
-  /** Treat `''` as a real value — "no address configured" — rather than as absence. */
-  allowEmpty?: boolean;
-}
-
-function makeHost(options: HostOptions = {}): SettingType<string> {
-  const { allowEmpty = false } = options;
-  return make<string>(
+export const hostType: SettingType<string> = make<string>(
   'host',
   (raw) => {
-    if (allowEmpty && typeof raw === 'string' && raw.trim().length === 0) return '';
     const value = text(raw);
     if (value === null) return undefined;
     if (/\s/.test(value) || value.includes('/') || value.includes('@')) return undefined;
@@ -166,14 +163,7 @@ function makeHost(options: HostOptions = {}): SettingType<string> {
     return /^[a-z0-9._-]+$/i.test(value) ? value : undefined;
   },
   (value) => value
-  );
-}
-
-export function hostTypeWith(options: HostOptions = {}): SettingType<string> {
-  return makeHost(options);
-}
-
-export const hostType: SettingType<string> = makeHost();
+);
 
 export const portType: SettingType<number> = make<number>(
   'port',
@@ -182,21 +172,18 @@ export const portType: SettingType<number> = make<number>(
 );
 
 export interface UrlOptions {
-  allowEmpty?: boolean;
   protocols?: readonly string[];
 }
 
 /**
- * An absolute URL. Empty is allowed where it carries meaning — an unset backend
- * URL is how both apps say "standalone, no PC to talk to", and that is a value
- * rather than a gap.
+ * An absolute URL. An unset backend URL is how both apps say "standalone, no PC
+ * to talk to" — which is absence, not an empty string.
  */
 export function urlType(options: UrlOptions = {}): SettingType<string> {
-  const { allowEmpty = false, protocols = ['http:', 'https:'] } = options;
+  const { protocols = ['http:', 'https:'] } = options;
   return make<string>(
     'url',
     (raw) => {
-      if (allowEmpty && typeof raw === 'string' && raw.trim().length === 0) return '';
       const value = text(raw);
       if (value === null) return undefined;
       if (host.URL === undefined) return undefined;
@@ -213,20 +200,19 @@ export function urlType(options: UrlOptions = {}): SettingType<string> {
 }
 
 /**
- * Nine digits, or empty for "not known".
+ * Exactly nine digits, or nothing.
  *
- * The fallback matters more here than anywhere else in this file. A wrong MMSI
+ * The rejection matters more here than anywhere else in this file. A wrong MMSI
  * does not fail loudly — it silently stops own ship being suppressed from the
- * AIS proximity alarm, so the boat sets off its own alarm. Falling back to
- * "not known" is safe, because the alarm refuses to run at all without one;
- * falling back to a half-typed number is not.
+ * AIS proximity alarm, so the boat sets off its own alarm. Leaving it unset is
+ * safe, because the alarm refuses to run at all without one; a half-typed
+ * number is not.
  */
 export const mmsiType: SettingType<string> = make<string>(
   'mmsi',
   (raw) => {
-    if (raw === null || raw === undefined) return undefined;
-    const value = String(raw).trim();
-    if (value.length === 0) return '';
+    const value = text(raw);
+    if (value === null) return undefined;
     return /^\d{9}$/.test(value) ? value : undefined;
   },
   (value) => value

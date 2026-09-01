@@ -31,19 +31,16 @@ const registry = createRegistry({
   'nmea.gateway.host': defineSetting({
     scopes: ['vessel', 'host', 'device'],
     type: hostType,
-    default: '10.10.10.1',
     label: 'NMEA gateway address',
   }),
   'nmea.gateway.port': defineSetting({
     scopes: ['vessel', 'host', 'device'],
     type: portType,
-    default: 11102,
     label: 'NMEA gateway port',
   }),
   'vessel.name': defineSetting({
     scopes: ['vessel'],
     type: intType(),
-    default: 1,
     label: 'unused numeric, kept simple for scope tests',
   }),
   'display.keep_awake': defineSetting({
@@ -55,10 +52,17 @@ const registry = createRegistry({
 });
 
 describe('resolution', () => {
-  it('falls to the declared default when no layer answers', () => {
+  it('reports unset when no layer answers and nothing declared a default', () => {
     const settings = createSettingsStore({ registry, stores: [] });
-    expect(settings.get('nmea.gateway.host')).toBe('10.10.10.1');
-    expect(settings.source('nmea.gateway.host')).toBe('default');
+    expect(settings.get('nmea.gateway.host')).toBeUndefined();
+    expect(settings.source('nmea.gateway.host')).toBe('unset');
+    expect(settings.isConfigured('nmea.gateway.host')).toBe(false);
+  });
+
+  it('falls to the declared default where there is one', () => {
+    const settings = createSettingsStore({ registry, stores: [] });
+    expect(settings.resolve('display.keep_awake')).toEqual({ value: false, source: 'default' });
+    expect(settings.isConfigured('display.keep_awake')).toBe(true);
   });
 
   it('lets the narrowest layer win', () => {
@@ -102,6 +106,14 @@ describe('resolution', () => {
     expect(settings.resolve('nmea.gateway.port')).toEqual({ value: 11102, source: 'vessel' });
   });
 
+  it('reports unset when the only layer holding a value holds an unusable one', () => {
+    const settings = createSettingsStore({
+      registry,
+      stores: [memoryStore('device', { 'nmea.gateway.port': 'not a port' })],
+    });
+    expect(settings.resolve('nmea.gateway.port')).toEqual({ value: undefined, source: 'unset' });
+  });
+
   it('ignores a layer the setting does not declare, even if a store holds a value there', () => {
     const account = memoryStore('account', { 'display.keep_awake': 'true' });
     const settings = createSettingsStore({ registry, stores: [account] });
@@ -121,7 +133,8 @@ describe('resolution', () => {
       clear() {},
     };
     const settings = createSettingsStore({ registry, stores: [broken] });
-    expect(settings.get('nmea.gateway.host')).toBe('10.10.10.1');
+    expect(settings.get('nmea.gateway.host')).toBeUndefined();
+    expect(settings.get('display.keep_awake')).toBe(false);
   });
 
   it('refuses two stores for one scope', () => {
@@ -226,9 +239,9 @@ describe('the rest of the surface', () => {
       stores: [memoryStore('device', { 'display.keep_awake': 'true' })],
     });
     expect(settings.snapshot()).toEqual({
-      'nmea.gateway.host': '10.10.10.1',
-      'nmea.gateway.port': 11102,
-      'vessel.name': 1,
+      'nmea.gateway.host': undefined,
+      'nmea.gateway.port': undefined,
+      'vessel.name': undefined,
       'display.keep_awake': true,
     });
   });

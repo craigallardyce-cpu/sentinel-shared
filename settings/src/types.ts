@@ -28,8 +28,15 @@ export type Scope = 'account' | 'vessel' | 'host' | 'device';
  */
 export const SCOPE_ORDER: readonly Scope[] = ['account', 'vessel', 'host', 'device'];
 
-/** Where a resolved value actually came from. `default` means no layer held one. */
-export type Source = Scope | 'default';
+/**
+ * Where a resolved value came from.
+ *
+ * `default` is rare on purpose: only on/off toggles declare one, because a
+ * switch has to be either on or off. Everything else resolves to `unset` until
+ * somebody sets it — the fleet does not guess at a boat's MMSI, its gateway
+ * address or its alarm limits.
+ */
+export type Source = Scope | 'default' | 'unset';
 
 /**
  * The apps that consume this package. Used only to look up where a setting used
@@ -84,12 +91,33 @@ export interface SettingSpec<T> {
   readonly scopes: readonly Scope[];
   readonly type: SettingType<T>;
   /**
-   * The one place a literal for this setting is allowed to appear. A function is
-   * permitted only for genuinely platform-dependent defaults; the registry
-   * evaluates both branches at construction and refuses either if it does not
-   * parse.
+   * Omitted for almost everything, and that is the design.
+   *
+   * A default is a value nobody chose, and this fleet has been bitten by every
+   * one it shipped: a home LAN address as the NMEA gateway, a specific real boat
+   * as the boat name, one operator's relay endpoint as a hosted address. Each
+   * looked like a helpful head start and each was silently wrong for every
+   * install but one — and invisible, because a pre-filled field reads as a
+   * configured field.
+   *
+   * So a value the owner is the authority on has no default. It stays `unset`
+   * until somebody sets it, which is a state the UI can show and act on. Use
+   * `placeholder` to tell them what shape of value belongs there.
+   *
+   * The exception, enforced by the registry, is an on/off toggle: a switch has
+   * to be either on or off, so a `bool` setting MUST declare a default. A
+   * function is permitted only for genuinely platform-dependent ones; the
+   * registry evaluates both branches at construction and refuses either if it
+   * does not parse.
    */
-  readonly default: T | ((platform: PlatformContext) => T);
+  readonly default?: T | ((platform: PlatformContext) => T);
+  /**
+   * Shown greyed out in an empty field — `e.g. 10.10.10.1`. Never returned by
+   * `get()` and never written anywhere. This is what is left of the deleted
+   * defaults: the useful half (telling somebody what goes here) without the
+   * harmful half (acting on a guess they never made).
+   */
+  readonly placeholder?: string;
   /** Human label, as it appears in the settings dialog. */
   readonly label: string;
   readonly description?: string;

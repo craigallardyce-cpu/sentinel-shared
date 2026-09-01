@@ -14,7 +14,6 @@ export type {
 export {
   boolType,
   hostType,
-  hostTypeWith,
   intType,
   listType,
   mmsiType,
@@ -24,7 +23,7 @@ export {
   stringType,
   urlType,
 } from './valueTypes.js';
-export type { HostOptions, NumberOptions, StringOptions, UrlOptions } from './valueTypes.js';
+export type { NumberOptions, StringOptions, UrlOptions } from './valueTypes.js';
 
 export { createRegistry, defaultFor, defineSetting } from './registry.js';
 export type { AnyDefinition, AnySpec, Registry } from './registry.js';

@@ -28,8 +28,12 @@ export function defineSetting<T>(spec: SettingSpec<T>): SettingSpec<T> {
   return spec;
 }
 
-/** Resolve a declared default for a platform, whether it is a literal or a function. */
-export function defaultFor<T>(spec: SettingSpec<T>, platform: PlatformContext): T {
+/**
+ * Resolve a declared default for a platform, or `undefined` when the setting
+ * declares none — which is almost all of them. See `SettingSpec.default`.
+ */
+export function defaultFor<T>(spec: SettingSpec<T>, platform: PlatformContext): T | undefined {
+  if (spec.default === undefined) return undefined;
   return typeof spec.default === 'function' ? (spec.default as (p: PlatformContext) => T)(platform) : spec.default;
 }
 
@@ -74,22 +78,36 @@ export function createRegistry<D extends Record<string, AnySpec>>(specs: D): Reg
     }
 
     /*
-      The default must satisfy its own type.
+      A switch has to be either on or off, so a toggle must say which.
+
+      Every other kind of setting is the owner's to supply and stays `unset`
+      until they do. Enforcing that here, rather than trusting each declaration
+      to remember, is what keeps a well-meaning default from creeping back in
+      one setting at a time.
+    */
+    if (spec.type.name === 'bool' && spec.default === undefined) {
+      throw new Error(`Settings: "${key}" is a toggle, so it must declare a default of true or false.`);
+    }
+
+    /*
+      A declared default must satisfy its own type.
 
       Cheap to check and it catches the exact shape of two bugs already in the
       tree: a port declared as a string, and an address that is not one. Both
       branches of a platform-dependent default are checked, because the one that
       only runs on a phone is the one nobody exercises before release.
     */
-    for (const platform of PLATFORMS) {
-      const value = defaultFor(spec, platform);
-      if (spec.type.parse(value) === undefined) {
-        const where = typeof spec.default === 'function' ? ` (native: ${platform.native})` : '';
-        throw new Error(
-          `Settings: the default for "${key}"${where} is not a valid ${spec.type.name}: ${JSON.stringify(value)}.`
-        );
+    if (spec.default !== undefined) {
+      for (const platform of PLATFORMS) {
+        const value = defaultFor(spec, platform);
+        if (spec.type.parse(value) === undefined) {
+          const where = typeof spec.default === 'function' ? ` (native: ${platform.native})` : '';
+          throw new Error(
+            `Settings: the default for "${key}"${where} is not a valid ${spec.type.name}: ${JSON.stringify(value)}.`
+          );
+        }
+        if (typeof spec.default !== 'function') break;
       }
-      if (typeof spec.default !== 'function') break;
     }
 
     byKey.set(key, { ...spec, key });
