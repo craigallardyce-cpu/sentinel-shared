@@ -1,4 +1,5 @@
 import type { SupabaseClientLike } from './AuthScreen';
+import type { StorageLike } from './storage';
 /**
  * Tier entitlements: which catalog features this user's subscription grants.
  *
@@ -11,7 +12,7 @@ import type { SupabaseClientLike } from './AuthScreen';
  *
  * Offline stance, same as the rest of AuthScreen: this is a licensing
  * decision, not a security boundary. Entitlements are fetched during online
- * verification and cached in localStorage next to the access flag; offline
+ * verification and cached beside the access flag; offline
  * launches read the cache. A device with no cache at all (an app version from
  * before entitlements existed, or the explicit local-only offline mode, which
  * already bypasses licensing entirely) fails OPEN — a Premium crew mid-passage
@@ -33,9 +34,9 @@ export interface Entitlements {
     /** Epoch ms of the last successful online refresh. */
     fetchedAt: number;
 }
-export declare function readEntitlements(accessStorageKey: string): Entitlements | null;
-export declare function writeEntitlements(accessStorageKey: string, entitlements: Entitlements): void;
-export declare function clearEntitlements(accessStorageKey: string): void;
+export declare function readEntitlements(storage: StorageLike, accessStorageKey: string): Entitlements | null;
+export declare function writeEntitlements(storage: StorageLike, accessStorageKey: string, entitlements: Entitlements): void;
+export declare function clearEntitlements(storage: StorageLike, accessStorageKey: string): void;
 /**
  * Whether the cached entitlements grant a feature.
  *
@@ -44,7 +45,7 @@ export declare function clearEntitlements(accessStorageKey: string): void;
  * licensing entirely today), keeps full functionality. Once a cache exists it
  * answers from the cache alone — call sites stay synchronous and render-safe.
  */
-export declare function hasFeature(accessStorageKey: string, featureKey: FeatureKey | string): boolean;
+export declare function hasFeature(storage: StorageLike, accessStorageKey: string, featureKey: FeatureKey | string): boolean;
 /**
  * Resolve the user's entitlements for one product from the live catalog:
  * every active tier they hold for it — directly subscribed or through a
@@ -69,4 +70,4 @@ export declare function fetchEntitlements(supabase: SupabaseClientLike, userId: 
  * verification path, where a failed refresh must not take working features
  * away from a device that is otherwise verified.
  */
-export declare function refreshEntitlements(supabase: SupabaseClientLike, userId: string, productId: string, accessStorageKey: string): Promise<boolean>;
+export declare function refreshEntitlements(storage: StorageLike, supabase: SupabaseClientLike, userId: string, productId: string, accessStorageKey: string): Promise<boolean>;

@@ -1,3 +1,4 @@
+import type { StorageLike } from './storage';
 import React, { useState, useEffect } from 'react';
 import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -28,11 +29,21 @@ export interface SupabaseClientLike {
 }
 
 export interface AuthScreenProps {
+  /**
+   * Where the access flag, the offline grant and the entitlement cache live.
+   *
+   * Required rather than defaulted to the browser global: this package is
+   * installed by three apps and one of them runs its server in the same process,
+   * and the keys built from `accessStorageKey` are invisible to every check the
+   * fleet has unless the app that owns the storage hands it over. Pass
+   * `browserStorage()` from `@sentinel/settings` unless there is a reason not to.
+   */
+  storage: StorageLike;
   /** Two-word product name used in copy, e.g. "Harbor Sentinel". */
   appName: string;
   /** One-word app id used in the "not connected to Supabase" message, e.g. "HarborSentinel". */
   appId: string;
-  /** localStorage key that gates access once a subscription is verified, e.g. "harborsentinel_access". */
+  /** Storage key that gates access once a subscription is verified, e.g. "harborsentinel_access". */
   accessStorageKey: string;
   /** Supabase product id (tiers.product_id) that counts as an active subscription for this app. */
   productId: string;
@@ -41,7 +52,7 @@ export interface AuthScreenProps {
   /** Resolves the local hardware footprint used for device-limit enforcement (desktop only; native platforms use Capacitor's Device.getId() instead). */
   fetchMachineId: () => Promise<{ machineId: string }>;
   onAuthenticated: () => void;
-  /** If set, any value under this old localStorage key is migrated to accessStorageKey on mount. */
+  /** If set, any value under this old key is migrated to accessStorageKey on mount. */
   legacyStorageKey?: string;
   /** If true, shows "Run Offline (Local-Only Mode)" buttons that bypass auth entirely by calling onAuthenticated. */
   allowOfflineMode?: boolean;
@@ -71,9 +82,9 @@ interface OfflineGrant {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function readOfflineGrant(accessStorageKey: string): OfflineGrant | null {
+function readOfflineGrant(storage: StorageLike, accessStorageKey: string): OfflineGrant | null {
   try {
-    const raw = localStorage.getItem(`${accessStorageKey}_offline_grant`);
+    const raw = storage.getItem(`${accessStorageKey}_offline_grant`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (typeof parsed?.userId !== 'string' || typeof parsed?.grantedAt !== 'number') return null;
@@ -83,9 +94,9 @@ function readOfflineGrant(accessStorageKey: string): OfflineGrant | null {
   }
 }
 
-function writeOfflineGrant(accessStorageKey: string, userId: string): void {
+function writeOfflineGrant(storage: StorageLike, accessStorageKey: string, userId: string): void {
   try {
-    localStorage.setItem(
+    storage.setItem(
       `${accessStorageKey}_offline_grant`,
       JSON.stringify({ userId, grantedAt: Date.now() })
     );
@@ -95,9 +106,9 @@ function writeOfflineGrant(accessStorageKey: string, userId: string): void {
   }
 }
 
-function clearOfflineGrant(accessStorageKey: string): void {
+function clearOfflineGrant(storage: StorageLike, accessStorageKey: string): void {
   try {
-    localStorage.removeItem(`${accessStorageKey}_offline_grant`);
+    storage.removeItem(`${accessStorageKey}_offline_grant`);
   } catch {
     /* ignore */
   }
@@ -107,9 +118,9 @@ function clearOfflineGrant(accessStorageKey: string): void {
  * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
  * Exported so apps can show the remaining allowance alongside their offline indicator.
  */
-export function offlineGraceRemaining(accessStorageKey: string, offlineGraceDays: number): number {
+export function offlineGraceRemaining(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number): number {
   if (offlineGraceDays <= 0) return 0;
-  const grant = readOfflineGrant(accessStorageKey);
+  const grant = readOfflineGrant(storage, accessStorageKey);
   if (!grant) return 0;
   const elapsedDays = (Date.now() - grant.grantedAt) / DAY_MS;
   return Math.max(0, Math.ceil(offlineGraceDays - elapsedDays));
@@ -148,6 +159,7 @@ async function resolveDeviceIdentity(fetchMachineId: () => Promise<{ machineId: 
 export function AuthScreen({
   appName,
   appId,
+  storage,
   accessStorageKey,
   productId,
   supabase,
@@ -168,10 +180,10 @@ export function AuthScreen({
 
   useEffect(() => {
     if (!legacyStorageKey) return;
-    const oldValue = localStorage.getItem(legacyStorageKey);
+    const oldValue = storage.getItem(legacyStorageKey);
     if (oldValue !== null) {
-      localStorage.setItem(accessStorageKey, oldValue);
-      localStorage.removeItem(legacyStorageKey);
+      storage.setItem(accessStorageKey, oldValue);
+      storage.removeItem(legacyStorageKey);
     }
     // Runs once on mount with the initial config; apps pass stable literals for these keys.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,8 +207,8 @@ export function AuthScreen({
     // of anything. It reports true on a LAN with no internet, and that case still falls
     // through to the real getSession() check below.
     if (offlineGraceDays > 0 && typeof navigator !== 'undefined' && !navigator.onLine) {
-      const grant = readOfflineGrant(accessStorageKey);
-      const verifiedBefore = localStorage.getItem(accessStorageKey) === 'true';
+      const grant = readOfflineGrant(storage, accessStorageKey);
+      const verifiedBefore = storage.getItem(accessStorageKey) === 'true';
       if (grant && verifiedBefore && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS) {
         onAuthenticated();
         return;
@@ -215,8 +227,8 @@ export function AuthScreen({
       // refresh token is still on disk and still valid server-side, so this device is
       // not signed out -- it is merely unable to say so right now.
       if (offlineGraceDays > 0 && isOfflineFailure(error)) {
-        const grant = readOfflineGrant(accessStorageKey);
-        const verifiedBefore = localStorage.getItem(accessStorageKey) === 'true';
+        const grant = readOfflineGrant(storage, accessStorageKey);
+        const verifiedBefore = storage.getItem(accessStorageKey) === 'true';
         const withinGrace = !!grant && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS;
 
         if (grant && verifiedBefore && withinGrace) {
@@ -224,7 +236,7 @@ export function AuthScreen({
           return;
         }
         if (grant && !withinGrace) {
-          clearOfflineGrant(accessStorageKey);
+          clearOfflineGrant(storage, accessStorageKey);
           setError(
             `This device has been offline for more than ${offlineGraceDays} days. Connect to the internet once to continue.`
           );
@@ -240,9 +252,9 @@ export function AuthScreen({
       } else if (event === 'SIGNED_OUT') {
         // A real sign-out, or a refresh token the server rejected. Either way this
         // device has to prove itself again -- drop the offline allowance with it.
-        localStorage.removeItem(accessStorageKey);
-        clearOfflineGrant(accessStorageKey);
-        clearEntitlements(accessStorageKey);
+        storage.removeItem(accessStorageKey);
+        clearOfflineGrant(storage, accessStorageKey);
+        clearEntitlements(storage, accessStorageKey);
         setHasNoSubscription(false);
         setChecking(false);
       }
@@ -399,22 +411,22 @@ export function AuthScreen({
           }
         } catch (deviceErr: any) {
           console.error('Hardware verification failed:', deviceErr);
-          if (localStorage.getItem(accessStorageKey) !== 'true') {
+          if (storage.getItem(accessStorageKey) !== 'true') {
             setError(`Device verification failed: ${deviceErr.message || deviceErr}. Please check your connection.`);
             setChecking(false);
             return;
           }
         }
 
-        localStorage.setItem(accessStorageKey, 'true');
+        storage.setItem(accessStorageKey, 'true');
         // Refresh the cached tier entitlements alongside every online
         // verification. A failed refresh keeps the previous cache — features
         // are never taken away because a lookup did not complete.
-        await refreshEntitlements(supabase, userId, productId, accessStorageKey);
+        await refreshEntitlements(storage, supabase, userId, productId, accessStorageKey);
         // Re-stamp on every online verification, so the clock runs from the last time
         // this device actually reached Supabase rather than from first sign-in.
         if (offlineGraceDays > 0) {
-          writeOfflineGrant(accessStorageKey, userId);
+          writeOfflineGrant(storage, accessStorageKey, userId);
         }
         onAuthenticated();
       } else {
@@ -425,8 +437,8 @@ export function AuthScreen({
       console.error(err);
       // The entitlement could not be checked -- not the same as not having one. A device
       // that has verified before keeps working, bounded by its grant when one is in use.
-      const verifiedBefore = localStorage.getItem(accessStorageKey) === 'true';
-      const grant = readOfflineGrant(accessStorageKey);
+      const verifiedBefore = storage.getItem(accessStorageKey) === 'true';
+      const grant = readOfflineGrant(storage, accessStorageKey);
       const withinGrace =
         offlineGraceDays > 0 && !!grant && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS;
 
@@ -493,8 +505,8 @@ export function AuthScreen({
   const handleSignOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
-    localStorage.removeItem(accessStorageKey);
-    clearEntitlements(accessStorageKey);
+    storage.removeItem(accessStorageKey);
+    clearEntitlements(storage, accessStorageKey);
     setHasNoSubscription(false);
     setError('');
     setLoading(false);

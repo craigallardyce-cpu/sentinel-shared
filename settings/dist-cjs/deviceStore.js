@@ -23,6 +23,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_PREFIX = void 0;
 exports.createDeviceStore = createDeviceStore;
 exports.createHostStore = createHostStore;
+exports.browserStorage = browserStorage;
 exports.DEFAULT_PREFIX = 'sentinel.';
 function createDeviceStore(storage, options) {
     const { app, registry, prefix = exports.DEFAULT_PREFIX } = options;
@@ -158,5 +159,38 @@ function createHostStore(storage, options = {}) {
             for (const listener of listeners)
                 listener();
         },
+    };
+}
+/**
+ * The browser's `localStorage`, as a `StorageLike`.
+ *
+ * Both HarborSentinel and OceanSentinel hand-rolled this, identically, because
+ * `localStorage` is not merely absent outside a browser — reading the property
+ * throws in Safari private browsing, and a settings read sits on the path to the
+ * first paint. When it cannot be reached, an in-memory shim keeps the app
+ * booting; what that loses is persistence, which is the correct degradation when
+ * there is nowhere to persist to.
+ *
+ * Owning this here is the point of a storage package: nothing else in the fleet
+ * then needs to touch the global, and a package that takes a `StorageLike` can be
+ * used on a server, in a test, or under Electron's main process without knowing
+ * which it is.
+ */
+function browserStorage() {
+    try {
+        const candidate = globalThis.localStorage;
+        if (candidate) {
+            candidate.getItem('sentinel.probe');
+            return candidate;
+        }
+    }
+    catch {
+        /* Blocked or unavailable; fall through to the shim. */
+    }
+    const memory = new Map();
+    return {
+        getItem: (key) => memory.get(key) ?? null,
+        setItem: (key, value) => void memory.set(key, value),
+        removeItem: (key) => void memory.delete(key),
     };
 }

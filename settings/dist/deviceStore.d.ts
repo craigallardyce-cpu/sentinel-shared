@@ -66,3 +66,19 @@ export interface HostStoreOptions {
  * still knows nothing about SQLite.
  */
 export declare function createHostStore(storage: StorageLike, options?: HostStoreOptions): DeviceStore;
+/**
+ * The browser's `localStorage`, as a `StorageLike`.
+ *
+ * Both HarborSentinel and OceanSentinel hand-rolled this, identically, because
+ * `localStorage` is not merely absent outside a browser — reading the property
+ * throws in Safari private browsing, and a settings read sits on the path to the
+ * first paint. When it cannot be reached, an in-memory shim keeps the app
+ * booting; what that loses is persistence, which is the correct degradation when
+ * there is nowhere to persist to.
+ *
+ * Owning this here is the point of a storage package: nothing else in the fleet
+ * then needs to touch the global, and a package that takes a `StorageLike` can be
+ * used on a server, in a test, or under Electron's main process without knowing
+ * which it is.
+ */
+export declare function browserStorage(): StorageLike;

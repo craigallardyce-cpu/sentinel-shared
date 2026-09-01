@@ -10,7 +10,7 @@
  *
  * Offline stance, same as the rest of AuthScreen: this is a licensing
  * decision, not a security boundary. Entitlements are fetched during online
- * verification and cached in localStorage next to the access flag; offline
+ * verification and cached beside the access flag; offline
  * launches read the cache. A device with no cache at all (an app version from
  * before entitlements existed, or the explicit local-only offline mode, which
  * already bypasses licensing entirely) fails OPEN — a Premium crew mid-passage
@@ -51,9 +51,9 @@ export const FEATURE_KEYS = [
     'ai_assistant'
 ];
 const cacheKey = (accessStorageKey) => `${accessStorageKey}_entitlements`;
-export function readEntitlements(accessStorageKey) {
+export function readEntitlements(storage, accessStorageKey) {
     try {
-        const raw = localStorage.getItem(cacheKey(accessStorageKey));
+        const raw = storage.getItem(cacheKey(accessStorageKey));
         if (!raw)
             return null;
         const parsed = JSON.parse(raw);
@@ -69,18 +69,18 @@ export function readEntitlements(accessStorageKey) {
         return null;
     }
 }
-export function writeEntitlements(accessStorageKey, entitlements) {
+export function writeEntitlements(storage, accessStorageKey, entitlements) {
     try {
-        localStorage.setItem(cacheKey(accessStorageKey), JSON.stringify(entitlements));
+        storage.setItem(cacheKey(accessStorageKey), JSON.stringify(entitlements));
     }
     catch {
         // Storage unavailable or full; the cache is an optimisation. hasFeature
         // fails open without it, which is the documented offline stance.
     }
 }
-export function clearEntitlements(accessStorageKey) {
+export function clearEntitlements(storage, accessStorageKey) {
     try {
-        localStorage.removeItem(cacheKey(accessStorageKey));
+        storage.removeItem(cacheKey(accessStorageKey));
     }
     catch {
         /* ignore */
@@ -94,8 +94,8 @@ export function clearEntitlements(accessStorageKey) {
  * licensing entirely today), keeps full functionality. Once a cache exists it
  * answers from the cache alone — call sites stay synchronous and render-safe.
  */
-export function hasFeature(accessStorageKey, featureKey) {
-    const entitlements = readEntitlements(accessStorageKey);
+export function hasFeature(storage, accessStorageKey, featureKey) {
+    const entitlements = readEntitlements(storage, accessStorageKey);
     if (!entitlements)
         return true;
     return entitlements.features.includes(featureKey);
@@ -178,10 +178,10 @@ export async function fetchEntitlements(supabase, userId, productId) {
  * verification path, where a failed refresh must not take working features
  * away from a device that is otherwise verified.
  */
-export async function refreshEntitlements(supabase, userId, productId, accessStorageKey) {
+export async function refreshEntitlements(storage, supabase, userId, productId, accessStorageKey) {
     try {
         const entitlements = await fetchEntitlements(supabase, userId, productId);
-        writeEntitlements(accessStorageKey, entitlements);
+        writeEntitlements(storage, accessStorageKey, entitlements);
         return true;
     }
     catch {

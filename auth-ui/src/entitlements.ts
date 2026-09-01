@@ -1,4 +1,5 @@
 import type { SupabaseClientLike } from './AuthScreen';
+import type { StorageLike } from './storage';
 
 /**
  * Tier entitlements: which catalog features this user's subscription grants.
@@ -12,7 +13,7 @@ import type { SupabaseClientLike } from './AuthScreen';
  *
  * Offline stance, same as the rest of AuthScreen: this is a licensing
  * decision, not a security boundary. Entitlements are fetched during online
- * verification and cached in localStorage next to the access flag; offline
+ * verification and cached beside the access flag; offline
  * launches read the cache. A device with no cache at all (an app version from
  * before entitlements existed, or the explicit local-only offline mode, which
  * already bypasses licensing entirely) fails OPEN — a Premium crew mid-passage
@@ -67,9 +68,9 @@ export interface Entitlements {
 
 const cacheKey = (accessStorageKey: string) => `${accessStorageKey}_entitlements`;
 
-export function readEntitlements(accessStorageKey: string): Entitlements | null {
+export function readEntitlements(storage: StorageLike, accessStorageKey: string): Entitlements | null {
   try {
-    const raw = localStorage.getItem(cacheKey(accessStorageKey));
+    const raw = storage.getItem(cacheKey(accessStorageKey));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed?.features) || !Array.isArray(parsed?.tierNames)) return null;
@@ -83,18 +84,18 @@ export function readEntitlements(accessStorageKey: string): Entitlements | null 
   }
 }
 
-export function writeEntitlements(accessStorageKey: string, entitlements: Entitlements): void {
+export function writeEntitlements(storage: StorageLike, accessStorageKey: string, entitlements: Entitlements): void {
   try {
-    localStorage.setItem(cacheKey(accessStorageKey), JSON.stringify(entitlements));
+    storage.setItem(cacheKey(accessStorageKey), JSON.stringify(entitlements));
   } catch {
     // Storage unavailable or full; the cache is an optimisation. hasFeature
     // fails open without it, which is the documented offline stance.
   }
 }
 
-export function clearEntitlements(accessStorageKey: string): void {
+export function clearEntitlements(storage: StorageLike, accessStorageKey: string): void {
   try {
-    localStorage.removeItem(cacheKey(accessStorageKey));
+    storage.removeItem(cacheKey(accessStorageKey));
   } catch {
     /* ignore */
   }
@@ -108,8 +109,8 @@ export function clearEntitlements(accessStorageKey: string): void {
  * licensing entirely today), keeps full functionality. Once a cache exists it
  * answers from the cache alone — call sites stay synchronous and render-safe.
  */
-export function hasFeature(accessStorageKey: string, featureKey: FeatureKey | string): boolean {
-  const entitlements = readEntitlements(accessStorageKey);
+export function hasFeature(storage: StorageLike, accessStorageKey: string, featureKey: FeatureKey | string): boolean {
+  const entitlements = readEntitlements(storage, accessStorageKey);
   if (!entitlements) return true;
   return entitlements.features.includes(featureKey);
 }
@@ -199,6 +200,7 @@ export async function fetchEntitlements(
  * away from a device that is otherwise verified.
  */
 export async function refreshEntitlements(
+  storage: StorageLike,
   supabase: SupabaseClientLike,
   userId: string,
   productId: string,
@@ -206,7 +208,7 @@ export async function refreshEntitlements(
 ): Promise<boolean> {
   try {
     const entitlements = await fetchEntitlements(supabase, userId, productId);
-    writeEntitlements(accessStorageKey, entitlements);
+    writeEntitlements(storage, accessStorageKey, entitlements);
     return true;
   } catch {
     return false;

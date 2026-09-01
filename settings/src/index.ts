@@ -40,7 +40,7 @@ export {
 } from './cloudStore.js';
 export type { CloudStore, CloudStoreOptions, SupabaseLike } from './cloudStore.js';
 
-export { createDeviceStore, createHostStore, DEFAULT_PREFIX } from './deviceStore.js';
+export { browserStorage, createDeviceStore, createHostStore, DEFAULT_PREFIX } from './deviceStore.js';
 export type { DeviceStore, DeviceStoreOptions, HostStoreOptions, StorageLike } from './deviceStore.js';
 
 export { DEFAULT_MARKER_KEY, migrateLegacyKeys } from './migrate.js';
