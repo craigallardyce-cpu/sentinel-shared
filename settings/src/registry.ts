@@ -23,7 +23,25 @@ const KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 /** Both platform branches, so a platform-dependent default is checked in full. */
 const PLATFORMS: readonly PlatformContext[] = [{ native: false }, { native: true }];
 
-/** Authoring helper. Identity at runtime; it exists to anchor type inference and JSDoc. */
+/**
+ * Authoring helper. Identity at runtime; it exists to anchor type inference.
+ *
+ * The two overloads are what let a consumer avoid `?? someLiteral`. A spec that
+ * declares a default keeps `default` as a REQUIRED property in its type, and
+ * `get()` uses that to promise a value rather than `T | undefined` — because a
+ * setting with a default genuinely cannot resolve to nothing. A spec without one
+ * types as optional, and the compiler makes every reader say what it does before
+ * an owner has answered.
+ *
+ * Getting this wrong in the other direction is what would undo the design: if
+ * `get()` always returned `T | undefined`, every call site would answer the
+ * compiler with its own fallback literal, and the scattered defaults would be
+ * back within a release.
+ */
+export function defineSetting<T>(
+  spec: SettingSpec<T> & { default: T | ((platform: PlatformContext) => T) }
+): SettingSpec<T> & { default: T | ((platform: PlatformContext) => T) };
+export function defineSetting<T>(spec: SettingSpec<T>): SettingSpec<T>;
 export function defineSetting<T>(spec: SettingSpec<T>): SettingSpec<T> {
   return spec;
 }

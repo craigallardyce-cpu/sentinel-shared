@@ -35,11 +35,21 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'vessel.mmsi': import("./types.js").SettingSpec<string>;
     'vessel.type': import("./types.js").SettingSpec<string>;
     'vessel.bow_roller_height_ft': import("./types.js").SettingSpec<number>;
-    'units.metric': import("./types.js").SettingSpec<boolean>;
-    'display.day_brightness': import("./types.js").SettingSpec<number>;
-    'display.night_brightness': import("./types.js").SettingSpec<number>;
-    'display.keep_awake': import("./types.js").SettingSpec<boolean>;
-    'display.auto_dim': import("./types.js").SettingSpec<boolean>;
+    'units.metric': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'display.day_brightness': import("./types.js").SettingSpec<number> & {
+        default: number | ((platform: import("./types.js").PlatformContext) => number);
+    };
+    'display.night_brightness': import("./types.js").SettingSpec<number> & {
+        default: number | ((platform: import("./types.js").PlatformContext) => number);
+    };
+    'display.keep_awake': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'display.auto_dim': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
     'display.auto_dim_minutes': import("./types.js").SettingSpec<number>;
     'nmea.source': import("./types.js").SettingSpec<"NMEA LOCAL" | "DEVICE GPS">;
     'nmea.gateway.host': import("./types.js").SettingSpec<string>;
@@ -47,7 +57,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'nmea.datahub_url': import("./types.js").SettingSpec<string>;
     'connection.backend_url': import("./types.js").SettingSpec<string>;
     'connection.tile_proxy_url': import("./types.js").SettingSpec<string>;
-    'alarms.ais_proximity.enabled': import("./types.js").SettingSpec<boolean>;
+    'alarms.ais_proximity.enabled': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
     'alarms.ais_proximity.limit_nm': import("./types.js").SettingSpec<number>;
     'alarms.wind_limit_kt': import("./types.js").SettingSpec<number>;
     'alarms.depth_limit_ft': import("./types.js").SettingSpec<number>;

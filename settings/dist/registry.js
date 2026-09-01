@@ -18,7 +18,6 @@ import { SCOPE_ORDER } from './types.js';
 const KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 /** Both platform branches, so a platform-dependent default is checked in full. */
 const PLATFORMS = [{ native: false }, { native: true }];
-/** Authoring helper. Identity at runtime; it exists to anchor type inference and JSDoc. */
 export function defineSetting(spec) {
     return spec;
 }

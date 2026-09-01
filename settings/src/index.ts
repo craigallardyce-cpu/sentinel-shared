@@ -29,7 +29,7 @@ export { createRegistry, defaultFor, defineSetting } from './registry.js';
 export type { AnyDefinition, AnySpec, Registry } from './registry.js';
 
 export { createSettingsStore } from './store.js';
-export type { Resolved, SettingsStore, SettingsStoreOptions } from './store.js';
+export type { Resolvable, Resolved, SettingsStore, SettingsStoreOptions } from './store.js';
 
 export { createDeviceStore, DEFAULT_PREFIX } from './deviceStore.js';
 export type { DeviceStore, DeviceStoreOptions, StorageLike } from './deviceStore.js';

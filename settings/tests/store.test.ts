@@ -263,3 +263,20 @@ describe('the rest of the surface', () => {
     ).toBe(false);
   });
 });
+
+describe('typing a default as a promise, not a maybe', () => {
+  it('resolves a setting with a default without the caller supplying a fallback', () => {
+    const settings = createSettingsStore({ registry, stores: [] });
+
+    // The point is the TYPE, not the value: `keepAwake` is boolean, not
+    // `boolean | undefined`, so no call site has to answer the compiler with its
+    // own literal — which is how the scattered defaults would grow back.
+    const keepAwake: boolean = settings.get('display.keep_awake');
+    expect(keepAwake).toBe(false);
+
+    // And a setting with no default is `| undefined`, so a reader must say what
+    // it does before an owner has answered.
+    const host: string | undefined = settings.get('nmea.gateway.host');
+    expect(host).toBeUndefined();
+  });
+});

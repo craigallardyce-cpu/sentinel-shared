@@ -23,7 +23,6 @@ const types_js_1 = require("./types.js");
 const KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 /** Both platform branches, so a platform-dependent default is checked in full. */
 const PLATFORMS = [{ native: false }, { native: true }];
-/** Authoring helper. Identity at runtime; it exists to anchor type inference and JSDoc. */
 function defineSetting(spec) {
     return spec;
 }

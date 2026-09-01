@@ -37,9 +37,18 @@ export interface SettingsStoreOptions<D extends Record<string, AnySpec>> {
   platform?: PlatformContext;
 }
 
+/**
+ * What a key resolves to.
+ *
+ * A spec that declares a default cannot resolve to nothing, so its type does not
+ * include `undefined` and callers need no fallback. Everything else can be
+ * `unset`, and says so in its type.
+ */
+export type Resolvable<S> = S extends { default: unknown } ? SettingValue<S> : SettingValue<S> | undefined;
+
 export interface Resolved<T> {
   /** `undefined` when nothing has been configured — see `source`. */
-  value: T | undefined;
+  value: T;
   /**
    * Which layer answered. `default` only ever appears for an on/off toggle;
    * `unset` means nobody has supplied a value yet, which is a normal state and
@@ -57,9 +66,9 @@ export interface SettingsStore<D extends Record<string, AnySpec>> {
    * the app should do before an owner has told it their MMSI or their gateway
    * address, instead of letting a guessed value flow silently into an alarm.
    */
-  get<K extends keyof D & string>(key: K): SettingValue<D[K]> | undefined;
+  get<K extends keyof D & string>(key: K): Resolvable<D[K]>;
   /** The resolved value plus where it came from, for "set on this device / from the boat". */
-  resolve<K extends keyof D & string>(key: K): Resolved<SettingValue<D[K]>>;
+  resolve<K extends keyof D & string>(key: K): Resolved<Resolvable<D[K]>>;
   source(key: string): Source;
   /** False while a setting is still `unset`. */
   isConfigured(key: string): boolean;
@@ -151,11 +160,11 @@ export function createSettingsStore<D extends Record<string, AnySpec>>(
 
   return {
     get(key) {
-      return resolveKey(key).value as SettingValue<D[typeof key]> | undefined;
+      return resolveKey(key).value as Resolvable<D[typeof key]>;
     },
 
     resolve(key) {
-      return resolveKey(key) as Resolved<SettingValue<D[typeof key]>>;
+      return resolveKey(key) as Resolved<Resolvable<D[typeof key]>>;
     },
 
     source(key) {
