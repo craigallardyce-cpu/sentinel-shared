@@ -120,25 +120,35 @@ export function useWindField({
   const [errorKind, setErrorKind] = useState<WindFieldErrorKind>(null);
   const [ageHours, setAgeHours] = useState(0);
 
-  const centre = useMemo(
-    () =>
-      typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon)
-        ? { lat: snap(lat), lon: snap(lon) }
-        : null,
-    [lat, lon]
-  );
+  /*
+    Snapped BEFORE the memo, so the memo keys on the snapped primitives.
+
+    The snapping was always meant to stop ordinary panning from refetching, and by value it
+    did — but the memo used to depend on the raw lat/lon, so every small movement produced a
+    new centre OBJECT whose snapped contents were identical. React compares dependencies by
+    identity, not by value: new object, new bounds, new load callback, effect re-run, fetch.
+
+    On a chart that recentres itself once per position fix, that was one 169-coordinate
+    Open-Meteo request per second, and the free tier's hourly cap died in minutes. The comment
+    promised the debounce; the dependency list quietly undid it. Snapping to primitives first
+    makes the promise structural — identical snapped values cannot re-run anything downstream.
+  */
+  const snappedLat =
+    typeof lat === 'number' && Number.isFinite(lat) ? snap(lat) : null;
+  const snappedLon =
+    typeof lon === 'number' && Number.isFinite(lon) ? snap(lon) : null;
 
   const bounds = useMemo<Bounds | null>(
     () =>
-      centre
+      snappedLat !== null && snappedLon !== null
         ? {
-            north: Math.min(89, centre.lat + HALF_SPAN_DEG),
-            south: Math.max(-89, centre.lat - HALF_SPAN_DEG),
-            east: Math.min(180, centre.lon + HALF_SPAN_DEG),
-            west: Math.max(-180, centre.lon - HALF_SPAN_DEG)
+            north: Math.min(89, snappedLat + HALF_SPAN_DEG),
+            south: Math.max(-89, snappedLat - HALF_SPAN_DEG),
+            east: Math.min(180, snappedLon + HALF_SPAN_DEG),
+            west: Math.max(-180, snappedLon - HALF_SPAN_DEG)
           }
         : null,
-    [centre]
+    [snappedLat, snappedLon]
   );
 
   /*
