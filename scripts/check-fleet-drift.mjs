@@ -710,6 +710,12 @@ const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
 // never got to own. Icon-only affordances are not caught, and should not be.
 const RAW_ACCENT_BUTTON = /<button\b[^>]{0,600}?(?:bg-cyan|bg-primary|text-cyan|bg-bg-card|border-cyan|bg-red|bg-green|bg-warning)/g;
 const stripCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '');
+// The same, but length-preserving, so an offset found in the blanked text still
+// points at the right place in the original.
+const blankCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
+const RAW_FONT_SIZE = /font-size\s*:\s*(\d+(?:\.\d+)?)px/g;
+// A rule may sit under the floor if it says why, within 400 characters above it.
+const FLOOR_EXEMPT = 'type-floor-exempt';
 const sample = (list, n = 3) => list.slice(0, n).join(', ') + (list.length > n ? `, +${list.length - n} more` : '');
 
 for (const app of presentApps) {
@@ -747,6 +753,17 @@ for (const app of presentApps) {
       const css = stripCssComments(src);
       if (/@font-face\b/.test(css)) localFaces.push(`${rel(f)} @font-face`);
       if (/^\s*font-size-adjust\s*:/m.test(css)) localFaces.push(`${rel(f)} font-size-adjust`);
+
+      // A stylesheet reaches under the floor where a Tailwind class cannot: the
+      // sweep and the text-[Npx] check both read class names, and neither can
+      // see a declaration. VesselKeeper's dense tables sat at 11px this way for
+      // the whole of v2.9.0 with nothing to say so.
+      const blanked = blankCssComments(src);
+      for (const m of blanked.matchAll(RAW_FONT_SIZE)) {
+        if (parseFloat(m[1]) >= 12) continue;
+        if (src.slice(Math.max(0, m.index - 400), m.index).includes(FLOOR_EXEMPT)) continue;
+        smallType.push(`${rel(f)} ${m[0]}`);
+      }
     }
   }
 
@@ -758,7 +775,8 @@ for (const app of presentApps) {
   if (smallType.length) {
     fail('type', `${app.name}: ${smallType.length} type size(s) below the 12px floor in ` +
       `@sentinel/theme/type.css — these screens are read at arm's length, in spray, sometimes ` +
-      `through gloves: ${sample(smallType)}`);
+      `through gloves. Type that is genuinely not read — a glyph, a chart annotation, licence ` +
+      `credit — may say so in a /* ${FLOOR_EXEMPT}: why */ comment above the rule: ${sample(smallType)}`);
   }
   if (localFaces.length) {
     warn('theme', `${app.name}: declares typography that belongs to @sentinel/theme — faces come from ` +
