@@ -171,9 +171,32 @@ Four more properties, each answering something that has already gone wrong here:
   read-only, so a read never rewrites somebody's storage.
 
 Stores are injected, so the package has no runtime dependencies and adds none to
-the three apps. `@sentinel/settings` currently ships the registry, the validator
-set and the `device` store; the `host` and cloud stores land with the apps that
-need them.
+the three apps. It ships the registry, the validator set, the `device` store
+(localStorage) and the two cloud stores:
+
+| Layer | Store | Where it reads |
+|---|---|---|
+| `account` | `createAccountStore(client, userId)` | `public.user_settings.settings` (jsonb) |
+| `vessel` | `createVesselStore(client)` | `public.vessel_settings.settings` (jsonb) for configuration, `public.vessels` columns for identity |
+| `device` | `createDeviceStore(storage, {app, registry})` | `localStorage`, namespaced `sentinel.*` |
+
+The vessel layer reads two tables on purpose. `public.vessels` is publicly
+readable — it backs the shared voyage pages — so a boat's identity belongs there
+and its configuration must not: putting the settings blob on that row published
+the gateway address to every signed-in user of the project, which is why
+`public.vessel_settings` exists and is owner-only. Nothing downstream has to know
+which storage a key uses; `settings.get('vessel.name')` and
+`settings.get('nmea.gateway.host')` read the same.
+
+Cloud reads are synchronous and *empty* until `load()` resolves, then promote in
+and notify. That is a requirement, not a limitation: every settings read in
+OceanSentinel is a `useState(() => ...)` initialiser that runs during the first
+render, and a layer that cannot answer then must say so rather than block. Cloud
+writes merge server-side (`merge_user_settings`, `merge_vessel_settings`) so a
+partial write stays partial — a client sending back a blob it read a moment ago
+would let two devices erase each other's settings.
+
+The `host` layer has no store yet; it lands with the NMEA work.
 
 **Status: consumed by nobody.** It is deliberately unwired, so it can be reviewed
 and built against without any app changing behaviour.

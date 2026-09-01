@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FLEET_SETTINGS = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
+exports.FLEET_SETTINGS = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.DEFAULT_VESSEL_SLUG = exports.createVesselStore = exports.createCloudStore = exports.createAccountStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
 var types_js_1 = require("./types.js");
 Object.defineProperty(exports, "SCOPE_ORDER", { enumerable: true, get: function () { return types_js_1.SCOPE_ORDER; } });
 var valueTypes_js_1 = require("./valueTypes.js");
@@ -20,6 +20,11 @@ Object.defineProperty(exports, "defaultFor", { enumerable: true, get: function (
 Object.defineProperty(exports, "defineSetting", { enumerable: true, get: function () { return registry_js_1.defineSetting; } });
 var store_js_1 = require("./store.js");
 Object.defineProperty(exports, "createSettingsStore", { enumerable: true, get: function () { return store_js_1.createSettingsStore; } });
+var cloudStore_js_1 = require("./cloudStore.js");
+Object.defineProperty(exports, "createAccountStore", { enumerable: true, get: function () { return cloudStore_js_1.createAccountStore; } });
+Object.defineProperty(exports, "createCloudStore", { enumerable: true, get: function () { return cloudStore_js_1.createCloudStore; } });
+Object.defineProperty(exports, "createVesselStore", { enumerable: true, get: function () { return cloudStore_js_1.createVesselStore; } });
+Object.defineProperty(exports, "DEFAULT_VESSEL_SLUG", { enumerable: true, get: function () { return cloudStore_js_1.DEFAULT_VESSEL_SLUG; } });
 var deviceStore_js_1 = require("./deviceStore.js");
 Object.defineProperty(exports, "createDeviceStore", { enumerable: true, get: function () { return deviceStore_js_1.createDeviceStore; } });
 Object.defineProperty(exports, "DEFAULT_PREFIX", { enumerable: true, get: function () { return deviceStore_js_1.DEFAULT_PREFIX; } });
