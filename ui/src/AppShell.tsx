@@ -139,28 +139,45 @@ export function AppShell({
             marginRight: 'var(--safe-area-right, 0px)',
           }}
         >
-          <div className="flex items-center gap-2 mr-2 min-w-0">
+          {/*
+            Three bands, and only the middle one gives way.
+
+            A flex item's default `min-width: auto` refuses to shrink below its
+            content, so a header whose status pills grew — a type scale change
+            is enough — pushed past the panel instead of yielding: the brand
+            truncated to nothing, the pills drew over it, and Settings was
+            clipped off the right edge. The brand and the controls are now both
+            `shrink-0`, and the status band carries `min-w-0` so it is the one
+            that absorbs the squeeze. Whatever else happens, Night and Settings
+            stay reachable, because a control you cannot see is worse than a
+            status you cannot read.
+          */}
+          <div className="flex items-center gap-2 mr-2 shrink-0 min-w-0">
             {brandIcon && <span className="text-cyan shrink-0" aria-hidden>{brandIcon}</span>}
             <span className="hidden sm:inline font-heading font-semibold tracking-wide text-sm text-cyan truncate">{appName}</span>
           </div>
 
           {headerCenter && <div className="absolute left-1/2 -translate-x-1/2 flex items-center">{headerCenter}</div>}
 
-          <div className="flex items-center gap-3 sm:gap-4">
-            {headerStatus}
-            {onToggleNightMode && (
-              <HeaderButton
-                icon={nightMode ? <Sun size={13} /> : <Moon size={13} />}
-                active={nightMode}
-                label={nightMode ? 'Day' : 'Night'}
-                onClick={onToggleNightMode}
-                aria-label={nightMode ? 'Switch to day mode' : 'Switch to night mode'}
-              />
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            {headerStatus && (
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0 overflow-hidden">{headerStatus}</div>
             )}
-            {onOpenSettings && (
-              <HeaderButton icon={<Settings size={13} />} active={settingsOpen} label="Settings" onClick={onOpenSettings} aria-label="Settings" />
-            )}
-            {headerActions}
+            <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+              {onToggleNightMode && (
+                <HeaderButton
+                  icon={nightMode ? <Sun size={13} /> : <Moon size={13} />}
+                  active={nightMode}
+                  label={nightMode ? 'Day' : 'Night'}
+                  onClick={onToggleNightMode}
+                  aria-label={nightMode ? 'Switch to day mode' : 'Switch to night mode'}
+                />
+              )}
+              {onOpenSettings && (
+                <HeaderButton icon={<Settings size={13} />} active={settingsOpen} label="Settings" onClick={onOpenSettings} aria-label="Settings" />
+              )}
+              {headerActions}
+            </div>
           </div>
         </header>
 

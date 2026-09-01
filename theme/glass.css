@@ -49,6 +49,26 @@
   }
 }
 
+/*
+ * Select popups.
+ *
+ * `color-scheme: dark` in tokens.css gets the option list onto a dark surface,
+ * but the shade it picks is the browser's, not ours. Naming it here puts the
+ * list on the same panel colour as the dialog it drops out of. Chromium honours
+ * these on the popup; the group labels stay muted and upright, because italic
+ * optgroup labels are a browser default nothing in this fleet asks for.
+ */
+select option {
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+select optgroup {
+  background-color: var(--bg-panel);
+  color: var(--text-muted);
+  font-style: normal;
+}
+
 .glass-btn {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;

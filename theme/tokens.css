@@ -19,6 +19,16 @@
   --font-heading: 'Outfit', 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
+  /* Native controls are painted by the OS, not by us, so they have to be told
+     what kind of surface they are sitting on. Without `color-scheme` a select's
+     option list, a date picker and a scrollbar all come back in the system's
+     light palette on a dark panel; without `accent-color` the highlighted row
+     in that list is the OS accent — Windows blue — against a fleet that is
+     cyan everywhere else. These two lines reach every checkbox, radio, range
+     and select in all three apps. */
+  color-scheme: dark;
+  accent-color: var(--color-cyan);
+
   /* High-Contrast Sentinel night-mode system colors (from Harbor Sentinel UI) */
   --bg-lowest: #040e1f;
   --bg-app: #081425;
