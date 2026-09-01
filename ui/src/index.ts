@@ -19,6 +19,8 @@ export { useAppUpdater } from './useAppUpdater';
 export type { AppUpdater, UpdateState, UpdateStatus, UseAppUpdaterOptions, AppUpdaterApi } from './useAppUpdater';
 export { UpdatePanel } from './UpdatePanel';
 export type { UpdatePanelProps } from './UpdatePanel';
+export { ScopeBadge, ClearOverride } from './ScopeBadge';
+export type { ScopeBadgeProps, ClearOverrideProps, SettingSource } from './ScopeBadge';
 export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
 export type { SettingsShellProps, SettingsSectionProps } from './SettingsShell';
 export { AppShell, HeaderButton, HeaderGroup } from './AppShell';

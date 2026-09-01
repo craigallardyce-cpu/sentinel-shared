@@ -82,6 +82,14 @@ export interface SettingsStore<D extends Record<string, AnySpec>> {
   subscribe(listener: () => void): () => void;
   /** Every declared setting, resolved. For diagnostics and support bundles. */
   snapshot(): Record<string, unknown>;
+  /**
+   * Every setting currently answered by this layer.
+   *
+   * What a settings screen needs to say "3 values are set on this device" — and
+   * what somebody needs in order to know whether the screen they are looking at
+   * is showing them the boat's answers or their own.
+   */
+  keysSetAt(scope: Scope): string[];
 }
 
 const DESKTOP: PlatformContext = { native: false };
@@ -204,6 +212,13 @@ export function createSettingsStore<D extends Record<string, AnySpec>>(
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+
+    keysSetAt(scope) {
+      return registry
+        .all()
+        .filter((definition) => readAt(definition.key, scope) !== undefined)
+        .map((definition) => definition.key);
     },
 
     snapshot() {

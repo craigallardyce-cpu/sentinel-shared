@@ -134,6 +134,12 @@ function createSettingsStore(options) {
             listeners.add(listener);
             return () => listeners.delete(listener);
         },
+        keysSetAt(scope) {
+            return registry
+                .all()
+                .filter((definition) => readAt(definition.key, scope) !== undefined)
+                .map((definition) => definition.key);
+        },
         snapshot() {
             const out = {};
             for (const definition of registry.all())

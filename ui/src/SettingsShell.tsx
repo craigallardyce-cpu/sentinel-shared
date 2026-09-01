@@ -5,6 +5,8 @@ import { Modal, type ModalSize } from './Modal';
 import { Toggle } from './Toggle';
 import { Stepper } from './Stepper';
 import { UpdatePanel } from './UpdatePanel';
+import { ScopeBadge } from './ScopeBadge';
+import type { SettingSource } from './ScopeBadge';
 import type { AppUpdater } from './useAppUpdater';
 
 export interface SettingsSectionProps {
@@ -31,15 +33,40 @@ export function SettingsSection({ title, icon, description, children, className 
   );
 }
 
-/** A bordered row inside a section — label/value on the left, control on the right. */
-export function SettingsRow({ label, description, children, className }: { label: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode; className?: string }) {
+/**
+ * One settings row: label and description on the left, control on the right, and
+ * — when the caller knows it — a chip saying which layer the value came from.
+ */
+export function SettingsRow({
+  label,
+  description,
+  source,
+  action,
+  children,
+  className,
+}: {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+  /** Which layer answered. Omit where provenance is not knowable or not useful. */
+  source?: SettingSource;
+  /** Usually a Clear override button. */
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={cn('flex items-center justify-between gap-4 p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl', className)}>
       <div className="min-w-0">
-        <div className="text-sm text-text-primary">{label}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-text-primary">{label}</span>
+          {source && <ScopeBadge source={source} />}
+        </div>
         {description && <div className="text-xs text-text-muted mt-0.5">{description}</div>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="shrink-0 flex items-center gap-2">
+        {action}
+        {children}
+      </div>
     </div>
   );
 }
@@ -67,6 +94,26 @@ export interface SettingsShellProps {
   size?: ModalSize;
   /** Extra lines for About (licence, support link…). */
   about?: React.ReactNode;
+  /**
+   * One line under the title, for what the dialog as a whole is doing — typically
+   * how many values are set on this device rather than inherited.
+   */
+  summary?: React.ReactNode;
+  /**
+   * Which layer each built-in Display setting came from.
+   *
+   * Passed explicitly rather than looked up, so this package stays ignorant of
+   * registry key names — it renders chrome, it does not know what a setting is.
+   * Every one of these is device-scoped in practice, which is exactly the point
+   * worth showing: "keep the screen awake is off" is a fact about one machine,
+   * and used to read as a fact about the boat.
+   */
+  sources?: {
+    nightMode?: SettingSource;
+    dayBrightness?: SettingSource;
+    nightBrightness?: SettingSource;
+    keepAwake?: SettingSource;
+  };
 }
 
 /**
@@ -93,16 +140,27 @@ export function SettingsShell({
   footer,
   size = 'lg',
   about,
+  summary,
+  sources,
 }: SettingsShellProps) {
   const showDisplay = onNightModeChange || onDayBrightnessChange || onNightBrightnessChange || onKeepAwakeChange;
   const shownVersion = updater?.state.currentVersion || version;
 
   return (
-    <Modal open={open} onClose={onClose} title="Settings" icon={<SettingsIcon size={18} />} size={size} footer={footer} bodyClassName="space-y-8">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Settings"
+      description={summary}
+      icon={<SettingsIcon size={18} />}
+      size={size}
+      footer={footer}
+      bodyClassName="space-y-8"
+    >
       {showDisplay && (
         <SettingsSection title="Display" icon={<Monitor size={12} />}>
           {onNightModeChange && (
-            <SettingsRow label="Night mode" description="Red-shifted palette that preserves night vision.">
+            <SettingsRow label="Night mode" description="Red-shifted palette that preserves night vision." source={sources?.nightMode}>
               <Toggle checked={!!nightMode} onChange={onNightModeChange} aria-label="Night mode" />
             </SettingsRow>
           )}
@@ -110,8 +168,11 @@ export function SettingsShell({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {onDayBrightnessChange && (
                 <div className="p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-text-secondary">Day brightness</span>
+                  <div className="flex justify-between items-center text-xs gap-2">
+                    <span className="text-text-secondary flex items-center gap-2">
+                      Day brightness
+                      {sources?.dayBrightness && <ScopeBadge source={sources.dayBrightness} />}
+                    </span>
                     <span className="font-mono font-bold text-cyan">{dayBrightness ?? 100}%</span>
                   </div>
                   <Stepper min={20} max={100} step={5} value={dayBrightness ?? 100} onChange={onDayBrightnessChange} />
@@ -119,8 +180,11 @@ export function SettingsShell({
               )}
               {onNightBrightnessChange && (
                 <div className="p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-text-secondary">Night brightness</span>
+                  <div className="flex justify-between items-center text-xs gap-2">
+                    <span className="text-text-secondary flex items-center gap-2">
+                      Night brightness
+                      {sources?.nightBrightness && <ScopeBadge source={sources.nightBrightness} />}
+                    </span>
                     <span className="font-mono font-bold text-red">{nightBrightness ?? 100}%</span>
                   </div>
                   <Stepper min={10} max={100} step={5} value={nightBrightness ?? 100} onChange={onNightBrightnessChange} colorClass="text-red" />
@@ -129,7 +193,11 @@ export function SettingsShell({
             </div>
           )}
           {onKeepAwakeChange && (
-            <SettingsRow label="Keep the screen awake" description={`Stops the device sleeping while ${appName} is open.`}>
+            <SettingsRow
+              label="Keep the screen awake"
+              description={`Stops the device sleeping while ${appName} is open.`}
+              source={sources?.keepAwake}
+            >
               <Toggle checked={!!keepAwake} onChange={onKeepAwakeChange} aria-label="Keep the screen awake" />
             </SettingsRow>
           )}

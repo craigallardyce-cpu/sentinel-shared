@@ -9,5 +9,6 @@ export { EmptyState } from './EmptyState';
 export { Stepper } from './Stepper';
 export { useAppUpdater } from './useAppUpdater';
 export { UpdatePanel } from './UpdatePanel';
+export { ScopeBadge, ClearOverride } from './ScopeBadge';
 export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
 export { AppShell, HeaderButton, HeaderGroup } from './AppShell';

@@ -280,3 +280,20 @@ describe('typing a default as a promise, not a maybe', () => {
     expect(host).toBeUndefined();
   });
 });
+
+describe('keysSetAt', () => {
+  it('names what this layer actually answers, for the "set on this device" count', () => {
+    const settings = createSettingsStore({
+      registry,
+      stores: [
+        memoryStore('vessel', { 'nmea.gateway.host': '10.10.10.1' }),
+        memoryStore('device', { 'nmea.gateway.host': '127.0.0.1', 'display.keep_awake': 'true' }),
+      ],
+    });
+
+    expect(settings.keysSetAt('device').sort()).toEqual(['display.keep_awake', 'nmea.gateway.host']);
+    expect(settings.keysSetAt('vessel')).toEqual(['nmea.gateway.host']);
+    // A default is not something anybody set.
+    expect(settings.keysSetAt('account')).toEqual([]);
+  });
+});
