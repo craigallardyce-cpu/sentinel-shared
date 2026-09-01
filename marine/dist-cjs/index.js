@@ -18,3 +18,4 @@ __exportStar(require("./geo.js"), exports);
 __exportStar(require("./nmea.js"), exports);
 __exportStar(require("./ais.js"), exports);
 __exportStar(require("./backoff.js"), exports);
+__exportStar(require("./nmeaTarget.js"), exports);
