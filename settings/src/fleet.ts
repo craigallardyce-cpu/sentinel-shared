@@ -14,11 +14,12 @@
  * a `placeholder`, and that consuming code has to handle rather than mistake for
  * a decision.
  *
- * Two things keep a default, and both are values the app needs before anybody
- * has opened the settings: an on/off toggle, which has to be one way or the
- * other (the registry enforces that a `bool` declares one), and screen
- * brightness, which the first frame has to render at. Nothing else does, and the
- * fleet test names the exceptions so that list cannot quietly grow.
+ * What keeps a default is what the app needs before anybody has opened the
+ * settings: on/off toggles, which have to be one way or the other (the registry
+ * enforces that a `bool` declares one), screen brightness, which the first frame
+ * has to render at, and the auto-dim interval, without which its toggle would
+ * switch on and do nothing. Nothing else does, and the fleet test names the
+ * exceptions so that list cannot quietly grow.
  *
  * Where the apps disagreed about a value, the comment still says so — the record
  * of the disagreement is worth keeping even now that nothing inherits its answer.
@@ -158,8 +159,17 @@ export const FLEET_SETTINGS = createRegistry({
   'display.auto_dim_minutes': defineSetting({
     scopes: ['device'],
     type: intType({ min: 1, max: 120 }),
+    /*
+      Paired with the toggle above, and defaulted for the same reason.
+
+      Without one, switching auto-dim on did nothing until an interval was also
+      chosen — the toggle said yes and the screen never dimmed. A switch that
+      needs a second answer before it takes effect is a worse trade than a
+      five-minute default nobody objects to, and the interval is not a fact about
+      the boat that only the owner can know.
+    */
+    default: 5,
     label: 'Dim after',
-    placeholder: 'minutes',
     legacy: { harbor: ['harbor_sentinel_auto_dim_minutes'], ocean: ['ocean_sentinel_auto_dim_minutes'] },
   }),
 

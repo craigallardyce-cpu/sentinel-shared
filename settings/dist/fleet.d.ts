@@ -14,11 +14,12 @@
  * a `placeholder`, and that consuming code has to handle rather than mistake for
  * a decision.
  *
- * Two things keep a default, and both are values the app needs before anybody
- * has opened the settings: an on/off toggle, which has to be one way or the
- * other (the registry enforces that a `bool` declares one), and screen
- * brightness, which the first frame has to render at. Nothing else does, and the
- * fleet test names the exceptions so that list cannot quietly grow.
+ * What keeps a default is what the app needs before anybody has opened the
+ * settings: on/off toggles, which have to be one way or the other (the registry
+ * enforces that a `bool` declares one), screen brightness, which the first frame
+ * has to render at, and the auto-dim interval, without which its toggle would
+ * switch on and do nothing. Nothing else does, and the fleet test names the
+ * exceptions so that list cannot quietly grow.
  *
  * Where the apps disagreed about a value, the comment still says so — the record
  * of the disagreement is worth keeping even now that nothing inherits its answer.
@@ -50,7 +51,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'display.auto_dim': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
     };
-    'display.auto_dim_minutes': import("./types.js").SettingSpec<number>;
+    'display.auto_dim_minutes': import("./types.js").SettingSpec<number> & {
+        default: number | ((platform: import("./types.js").PlatformContext) => number);
+    };
     'nmea.source': import("./types.js").SettingSpec<"NMEA LOCAL" | "DEVICE GPS">;
     'nmea.gateway.host': import("./types.js").SettingSpec<string>;
     'nmea.gateway.port': import("./types.js").SettingSpec<number>;

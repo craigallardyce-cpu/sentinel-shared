@@ -30,11 +30,12 @@ describe('the fleet registry', () => {
 
     Everything a boat's owner is the authority on stays unset until they say so.
     What is left carries a default only because the app needs a value before
-    anyone has opened the settings at all: a switch has to be on or off, and the
-    first frame has to render at some brightness. Listing them here is what stops
-    that list growing back one well-meant default at a time.
+    anyone has opened the settings at all: a switch has to be on or off, the
+    first frame has to render at some brightness, and auto-dim needs an interval
+    or its toggle does nothing. Listing them here is what stops that list growing
+    back one well-meant default at a time.
   */
-  it('ships a default only for toggles and screen brightness', () => {
+  it('ships a default only for toggles, brightness and the dim interval', () => {
     const withDefaults = FLEET_SETTINGS.all()
       .filter((definition) => definition.default !== undefined)
       .map((definition) => definition.key)
@@ -43,6 +44,7 @@ describe('the fleet registry', () => {
     expect(withDefaults).toEqual([
       'alarms.ais_proximity.enabled',
       'display.auto_dim',
+      'display.auto_dim_minutes',
       'display.day_brightness',
       'display.keep_awake',
       'display.night_brightness',

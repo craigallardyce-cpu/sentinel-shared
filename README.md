@@ -133,11 +133,11 @@ a pre-filled field reads as a configured field. So a setting the owner is the
 authority on stays `unset` until they set it, `get()` returns `undefined`, and
 `placeholder` is what tells them the shape of value that belongs there.
 
-Two kinds keep a default, because the app needs a value before anybody has opened
-the settings: on/off toggles, which have to be one way or the other, and screen
-brightness, which the first frame has to render at. `createRegistry` requires a
-default on every `bool`, and a fleet test names the full list so it cannot quietly
-grow.
+What keeps a default is what the app needs before anybody has opened the settings:
+on/off toggles, which have to be one way or the other; screen brightness, which the
+first frame has to render at; and the auto-dim interval, without which its toggle
+switches on and does nothing. `createRegistry` requires a default on every `bool`,
+and a fleet test names the full list so it cannot quietly grow.
 
 Reading walks `account → vessel → host → device` and keeps the **last** layer that
 answered, so a device override beats the boat, which beats the account. `resolve()`
