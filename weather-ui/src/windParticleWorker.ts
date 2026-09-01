@@ -46,11 +46,25 @@ self.onmessage = function(e) {
     }
   } else if (type === 'view') {
     // The chart pans and zooms far inside the grid, so the layer sends the visible box and a
-    // step sized for it. Reseeding here is what keeps particles on screen instead of scattered
-    // across the whole grid.
+    // step sized for it.
+    //
+    // This used to reseed unconditionally, which was fine for a chart that recentres when you
+    // ask it to and disastrous for one that recentres itself. An anchor watch follows the
+    // vessel, so it calls setView on every position fix — once a second on a live NMEA feed —
+    // and every one of those ended here, threw away all several hundred particles and started
+    // them again from random positions. The field never survived long enough to draw a streak;
+    // it read as flicker.
+    //
+    // A reseed is only actually needed when the view has jumped somewhere the current
+    // particles are not, which panning by a few metres has not. Everything smaller is handled
+    // for free by updateParticles(), which already recycles a particle the moment it leaves
+    // the box — so the field migrates into a shifted view on its own, without a discontinuity.
+    var previous = bounds;
     if (data.bounds) bounds = data.bounds;
     if (data.speedScale) speedScale = data.speedScale;
-    initParticles();
+    if (particles.length === 0 || overlapFraction(previous, bounds) < MIN_VIEW_OVERLAP) {
+      initParticles();
+    }
   } else if (type === 'update') {
     if (!grid) return;
     updateParticles();
@@ -65,6 +79,26 @@ self.onmessage = function(e) {
     self.postMessage({ type: 'tick', coords }, [coords.buffer]);
   }
 };
+
+/**
+ * How much of the new view the old one still covers before a reseed is worth it.
+ *
+ * Half. Below that, enough of the screen is empty that waiting for particles to drift in
+ * would read as a gap; above it, the existing field covers the view well enough that
+ * restarting it would be the more visible event of the two.
+ */
+var MIN_VIEW_OVERLAP = 0.5;
+
+/* Fraction of the new box that the previous one covers, 0 to 1. Zero when either is missing. */
+function overlapFraction(prev, next) {
+  if (!prev || !next) return 0;
+  var w = Math.min(prev.lonMax, next.lonMax) - Math.max(prev.lonMin, next.lonMin);
+  var h = Math.min(prev.latMax, next.latMax) - Math.max(prev.latMin, next.latMin);
+  if (w <= 0 || h <= 0) return 0;
+  var area = (next.lonMax - next.lonMin) * (next.latMax - next.latMin);
+  if (area <= 0) return 0;
+  return (w * h) / area;
+}
 
 function initParticles() {
   particles = [];
