@@ -4,11 +4,14 @@
  *   @import "tailwindcss";
  *   @import "@sentinel/theme/index.css";
  *
- * Order matters: tokens first (raw values), then the Tailwind role map, then
- * the night-mode overrides and shared component classes.
+ * Order matters: the faces first (so `--font-sans` has something to resolve to),
+ * then tokens (raw values), then the Tailwind role map and the type scale built
+ * on it, then the night-mode overrides and shared component classes.
  */
+@import "./fonts.css";
 @import "./tokens.css";
 @import "./roles.css";
+@import "./type.css";
 @import "./night.css";
 @import "./glass.css";
 @import "./motion.css";

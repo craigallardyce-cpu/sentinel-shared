@@ -108,4 +108,14 @@
   --color-error-container: var(--color-red-dim);
   --color-on-error: var(--bg-app);
   --color-on-error-container: var(--text-primary);
+
+  /* Radius. Declared so `rounded-md` / `rounded-lg` / `rounded-xl` mean the same
+     thing in all three apps and do not move when Tailwind changes its defaults.
+     See tokens.css for which size belongs to which kind of surface. */
+  --radius-sm: var(--radius-sm);
+  --radius-default: var(--radius-default);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
 }

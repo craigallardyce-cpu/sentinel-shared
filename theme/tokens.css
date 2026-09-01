@@ -65,6 +65,24 @@
   --color-red-dim: #93000a;
   --color-red-glow: rgba(255, 180, 171, 0.15);
 
+  /* Corner radius, with the meanings fixed so the choice stops being ad hoc.
+     `rounded-md` was used 324 times fleet-wide, `rounded-lg` 206 and `rounded-xl`
+     158, with nothing anywhere saying which was for what — so the same kind of
+     surface got a different corner in each app. Three sizes carry meaning:
+       control (buttons, inputs, chips, small tiles) -> --radius-md   6px
+       card    (a panel of content inside a surface) -> --radius-lg   8px
+       panel   (a floating surface: header, dock,
+                modal, the glass containers)         -> --radius-xl  12px
+     `sm` is for hairline chips only, `full` for pills and dots. Hoisted from
+     HarborSentinel, which was the only app that pinned these rather than
+     inheriting whatever Tailwind's defaults happened to be that major version. */
+  --radius-sm: 0.125rem;
+  --radius-default: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+
   /* Shadow & Blur effects */
   --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
   --glass-blur: blur(8px);

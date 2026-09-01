@@ -1,0 +1,97 @@
+/*
+ * The fleet's typefaces, shipped with the theme rather than fetched at runtime.
+ *
+ * These apps run on boats. Offline is the normal case, not the edge case — so a
+ * font that arrives over the network is a font that is missing exactly when the
+ * app is being used. HarborSentinel self-hosted these from `public/fonts` and
+ * declared its own @font-face block; OceanSentinel and VesselKeeper linked
+ * fonts.googleapis.com and silently fell back to system faces at anchor. Now the
+ * package that owns `--font-sans` also owns the file behind it, so all three get
+ * the same answer from one import.
+ *
+ * Paths are package-relative on purpose: the bundler resolves them from this
+ * file's location inside node_modules and emits the assets into the app's build.
+ * Do not rewrite them to absolute `/fonts/...` — that reintroduces the per-app
+ * public/ copy this file exists to delete.
+ *
+ * Shipped as woff2 (627 KB for all nine faces; the same faces as TrueType were
+ * 1.8 MB). Every consuming target is Chromium — Electron, Capacitor's WebView,
+ * and the browser build — so a TrueType fallback source would only ever add
+ * weight that nothing loads.
+ *
+ * Weight coverage is deliberately narrow: only the weights the fleet actually
+ * asks for. Inter carries body text at 400–700; JetBrains Mono carries instrument
+ * readouts at 400/500/700; Outfit backs `--font-heading`, which is only ever
+ * rendered semibold or bold (`font-heading font-semibold` in @sentinel/ui and
+ * @sentinel/auth-ui, and the heading utilities in type.css). Adding a weight here
+ * means adding a file, so add one only when something needs it.
+ */
+
+/* --font-sans */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/inter-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/inter-700.woff2') format('woff2');
+}
+
+/* --font-heading */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/outfit-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/outfit-700.woff2') format('woff2');
+}
+
+/* --font-mono */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/jetbrains-mono-700.woff2') format('woff2');
+}

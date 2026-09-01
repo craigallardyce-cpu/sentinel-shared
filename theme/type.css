@@ -1,0 +1,111 @@
+/*
+ * The fleet type scale.
+ *
+ * Colour has been fully tokenised since v2.8; type never was. The theme shipped
+ * three font families and no sizes, so every size in the fleet was a local
+ * decision — 858 hand-written `text-[Npx]` values across the three apps, most of
+ * them 9–11px. That is desk typography, and these apps are read at arm's length
+ * on a heeled boat, in spray, sometimes through gloves, often on a plotter
+ * mounted further away than a laptop ever is.
+ *
+ * These rules are HarborSentinel's — it was the only app with a scale, defined
+ * locally in its own index.css — hoisted here so all three share them, with the
+ * two smallest steps raised to a 12px floor.
+ *
+ * THE FLOOR IS 12px. Nothing in a Sentinel app renders below it. The drift
+ * checker fails a build that introduces `text-[Npx]` under 12, because that is
+ * how the fleet got here the first time.
+ *
+ * Two scales, kept apart on purpose. The reading scale (headline/body/label)
+ * answers "what is this?" at conversational distance. The instrument scale
+ * (data-mono/readout) answers "what is the number?" from across the cockpit.
+ * They are sized for different viewing distances, and merging them is precisely
+ * how the labels around the big numbers ended up at 10px.
+ *
+ * Related: `font-size-adjust` is NOT set here. HarborSentinel carried
+ * `font-size-adjust: 0.5` while the other two apps carried nothing, so the same
+ * nominal px rendered ~8% smaller there than everywhere else. Optical size is a
+ * fleet-wide property; if it is ever wanted again it belongs in this file, for
+ * all three apps at once.
+ */
+
+/* ---- Reading scale ---------------------------------------------------- */
+
+@utility text-headline-lg {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 36px;
+  letter-spacing: -0.02em;
+}
+
+@utility text-headline-md {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.01em;
+}
+
+@utility text-body-lg {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+}
+
+@utility text-body-md {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+/* Was 12px/16px. The smallest reading size in the fleet — hints, descriptions,
+   the second line of a settings row. */
+@utility text-body-sm {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+/* Was 11px/16px, and the single most-copied size in the fleet. Field labels,
+   scope badges, header buttons, dock footers. At 11px uppercase with 0.05em
+   tracking it was the hardest string on the screen to read; 12px is the floor. */
+@utility text-label-caps {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ---- Instrument scale ------------------------------------------------- */
+
+@utility text-data-mono-lg {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+@utility text-data-mono-md {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/* The one number on a screen that is meant to be read from the far side of the
+   cockpit: distance from anchor, depth, speed over ground. Both apps already
+   render these enormous — Harbor's distance readout and Ocean's depth — but each
+   picked its own size inline. Named, so the next one matches. */
+@utility text-readout {
+  font-family: var(--font-mono);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
