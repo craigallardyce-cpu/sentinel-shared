@@ -1,0 +1,64 @@
+name: Tests
+
+# sentinel-shared had no CI of its own. The drift checker that lives in this
+# repo runs in the three apps' workflows, not here, so nothing was exercising
+# the ~490 tests these packages already carry -- and a shared package breaking
+# is a break in three apps at once.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One package failing should not hide the state of the others.
+      fail-fast: false
+      matrix:
+        package: [auth-ui, charts, electron-shell, marine, weather]
+
+    # Each package is its own npm project with its own vitest config, so every
+    # command runs from the package directory rather than the repo root.
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # These packages declare their peers as devDependencies, and the fleet
+      # carries a pre-existing Capacitor v7/v8 peer conflict. Matching the flag
+      # the apps use keeps a shared install from diverging from a consuming one.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Test
+        run: npm test
+
+      # vitest does not typecheck, so a package can pass its tests and still
+      # fail to compile for the apps that consume it. electron-shell ships no
+      # build, hence --if-present.
+      - name: Build
+        run: npm run build --if-present
+
+      # The apps consume dist/ through npm "file:" paths, so dist is committed
+      # and a stale one silently ships old code to all three. Editing a shared
+      # package without rebuilding is a documented recurring failure here; this
+      # is the check that catches it at the push rather than in a release.
+      - name: Confirm committed dist matches src
+        run: |
+          if ! git diff --exit-code -- dist dist-cjs; then
+            echo "::error::Committed dist/ does not match a fresh build of src/. Run 'npm run build' in ${{ matrix.package }} and commit the result."
+            exit 1
+          fi
