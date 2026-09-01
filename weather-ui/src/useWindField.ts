@@ -76,6 +76,16 @@ export interface UseWindFieldOptions {
   cache?: WindFieldCache | null;
 }
 
+/**
+ * Why the field is missing, when it is.
+ *
+ * 'rate-limited' is separated out because it is the one cause that is temporary, not about the
+ * location, and not the boat's fault. Reporting it as "no forecast for this water" — which is
+ * what a single error string forced — sends someone hunting for a coverage problem that does
+ * not exist, on the provider's clock rather than their own.
+ */
+export type WindFieldErrorKind = 'rate-limited' | 'unavailable' | null;
+
 export interface UseWindFieldResult {
   field: WindField | null;
   axes: WindFieldAxes | null;
@@ -83,6 +93,7 @@ export interface UseWindFieldResult {
   span: { fromMs: number; toMs: number } | null;
   loading: boolean;
   error: string | null;
+  errorKind: WindFieldErrorKind;
   /** Non-zero only when the field came back from the cache after a failed fetch. */
   ageHours: number;
   reload: () => Promise<void>;
@@ -106,6 +117,7 @@ export function useWindField({
   const [field, setField] = useState<WindField | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<WindFieldErrorKind>(null);
   const [ageHours, setAgeHours] = useState(0);
 
   const centre = useMemo(
@@ -146,6 +158,7 @@ export function useWindField({
     if (!bounds) return;
     setLoading(true);
     setError(null);
+    setErrorKind(null);
     try {
       const fetched = await fetchWindField(bounds, { resolutionDeg: RESOLUTION_DEG, days });
       setField(fetched);
@@ -161,8 +174,12 @@ export function useWindField({
         setField(recalled.field);
         setAgeHours(recalled.ageHours);
       } else {
+        const message = err instanceof Error ? err.message : String(err);
         setField(null);
-        setError(err instanceof Error ? err.message : String(err));
+        setError(message);
+        // Open-Meteo meters by coordinate, and one field is a 13x13 grid, so an hourly cap is
+        // reachable by ordinary use rather than only by abuse. It clears on its own.
+        setErrorKind(/429|rate limit|request limit/i.test(message) ? 'rate-limited' : 'unavailable');
       }
     } finally {
       setLoading(false);
@@ -206,7 +223,7 @@ export function useWindField({
     [field]
   );
 
-  return { field, axes, span, loading, error, ageHours, reload: load };
+  return { field, axes, span, loading, error, errorKind, ageHours, reload: load };
 }
 
 export default useWindField;

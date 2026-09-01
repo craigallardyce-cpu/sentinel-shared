@@ -48,6 +48,7 @@ export function useWindField({ lat, lon, enabled = false, hoursNeeded = 120, cac
     const [field, setField] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [errorKind, setErrorKind] = useState(null);
     const [ageHours, setAgeHours] = useState(0);
     const centre = useMemo(() => typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon)
         ? { lat: snap(lat), lon: snap(lon) }
@@ -74,6 +75,7 @@ export function useWindField({ lat, lon, enabled = false, hoursNeeded = 120, cac
             return;
         setLoading(true);
         setError(null);
+        setErrorKind(null);
         try {
             const fetched = await fetchWindField(bounds, { resolutionDeg: RESOLUTION_DEG, days });
             setField(fetched);
@@ -91,8 +93,12 @@ export function useWindField({ lat, lon, enabled = false, hoursNeeded = 120, cac
                 setAgeHours(recalled.ageHours);
             }
             else {
+                const message = err instanceof Error ? err.message : String(err);
                 setField(null);
-                setError(err instanceof Error ? err.message : String(err));
+                setError(message);
+                // Open-Meteo meters by coordinate, and one field is a 13x13 grid, so an hourly cap is
+                // reachable by ordinary use rather than only by abuse. It clears on its own.
+                setErrorKind(/429|rate limit|request limit/i.test(message) ? 'rate-limited' : 'unavailable');
             }
         }
         finally {
@@ -131,6 +137,6 @@ export function useWindField({ lat, lon, enabled = false, hoursNeeded = 120, cac
     const span = useMemo(() => field?.times?.length
         ? { fromMs: field.times[0], toMs: field.times[field.times.length - 1] }
         : null, [field]);
-    return { field, axes, span, loading, error, ageHours, reload: load };
+    return { field, axes, span, loading, error, errorKind, ageHours, reload: load };
 }
 export default useWindField;

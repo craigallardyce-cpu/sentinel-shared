@@ -30,6 +30,15 @@ export interface UseWindFieldOptions {
     hoursNeeded?: number;
     cache?: WindFieldCache | null;
 }
+/**
+ * Why the field is missing, when it is.
+ *
+ * 'rate-limited' is separated out because it is the one cause that is temporary, not about the
+ * location, and not the boat's fault. Reporting it as "no forecast for this water" — which is
+ * what a single error string forced — sends someone hunting for a coverage problem that does
+ * not exist, on the provider's clock rather than their own.
+ */
+export type WindFieldErrorKind = 'rate-limited' | 'unavailable' | null;
 export interface UseWindFieldResult {
     field: WindField | null;
     axes: WindFieldAxes | null;
@@ -40,6 +49,7 @@ export interface UseWindFieldResult {
     } | null;
     loading: boolean;
     error: string | null;
+    errorKind: WindFieldErrorKind;
     /** Non-zero only when the field came back from the cache after a failed fetch. */
     ageHours: number;
     reload: () => Promise<void>;
