@@ -28,6 +28,8 @@ export interface MigrateLegacyOptions<D extends Record<string, AnySpec>> {
     /** Scopes that actually have a store attached, narrowest last. */
     writableScopes: readonly Scope[];
     platform?: PlatformContext;
+    /** Namespace the device store writes under. Must match its store. */
+    devicePrefix?: string;
     /** Marks the migration done. Change it only to deliberately re-run. */
     markerKey?: string;
     /** Report progress without writing anything. */
@@ -41,7 +43,20 @@ export interface MigrateLegacyResult {
     /** True when the marker said this had already run. */
     alreadyDone: boolean;
 }
-export declare const DEFAULT_MARKER_KEY = "sentinel.migrated.legacy";
+/**
+ * Versioned, because what the migration does has changed.
+ *
+ * v1 skipped device-scoped settings: the device store reads their old key names
+ * in place, so copying them looked like making a second copy of a value that was
+ * being read fine. That was true right up until the old names are deleted, at
+ * which point every one of them -- brightness, keep awake, the backend address,
+ * the gateway, the VHF tuning -- would silently revert to its default on every
+ * install that had ever set it.
+ *
+ * Bumping the marker re-runs the whole thing, which is safe: a setting a layer
+ * already holds is skipped.
+ */
+export declare const DEFAULT_MARKER_KEY = "sentinel.migrated.legacy.v2";
 /**
  * **Call this only after every cloud layer has finished `load()`.**
  *

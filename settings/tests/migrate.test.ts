@@ -75,7 +75,7 @@ function build(seed: Record<string, string>, rows: Record<string, Record<string,
 }
 
 describe('migrating OceanSentinel', () => {
-  it('carries every account and vessel value up, and leaves device values alone', async () => {
+  it('carries every legacy value to the layer that owns it', async () => {
     const { store, settings, account, vessel, merged, updated } = build(OCEAN_BEFORE);
     await Promise.all([account.load(), vessel.load()]);
 
@@ -96,6 +96,13 @@ describe('migrating OceanSentinel', () => {
       'logbook.included_nmea': 'account',
       'logbook.quick_tap_presets': 'account',
       'ai.model': 'account',
+      // Device-scoped values are copied forward too. They used to be skipped,
+      // because the device store reads their old key names in place -- which is
+      // true right up until those names are deleted, and then every one of them
+      // reverts to its default on every install that had ever set it.
+      'display.night_brightness': 'device',
+      'display.keep_awake': 'device',
+      'units.metric': 'device',
     });
 
     // Identity went to its own columns on public.vessels; the rest merged into a blob.
@@ -104,9 +111,10 @@ describe('migrating OceanSentinel', () => {
     expect(merged.map((m) => m.fn)).toEqual(Array(5).fill('merge_user_settings'));
     expect(merged.every((m) => Object.keys((m.args as { patch: object }).patch).length === 1)).toBe(true);
 
-    // Device-scoped settings are read in place, so nothing was written for them.
-    expect(result.migrated['display.night_brightness']).toBeUndefined();
-    expect(result.migrated['units.metric']).toBeUndefined();
+    // And they are written under the namespaced name, which is what makes
+    // deleting the old ones safe.
+    expect(store.getItem('sentinel.display.night_brightness')).toBe('45');
+    expect(store.getItem('sentinel.display.keep_awake')).toBe('true');
     expect(settings.get('display.night_brightness')).toBe(45);
     expect(settings.get('units.metric')).toBe(true);
   });
@@ -152,7 +160,7 @@ describe('migrating OceanSentinel', () => {
     expect(merged.some((m) => JSON.stringify(m.args).includes('retention'))).toBe(false);
   });
 
-  it('does not migrate into a scope that has no store', async () => {
+  it('migrates only into scopes that have a store', async () => {
     const store = storage(OCEAN_BEFORE);
     const device = createDeviceStore(store, { app: 'ocean', registry: FLEET_SETTINGS });
     const settings = createSettingsStore({ registry: FLEET_SETTINGS, stores: [device] });
@@ -165,9 +173,14 @@ describe('migrating OceanSentinel', () => {
       writableScopes: ['device'],
     });
 
-    // Signed out: nowhere to put an account or vessel value, so nothing moves and
-    // the old keys stay where they are for a later attempt.
-    expect(result.migrated).toEqual({});
+    /*
+      Signed out: the device layer is all there is. Its values are carried
+      forward, and the account and vessel ones are left where they are for a
+      later, signed-in attempt.
+    */
+    expect(Object.values(result.migrated).every((scope) => scope === 'device')).toBe(true);
+    expect(result.migrated['vessel.name']).toBeUndefined();
+    expect(result.migrated['vhf.retention_days']).toBeUndefined();
     expect(store.getItem('vessel_boat_name')).toBe('Saorsa');
   });
 
@@ -249,8 +262,46 @@ describe('migrating OceanSentinel', () => {
       dryRun: true,
     });
 
-    expect(Object.keys(result.migrated).length).toBe(8);
+    expect(Object.keys(result.migrated).length).toBe(11);
     expect(merged).toEqual([]);
     expect(store.getItem(DEFAULT_MARKER_KEY)).toBeNull();
+  });
+});
+
+describe('what makes deleting the old keys safe', () => {
+  /*
+    The whole point of the device pass, stated as the property that has to hold
+    before the legacy names can go.
+  */
+  it('leaves every device value readable once its legacy key is gone', async () => {
+    const { store, settings, account, vessel } = build(OCEAN_BEFORE);
+    await Promise.all([account.load(), vessel.load()]);
+
+    await migrateLegacyKeys({
+      registry: FLEET_SETTINGS,
+      settings,
+      app: 'ocean',
+      storage: store,
+      writableScopes: ['account', 'vessel', 'device'],
+    });
+
+    // Simulate the next release: the legacy names are deleted from storage.
+    for (const key of Object.keys(OCEAN_BEFORE)) store.removeItem(key);
+
+    expect(settings.get('display.night_brightness')).toBe(45);
+    expect(settings.get('display.keep_awake')).toBe(true);
+    expect(settings.get('units.metric')).toBe(true);
+  });
+
+  it('would have lost all of them before the device pass existed', async () => {
+    // The counterfactual, so the reason this pass exists cannot be forgotten:
+    // without it the device store reads the old name in place, and deleting it
+    // takes the value with it.
+    const { store, settings } = build(OCEAN_BEFORE);
+    for (const key of Object.keys(OCEAN_BEFORE)) store.removeItem(key);
+
+    expect(settings.get('display.night_brightness')).toBe(60); // the declared default
+    expect(settings.get('display.keep_awake')).toBe(false);
+    expect(settings.get('units.metric')).toBe(false);
   });
 });

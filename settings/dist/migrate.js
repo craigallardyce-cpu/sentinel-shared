@@ -15,7 +15,21 @@
  * Run once per device, and record that it ran.
  */
 import { defaultFor } from './registry.js';
-export const DEFAULT_MARKER_KEY = 'sentinel.migrated.legacy';
+import { DEFAULT_PREFIX } from './deviceStore.js';
+/**
+ * Versioned, because what the migration does has changed.
+ *
+ * v1 skipped device-scoped settings: the device store reads their old key names
+ * in place, so copying them looked like making a second copy of a value that was
+ * being read fine. That was true right up until the old names are deleted, at
+ * which point every one of them -- brightness, keep awake, the backend address,
+ * the gateway, the VHF tuning -- would silently revert to its default on every
+ * install that had ever set it.
+ *
+ * Bumping the marker re-runs the whole thing, which is safe: a setting a layer
+ * already holds is skipped.
+ */
+export const DEFAULT_MARKER_KEY = 'sentinel.migrated.legacy.v2';
 /**
  * **Call this only after every cloud layer has finished `load()`.**
  *
@@ -27,7 +41,7 @@ export const DEFAULT_MARKER_KEY = 'sentinel.migrated.legacy';
  * place to migrate into.
  */
 export async function migrateLegacyKeys(options) {
-    const { registry, settings, app, storage, writableScopes, platform = { native: false }, markerKey = DEFAULT_MARKER_KEY, dryRun = false, } = options;
+    const { registry, settings, app, storage, writableScopes, platform = { native: false }, devicePrefix = DEFAULT_PREFIX, markerKey = DEFAULT_MARKER_KEY, dryRun = false, } = options;
     const result = { migrated: {}, unparseable: [], alreadyDone: false };
     try {
         if (storage.getItem(markerKey)) {
@@ -43,31 +57,45 @@ export async function migrateLegacyKeys(options) {
         const legacyKeys = definition.legacy?.[app];
         if (!legacyKeys || legacyKeys.length === 0)
             continue;
-        /*
-          Settings the device store can already reach are left alone. Migrating them
-          would mean writing a namespaced copy of a value that is being read fine,
-          and then having two.
-        */
-        if (definition.scopes.includes('device'))
-            continue;
         // Narrowest declared scope that something can actually be written to.
         const target = [...writableScopes].reverse().find((scope) => definition.scopes.includes(scope));
         if (!target)
             continue;
         /*
-          Skip only when a real LAYER already holds a value — not when the declared
-          default is answering.
+          A device-scoped setting needs a different question asked.
     
-          This was `isConfigured`, which is true for both, and that silently dropped
-          the legacy value of any setting that has a default. It went unnoticed while
-          every defaulted setting happened to be device-scoped (and so never
-          migrated); the first account-scoped one with a default — the log book's
-          quick-tap presets — would have lost a navigator's edited list on upgrade
-          and shown them the starter list instead.
+          Its legacy key is read IN PLACE by the device store, so the resolution
+          chain reports it as configured whether or not it has ever been written
+          under the namespaced name. Asking the chain would therefore skip it -- and
+          it would keep skipping it right up until the old names are deleted, at
+          which point the value disappears. So the storage is asked directly: is
+          there a namespaced value yet?
         */
-        const source = settings.source(definition.key);
-        if (source !== 'unset' && source !== 'default')
+        if (target === 'device') {
+            let own = null;
+            try {
+                own = storage.getItem(`${devicePrefix}${definition.key}`);
+            }
+            catch {
+                own = null;
+            }
+            if (own !== null)
+                continue;
+        }
+        else if (settings.source(definition.key) !== 'unset' && settings.source(definition.key) !== 'default') {
+            /*
+              Skip only when a real LAYER already holds a value -- not when the declared
+              default is answering.
+      
+              This was `isConfigured`, which is true for both, and that silently dropped
+              the legacy value of any setting that has a default. It went unnoticed
+              while every defaulted setting happened to be device-scoped and therefore
+              never migrated; the first account-scoped one with a default -- the log
+              book's quick-tap presets -- would have lost a navigator's edited list on
+              upgrade and shown them the starter list instead.
+            */
             continue;
+        }
         let raw = null;
         for (const legacy of legacyKeys) {
             try {
