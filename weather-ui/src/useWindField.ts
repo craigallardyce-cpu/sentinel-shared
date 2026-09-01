@@ -179,7 +179,7 @@ export function useWindField({
         setError(message);
         // Open-Meteo meters by coordinate, and one field is a 13x13 grid, so an hourly cap is
         // reachable by ordinary use rather than only by abuse. It clears on its own.
-        setErrorKind(/429|rate limit|request limit/i.test(message) ? 'rate-limited' : 'unavailable');
+        setErrorKind(/\b429\b|rate limit|request limit/i.test(message) ? 'rate-limited' : 'unavailable');
       }
     } finally {
       setLoading(false);
