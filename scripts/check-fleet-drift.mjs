@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(SHARED_ROOT, '..');
@@ -421,6 +421,179 @@ if (home && exists(canonicalSkill)) {
   const installed = path.join(home, '.claude/skills/sentinel-check/SKILL.md');
   if (exists(installed) && readText(installed) !== readText(canonicalSkill)) {
     warn('skill', 'installed ~/.claude/skills/sentinel-check/SKILL.md differs from the canonical copy in sentinel-shared — re-copy it');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 10. Settings drift.
+//
+//     Nine checks never noticed that `harbor_sentinel_keep_awake` and
+//     `ocean_sentinel_keep_awake` were one setting under two names, that
+//     OceanSentinel shipped three different NMEA gateway defaults (one of them a
+//     home LAN address), or that a boat name lived in four places under three
+//     names with two of them disagreeing. None of that is visible to a checker
+//     that only reads dependencies and build config.
+//
+//     @sentinel/settings makes it visible, because a setting is now a
+//     declaration: what it is, what it defaults to, and where it used to live.
+//     Everything below is derived from that registry rather than restated here,
+//     so declaring a setting extends these checks for free.
+//
+//     WARN for now, deliberately. Both apps still carry their pre-registry keys
+//     on purpose -- they are read for one release so an upgrade loses nothing --
+//     and a check that fails on a planned intermediate state teaches people to
+//     ignore it. This turns FAIL when those keys are deleted.
+// ---------------------------------------------------------------------------
+const APP_REGISTRY_KEY = {
+  OceanSentinel: 'ocean',
+  HarborSentinel: 'harbor',
+  VesselKeeper: 'vessel-keeper',
+};
+
+// Each app's own settings module is the one place allowed to touch a legacy key:
+// that is where the migration reads them from.
+const SETTINGS_MODULE = /(^|\/)lib\/settings\.(t|j)s$/;
+
+let FLEET_SETTINGS = null;
+let DEFAULT_NMEA_TARGET = null;
+try {
+  const settingsDist = path.join(SHARED_ROOT, 'settings/dist/index.js');
+  const marineDist = path.join(SHARED_ROOT, 'marine/dist/index.js');
+  if (exists(settingsDist) && exists(marineDist)) {
+    ({ FLEET_SETTINGS } = await import(pathToFileURL(settingsDist).href));
+    ({ DEFAULT_NMEA_TARGET } = await import(pathToFileURL(marineDist).href));
+  }
+} catch (err) {
+  warn('settings', `could not load the settings registry, so check 10 was skipped: ${err.message}`);
+}
+
+if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
+  // Every legacy key any app ever used, and which setting owns it.
+  const ownerOfLegacyKey = new Map(); // `${app}:${key}` -> setting key
+  const allLegacyKeys = new Set();
+  for (const def of FLEET_SETTINGS.all()) {
+    for (const [app, keys] of Object.entries(def.legacy ?? {})) {
+      for (const key of keys) {
+        ownerOfLegacyKey.set(`${app}:${key}`, def.key);
+        allLegacyKeys.add(key);
+      }
+    }
+  }
+
+  for (const app of presentApps) {
+    const appRoot = path.join(ROOT, app.name);
+    const srcDir = path.join(appRoot, exists(path.join(appRoot, 'frontend', 'src')) ? 'frontend/src' : 'src');
+    const files = [...walk(srcDir), ...walk(path.join(appRoot, 'server'))].filter((f) => /\.(t|j)sx?$/.test(f));
+    const appKey = APP_REGISTRY_KEY[app.name];
+
+    const usedKeys = new Set();
+    const directUses = [];
+    const foreignNames = [];
+    const gatewayLiterals = [];
+
+    for (const file of files) {
+      const rel = path.relative(appRoot, file).replace(/\\/g, '/');
+      const isSettingsModule = SETTINGS_MODULE.test(rel);
+
+      let inBlockComment = false;
+
+      readText(file).split(/\r?\n/).forEach((line, i) => {
+        const at = `${rel}:${i + 1}`;
+
+        /*
+          Track block comments across lines rather than guessing per line.
+
+          A star-prefixed continuation is only one house style; this repository
+          also writes block comments whose body lines carry no marker at all, and
+          those were read as code -- the first thing this check flagged was a
+          comment explaining the very literal it was flagging.
+        */
+        const wasInBlockComment = inBlockComment;
+        const opensBlock = line.lastIndexOf('/*');
+        const closesBlock = line.lastIndexOf('*/');
+        if (inBlockComment) {
+          if (closesBlock !== -1) inBlockComment = false;
+        } else if (opensBlock !== -1 && closesBlock < opensBlock) {
+          inBlockComment = true;
+        }
+        const isComment = wasInBlockComment || inBlockComment || line.trim().startsWith('//');
+
+        /*
+          10a. A registry-owned key still read or written by hand.
+
+          Not untidiness. A setting held at the vessel or account layer is
+          SHADOWED by that layer, so a localStorage write to it stores nothing
+          anybody reads and the screen appears not to save -- which is exactly
+          what OceanSentinel's settings dialog did until it was found by hand.
+        */
+        // The first argument only. Matching every quoted string on the line
+        // collected the VALUES too, which made a stored '100' look like a key.
+        for (const m of isComment ? [] : line.matchAll(/localStorage\s*\.\s*(?:get|set|remove)Item\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+          {
+            const key = m[1];
+            usedKeys.add(key);
+
+            if (ownerOfLegacyKey.has(`${appKey}:${key}`)) {
+              if (!isSettingsModule) directUses.push(`${at} -> ${ownerOfLegacyKey.get(`${appKey}:${key}`)}`);
+              continue;
+            }
+
+            /*
+              10b. One setting, one name.
+
+              Reading another app's key name is how two names for one setting
+              begin, and it is what nine existing checks missed for
+              harbor_sentinel_keep_awake and ocean_sentinel_keep_awake.
+            */
+            for (const [owned, setting] of ownerOfLegacyKey) {
+              const split = owned.indexOf(':');
+              if (owned.slice(0, split) !== appKey && owned.slice(split + 1) === key) {
+                foreignNames.push(`${at} uses ${key}, which belongs to ${setting}`);
+              }
+            }
+          }
+        }
+
+        /*
+          10c. The fleet's one gateway literal, copied into an app.
+
+          A placeholder or a comment is where an example address belongs; a code
+          path is not. OceanSentinel had three of these and they disagreed.
+        */
+        // The host only. A bare port number matches far too much to be a signal,
+        // and it was never the part that disagreed -- three addresses were.
+        if (!isComment && !/placeholder/i.test(line) && line.includes(DEFAULT_NMEA_TARGET.host)) {
+          gatewayLiterals.push(at);
+        }
+      });
+    }
+
+    const some = (list, n) => list.slice(0, n).join(', ') + (list.length > n ? `, +${list.length - n} more` : '');
+
+    if (directUses.length) {
+      warn('settings', `${app.name}: ${directUses.length} direct localStorage use(s) of a registry-owned key ` +
+        `— a value held above the device layer is shadowed, so the write saves nothing: ${some(directUses, 4)}`);
+    }
+    if (foreignNames.length) {
+      warn('settings', `${app.name}: ${foreignNames.length} use(s) of another app's key name for a shared setting: ${some(foreignNames, 3)}`);
+    }
+    if (gatewayLiterals.length) {
+      warn('settings', `${app.name}: ${gatewayLiterals.length} copy/copies of the gateway literal ` +
+        `(${DEFAULT_NMEA_TARGET.host}) outside a placeholder or comment: ${some(gatewayLiterals, 4)}`);
+    }
+
+    /*
+      10d. Flat keys the registry has never heard of.
+
+      Most are cached records or credentials rather than settings, which is the
+      point: this number is the size of the remaining question, and it should
+      only ever go down.
+    */
+    const undeclared = [...usedKeys].filter((k) => !allLegacyKeys.has(k) && !k.startsWith('sentinel.'));
+    if (undeclared.length) {
+      warn('settings', `${app.name}: ${undeclared.length} localStorage key(s) not declared in the registry ` +
+        `(cached data and credentials belong here; settings do not): ${some(undeclared, 6)}`);
+    }
   }
 }
 
