@@ -40,8 +40,8 @@ export function resolveNmeaTarget(input = {}) {
     const reqPort = clean(input.requested?.port);
     if (reqHost && reqPort)
         return { host: reqHost, port: reqPort, source: 'requested' };
-    const cfgHost = clean(input.config?.nmea_local_host);
-    const cfgPort = clean(input.config?.nmea_local_port);
+    const cfgHost = clean(input.configured?.host);
+    const cfgPort = clean(input.configured?.port);
     if (cfgHost) {
         return { host: cfgHost, port: cfgPort ?? fallback.port, source: 'config' };
     }

@@ -137,3 +137,65 @@ export function createDeviceStore(storage: StorageLike, options: DeviceStoreOpti
     },
   };
 }
+
+export interface HostStoreOptions {
+  /** Override only if one store genuinely holds settings for two apps. */
+  prefix?: string;
+}
+
+/**
+ * The host layer: settings belonging to the machine running the backend, shared
+ * by every device pointed at it.
+ *
+ * The same shape as the device store and deliberately duller — no legacy key
+ * names, because a server never had a `localStorage` to inherit them from, and
+ * no per-app lookup, because a host runs one backend. What it does have is a
+ * different answer from the device layer, which is the entire point: a PC's
+ * gateway address and a phone's are both correct, and HarborSentinel currently
+ * has to strip the phone's out of its payload to stop one overwriting the other.
+ *
+ * The storage is injected, so a server backs this with a table and this package
+ * still knows nothing about SQLite.
+ */
+export function createHostStore(storage: StorageLike, options: HostStoreOptions = {}): DeviceStore {
+  const { prefix = DEFAULT_PREFIX } = options;
+  const listeners = new Set<() => void>();
+
+  return {
+    scope: 'host',
+
+    get(key) {
+      try {
+        const value = storage.getItem(`${prefix}${key}`);
+        return value === null ? undefined : value;
+      } catch {
+        return undefined;
+      }
+    },
+
+    set(key, raw) {
+      try {
+        storage.setItem(`${prefix}${key}`, raw);
+      } catch {
+        /* Read-only or full; the in-memory value still applies for this session. */
+      }
+    },
+
+    clear(key) {
+      try {
+        storage.removeItem(`${prefix}${key}`);
+      } catch {
+        /* As above. */
+      }
+    },
+
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    notifyExternalChange() {
+      for (const listener of listeners) listener();
+    },
+  };
+}

@@ -14,18 +14,26 @@
  * only for an address the configuration agrees with, and only when nothing more specific was
  * asked for.
  */
-export interface NmeaTargetConfig {
-    nmea_local_host?: string | null;
-    nmea_local_port?: number | string | null;
-}
 export interface ResolveNmeaTargetInput {
     /** An explicit request, e.g. from a query string. Beats everything. */
     requested?: {
         host?: string | null;
         port?: string | number | null;
     };
-    /** The stored configuration row, if one could be read. */
-    config?: NmeaTargetConfig | null;
+    /**
+     * The configured gateway, already resolved.
+     *
+     * This took HarborSentinel's `system_config` row -- `nmea_local_host` and
+     * `nmea_local_port` -- which meant a function about precedence knew the column
+     * names of one app's database. It now takes an address, resolved by
+     * `@sentinel/settings` through account -> vessel -> host -> device, so a phone
+     * reaching the gateway through a PC and the PC reaching it directly are both
+     * just an address by the time they arrive here.
+     */
+    configured?: {
+        host?: string | null;
+        port?: string | number | null;
+    } | null;
     /** Keys currently in the connection pool, as `host:port`. */
     activeKeys?: Iterable<string>;
     /** Last-resort gateway, used when nothing else answers. */

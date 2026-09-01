@@ -3,6 +3,6 @@ export { boolType, hostType, intType, listType, mmsiType, numberType, oneOf, por
 export { createRegistry, defaultFor, defineSetting } from './registry.js';
 export { createSettingsStore } from './store.js';
 export { createAccountStore, createCloudStore, createVesselStore, DEFAULT_VESSEL_SLUG, } from './cloudStore.js';
-export { createDeviceStore, DEFAULT_PREFIX } from './deviceStore.js';
+export { createDeviceStore, createHostStore, DEFAULT_PREFIX } from './deviceStore.js';
 export { DEFAULT_MARKER_KEY, migrateLegacyKeys } from './migrate.js';
 export { FLEET_SETTINGS } from './fleet.js';
