@@ -28,13 +28,14 @@ const APPS = [
     // Capacitor/Android live under frontend/ for this app, unlike the other two.
     viteConfig: 'frontend/vite.config.js',
     androidDir: 'frontend/android',
+    playPackage: 'com.oceansentinel.app',
     // dist/server.cjs is bundled at the repo root with --packages=external, so it
     // resolves runtime deps from the ROOT node_modules, not backend/'s. Any runtime
     // dep of the backend must therefore also appear in the root package.json.
     mirrorsBackendDeps: true,
   },
-  { name: 'HarborSentinel', viteConfig: 'vite.config.ts', androidDir: 'android' },
-  { name: 'VesselKeeper', viteConfig: 'vite.config.ts', androidDir: 'android' },
+  { name: 'HarborSentinel', viteConfig: 'vite.config.ts', androidDir: 'android', playPackage: 'com.harborsentinel.app' },
+  { name: 'VesselKeeper', viteConfig: 'vite.config.ts', androidDir: 'android', playPackage: 'com.vesselkeeper.app' },
 ];
 
 // Packages that must not diverge across apps: they are either shared-package peer
@@ -255,10 +256,13 @@ for (const app of presentApps) {
     /appVersionName/.test(exists(path.join(aDir, 'variables.gradle')) ? readText(path.join(aDir, 'variables.gradle')) : '');
   if (!derives) fail('android', `${app.name}: versionName is not derived from package.json`);
 
+  // Google Play package names are immutable once an app is created, so the
+  // Android applicationId must stay pinned to the name registered in Play
+  // Console (playPackage) even though the Electron appId moved to
+  // com.marinersentinel.*. The Aug 2026 rename briefly broke Play uploads.
   const appIdMatch = gSrc.match(/applicationId\s+["']([^"']+)["']/);
-  const electronAppId = readJson(path.join(ROOT, app.name, 'package.json'))?.build?.appId;
-  if (appIdMatch && electronAppId && appIdMatch[1] !== electronAppId) {
-    fail('android', `${app.name}: applicationId "${appIdMatch[1]}" != Electron build.appId "${electronAppId}"`);
+  if (appIdMatch && app.playPackage && appIdMatch[1] !== app.playPackage) {
+    fail('android', `${app.name}: applicationId "${appIdMatch[1]}" != Play Console package "${app.playPackage}" (Play rejects uploads under any other name)`);
   }
 }
 
