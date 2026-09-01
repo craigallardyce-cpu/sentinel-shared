@@ -29,13 +29,20 @@ describe('the fleet registry', () => {
     The rule the file rests on, with its exceptions named rather than implied.
 
     Everything a boat's owner is the authority on stays unset until they say so.
-    What is left carries a default only because the app needs a value before
-    anyone has opened the settings at all: a switch has to be on or off, the
-    first frame has to render at some brightness, and auto-dim needs an interval
-    or its toggle does nothing. Listing them here is what stops that list growing
-    back one well-meant default at a time.
+    What is left carries a default only because the app has to draw something
+    before anyone has opened the settings at all: a switch has to be on or off,
+    the first frame has to render at some brightness, auto-dim needs an interval
+    or its toggle does nothing, and a chart cannot be drawn with no base layer,
+    no orientation and vectors of no length.
+
+    That second clause is the one to watch. "The screen needs a value" is true of
+    almost anything if argued loosely enough, and it is the sentence a default
+    creeps back in under. It holds here only because there is no coherent way to
+    render the thing at all without one -- not because a particular value is a
+    good suggestion. Listing them is what stops the list growing back one
+    well-meant default at a time.
   */
-  it('ships a default only for toggles, brightness and the dim interval', () => {
+  it('ships a default only where the first frame cannot be drawn without one', () => {
     // Every addition here is forced rather than chosen: createRegistry requires a
     // default on any bool, so a new toggle lands in this list by rule.
     const withDefaults = FLEET_SETTINGS.all()
@@ -46,6 +53,11 @@ describe('the fleet registry', () => {
     expect(withDefaults).toEqual([
       'alarms.ais_proximity.enabled',
       'alarms.sound_enabled',
+      'chart.auto_select',
+      'chart.mode',
+      'chart.orientation',
+      'chart.show_vectors',
+      'chart.vector_minutes',
       'display.auto_dim',
       'display.auto_dim_minutes',
       'display.day_brightness',

@@ -439,16 +439,168 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         label: 'AIS proximity limit',
         placeholder: 'nautical miles',
     }),
+    /*
+      OceanSentinel's telemetry threshold alarms.
+  
+      Twelve values the chartplotter kept in raw localStorage under `alarm_*`. Two
+      of them were already declared here at `host` scope and read by nothing, so
+      they are reused rather than duplicated -- a wind limit and a depth limit are
+      a wind limit and a depth limit, whichever screen sets them.
+  
+      Scoped `vessel` then `device`. A depth alarm is a fact about the boat, so a
+      phone in the cockpit should inherit what the nav station set; a device
+      override is there for whoever wants a tighter one on their own screen. The UI
+      writes at `device`, because a navigator setting an alarm offshore has no
+      connection to write a vessel layer with, and an alarm that silently failed to
+      save would be worse than one that only covers this screen.
+  
+      Every threshold below is stored in a CANONICAL unit -- feet, knots, degrees
+      -- never in whatever the display happens to be showing. `alarm_depth_min` was
+      stored in the displayed unit, so a navigator who set a ten foot alarm and
+      later switched the app to metric was left with a ten METRE one: an alarm that
+      fires at thirty-three feet, or never, depending which way it went. Nothing
+      announced the change. Conversion now happens at the input, once.
+    */
     'alarms.wind_limit_kt': (0, registry_js_1.defineSetting)({
-        scopes: ['host'],
+        scopes: ['vessel', 'device'],
         type: (0, valueTypes_js_1.numberType)({ min: 0, max: 100 }),
         label: 'Wind alarm limit',
+        description: 'Alarm above this true wind speed.',
         placeholder: 'knots',
+        legacy: { ocean: ['alarm_tws_max'] },
     }),
     'alarms.depth_limit_ft': (0, registry_js_1.defineSetting)({
-        scopes: ['host'],
+        scopes: ['vessel', 'device'],
         type: (0, valueTypes_js_1.numberType)({ min: 0, max: 200 }),
         label: 'Depth alarm limit',
+        description: 'Alarm below this depth. Always feet, whatever the display shows.',
         placeholder: 'feet',
+        /*
+          Deliberately NOT migrated by key name. The stored number's unit depended on
+          what `units.metric` happened to be when it was typed, so carrying it across
+          verbatim would relabel a reading in metres as one in feet. OceanSentinel
+          converts it explicitly on upgrade instead.
+        */
+    }),
+    'alarms.sog_max_kt': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 100 }),
+        label: 'Speed over ground limit',
+        placeholder: 'knots',
+        legacy: { ocean: ['alarm_sog_max'] },
+    }),
+    'alarms.boat_speed_max_kt': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 100 }),
+        label: 'Boat speed limit',
+        placeholder: 'knots',
+        legacy: { ocean: ['alarm_boat_spd_max'] },
+    }),
+    'alarms.heading_min_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 360 }),
+        label: 'Heading alarm, from',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_hdg_min'] },
+    }),
+    'alarms.heading_max_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 360 }),
+        label: 'Heading alarm, to',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_hdg_max'] },
+    }),
+    'alarms.cog_min_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 360 }),
+        label: 'Course alarm, from',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_cog_min'] },
+    }),
+    'alarms.cog_max_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 360 }),
+        label: 'Course alarm, to',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_cog_max'] },
+    }),
+    'alarms.awa_min_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: -180, max: 180 }),
+        label: 'Apparent wind angle alarm, from',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_awa_min'] },
+    }),
+    'alarms.awa_max_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: -180, max: 180 }),
+        label: 'Apparent wind angle alarm, to',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_awa_max'] },
+    }),
+    'alarms.twd_min_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 360 }),
+        label: 'True wind direction alarm, from',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_twd_min'] },
+    }),
+    'alarms.twd_max_deg': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0, max: 360 }),
+        label: 'True wind direction alarm, to',
+        placeholder: 'degrees',
+        legacy: { ocean: ['alarm_twd_max'] },
+    }),
+    /*
+      The chart view: how this screen draws, rather than what it draws.
+  
+      Device-scoped throughout. Which base chart a screen shows, whether it is
+      north-up, and how far ahead the vectors reach are facts about the screen and
+      the person in front of it -- the nav station on ENC and a phone on OSM is a
+      normal arrangement, not a disagreement to be resolved.
+  
+      The remaining three chart keys -- the overlay, layer and telemetry-panel
+      toggle maps -- are deliberately NOT here. They are open records of booleans
+      that gain a field whenever a layer is added, so declaring them would mean a
+      shared-package edit every time OceanSentinel grows a map layer, in exchange
+      for provenance nobody needs on a panel toggle.
+    */
+    'chart.mode': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.stringType)({ maxLength: 64 }),
+        default: 'noaa_enc',
+        label: 'Base chart',
+        legacy: { ocean: ['vessel_chart_mode'] },
+    }),
+    'chart.auto_select': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: valueTypes_js_1.boolType,
+        default: true,
+        label: 'Follow the vessel',
+        description: 'Pick the highest-authority chart covering the boat. Choosing one turns this off.',
+        legacy: { ocean: ['vessel_chart_auto'] },
+    }),
+    'chart.orientation': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.oneOf)(['north-up', 'heading-up']),
+        default: 'north-up',
+        label: 'Chart orientation',
+        legacy: { ocean: ['vessel_orientation'] },
+    }),
+    'chart.show_vectors': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: valueTypes_js_1.boolType,
+        default: true,
+        label: 'Show course vectors',
+        legacy: { ocean: ['vessel_show_vectors'] },
+    }),
+    'chart.vector_minutes': (0, registry_js_1.defineSetting)({
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.intType)({ min: 1, max: 60 }),
+        default: 10,
+        label: 'Vector length',
+        placeholder: 'minutes',
+        legacy: { ocean: ['vessel_vector_time'] },
     }),
 });

@@ -96,5 +96,30 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'alarms.ais_proximity.limit_nm': import("./types.js").SettingSpec<number>;
     'alarms.wind_limit_kt': import("./types.js").SettingSpec<number>;
     'alarms.depth_limit_ft': import("./types.js").SettingSpec<number>;
+    'alarms.sog_max_kt': import("./types.js").SettingSpec<number>;
+    'alarms.boat_speed_max_kt': import("./types.js").SettingSpec<number>;
+    'alarms.heading_min_deg': import("./types.js").SettingSpec<number>;
+    'alarms.heading_max_deg': import("./types.js").SettingSpec<number>;
+    'alarms.cog_min_deg': import("./types.js").SettingSpec<number>;
+    'alarms.cog_max_deg': import("./types.js").SettingSpec<number>;
+    'alarms.awa_min_deg': import("./types.js").SettingSpec<number>;
+    'alarms.awa_max_deg': import("./types.js").SettingSpec<number>;
+    'alarms.twd_min_deg': import("./types.js").SettingSpec<number>;
+    'alarms.twd_max_deg': import("./types.js").SettingSpec<number>;
+    'chart.mode': import("./types.js").SettingSpec<string> & {
+        default: string | ((platform: import("./types.js").PlatformContext) => string);
+    };
+    'chart.auto_select': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'chart.orientation': import("./types.js").SettingSpec<string> & {
+        default: string | ((platform: import("./types.js").PlatformContext) => string);
+    };
+    'chart.show_vectors': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'chart.vector_minutes': import("./types.js").SettingSpec<number> & {
+        default: number | ((platform: import("./types.js").PlatformContext) => number);
+    };
 }>;
 export type FleetSettings = typeof FLEET_SETTINGS;
