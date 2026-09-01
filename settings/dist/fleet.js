@@ -32,7 +32,7 @@
  * same flat namespace) and deciding which is which is that step's work.
  */
 import { createRegistry, defineSetting } from './registry.js';
-import { boolType, hostType, intType, listType, mmsiType, numberType, oneOf, portType, stringType, urlType, } from './valueTypes.js';
+import { boolType, hostType, intType, listType, mmsiType, numberType, oneOf, portType, shapeType, stringType, urlType, } from './valueTypes.js';
 export const FLEET_SETTINGS = createRegistry({
     // ---------------------------------------------------------------------------
     // Vessel — facts about the boat, and the clearest case for having no defaults:
@@ -323,9 +323,39 @@ export const FLEET_SETTINGS = createRegistry({
     }),
     'logbook.quick_tap_presets': defineSetting({
         scopes: ['account'],
-        type: listType(stringType({ maxLength: 60 })),
+        /*
+          Records, not strings. Declared as a list of strings first, which would have
+          rejected every stored value OceanSentinel has -- the presets have always
+          been `{ id, label, text }` -- and left the setting reading as unset while
+          four call sites quietly fell back to their own copy of the list.
+        */
+        type: listType(shapeType('preset', {
+            id: stringType({ maxLength: 40 }),
+            label: stringType({ maxLength: 60 }),
+            text: stringType({ maxLength: 500 }),
+        })),
+        /*
+          A starter list, and one of the few defaults that survives.
+    
+          It is not a fact about a boat that only its owner knows; it is a set of
+          phrases anybody keeping a log would want on the first watch, and an empty
+          quick-tap row on a fresh install is worse than a list somebody edits. The
+          same argument brightness and the auto-dim interval won.
+    
+          This is now the only copy. OceanSentinel had it in QuickPresetsModal.jsx
+          with three call sites falling back to it by hand.
+        */
+        default: [
+            { id: 'preset_1', label: '+ Watch Handover', text: 'Watch handover completed. All systems normal.' },
+            { id: 'preset_2', label: '+ Engine Room Walk', text: 'Engine room walk completed. Fluids & belts normal.' },
+            { id: 'preset_3', label: '+ Bilge Check Dry', text: 'Bilge checked dry. Pumps off.' },
+            { id: 'preset_4', label: '+ Deck Walk', text: 'Deck & rig walk completed. Lines secure.' },
+            { id: 'preset_5', label: '+ Rig Inspection', text: 'Rigging and standing gear inspected. All secure.' },
+            { id: 'preset_6', label: '+ Weather Check', text: 'Weather observation recorded. Conditions steady.' },
+            { id: 'preset_7', label: '+ Sail Trim', text: 'Adjusted sail trim for wind shift.' },
+            { id: 'preset_8', label: '+ Traffic Clear', text: 'Monitored passing AIS traffic. Safe CPA maintained.' },
+        ],
         label: 'Quick-tap entries',
-        placeholder: 'add a phrase',
         legacy: { ocean: ['log_quick_tap_presets'] },
     }),
     // ---------------------------------------------------------------------------

@@ -82,3 +82,18 @@ export declare const mmsiType: SettingType<string>;
  * than the navigator chose is a wrong log entry that nothing reports.
  */
 export declare function listType<T>(item: SettingType<T>): SettingType<T[]>;
+export interface ShapeFields {
+    [field: string]: SettingType<any>;
+}
+/**
+ * An object with declared fields, for the few settings that are records rather
+ * than scalars — OceanSentinel's log-book quick-tap presets, which are
+ * `{ id, label, text }`.
+ *
+ * Every declared field must parse or the whole object is rejected, on the same
+ * grounds as `listType`: a half-understood preset is a log entry that records
+ * something other than what the navigator picked. Undeclared fields are dropped
+ * rather than carried, so a value written by a newer build cannot smuggle
+ * anything through an older one.
+ */
+export declare function shapeType<T extends Record<string, unknown>>(name: string, fields: ShapeFields): SettingType<T>;

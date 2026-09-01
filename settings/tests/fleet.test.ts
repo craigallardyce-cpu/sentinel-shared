@@ -51,6 +51,7 @@ describe('the fleet registry', () => {
       'display.day_brightness',
       'display.keep_awake',
       'display.night_brightness',
+      'logbook.quick_tap_presets',
       'units.metric',
       'vhf.monitor_audio',
     ]);

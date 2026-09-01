@@ -68,7 +68,21 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     };
     'logbook.auto_interval_min': import("./types.js").SettingSpec<number>;
     'logbook.included_nmea': import("./types.js").SettingSpec<("position" | "cogSog" | "wind" | "depth" | "temp" | "battery")[]>;
-    'logbook.quick_tap_presets': import("./types.js").SettingSpec<string[]>;
+    'logbook.quick_tap_presets': import("./types.js").SettingSpec<{
+        id: string;
+        label: string;
+        text: string;
+    }[]> & {
+        default: {
+            id: string;
+            label: string;
+            text: string;
+        }[] | ((platform: import("./types.js").PlatformContext) => {
+            id: string;
+            label: string;
+            text: string;
+        }[]);
+    };
     'ai.model': import("./types.js").SettingSpec<string>;
     'alarms.sound_enabled': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);

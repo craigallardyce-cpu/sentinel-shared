@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FLEET_SETTINGS = exports.migrateLegacyKeys = exports.DEFAULT_MARKER_KEY = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.DEFAULT_VESSEL_SLUG = exports.createVesselStore = exports.createCloudStore = exports.createAccountStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
+exports.FLEET_SETTINGS = exports.migrateLegacyKeys = exports.DEFAULT_MARKER_KEY = exports.DEFAULT_PREFIX = exports.createDeviceStore = exports.DEFAULT_VESSEL_SLUG = exports.createVesselStore = exports.createCloudStore = exports.createAccountStore = exports.createSettingsStore = exports.defineSetting = exports.defaultFor = exports.createRegistry = exports.urlType = exports.stringType = exports.shapeType = exports.portType = exports.oneOf = exports.numberType = exports.mmsiType = exports.listType = exports.intType = exports.hostType = exports.boolType = exports.SCOPE_ORDER = void 0;
 var types_js_1 = require("./types.js");
 Object.defineProperty(exports, "SCOPE_ORDER", { enumerable: true, get: function () { return types_js_1.SCOPE_ORDER; } });
 var valueTypes_js_1 = require("./valueTypes.js");
@@ -12,6 +12,7 @@ Object.defineProperty(exports, "mmsiType", { enumerable: true, get: function () 
 Object.defineProperty(exports, "numberType", { enumerable: true, get: function () { return valueTypes_js_1.numberType; } });
 Object.defineProperty(exports, "oneOf", { enumerable: true, get: function () { return valueTypes_js_1.oneOf; } });
 Object.defineProperty(exports, "portType", { enumerable: true, get: function () { return valueTypes_js_1.portType; } });
+Object.defineProperty(exports, "shapeType", { enumerable: true, get: function () { return valueTypes_js_1.shapeType; } });
 Object.defineProperty(exports, "stringType", { enumerable: true, get: function () { return valueTypes_js_1.stringType; } });
 Object.defineProperty(exports, "urlType", { enumerable: true, get: function () { return valueTypes_js_1.urlType; } });
 var registry_js_1 = require("./registry.js");

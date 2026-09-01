@@ -20,10 +20,11 @@ export {
   numberType,
   oneOf,
   portType,
+  shapeType,
   stringType,
   urlType,
 } from './valueTypes.js';
-export type { NumberOptions, StringOptions, UrlOptions } from './valueTypes.js';
+export type { NumberOptions, ShapeFields, StringOptions, UrlOptions } from './valueTypes.js';
 
 export { createRegistry, defaultFor, defineSetting } from './registry.js';
 export type { AnyDefinition, AnySpec, Registry } from './registry.js';

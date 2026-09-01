@@ -22,6 +22,7 @@ exports.numberType = numberType;
 exports.oneOf = oneOf;
 exports.urlType = urlType;
 exports.listType = listType;
+exports.shapeType = shapeType;
 /**
  * Like `@sentinel/marine`, this package compiles with `lib: ES2020` and no DOM
  * and no Node types, so a validator cannot reach for a host API by accident.
@@ -218,5 +219,50 @@ function listType(item) {
             out.push(parsed);
         }
         return out;
-    }, (value) => JSON.stringify(value.map((element) => item.serialize(element))));
+    }, 
+    /*
+      The values, not their serialised forms. Mapping each element through
+      `item.serialize` first produced an array of strings — `["1","2"]` for a list
+      of numbers — which round-tripped only because `parse` is lenient about
+      types. It also made an object element unrepresentable, which is how a list
+      of log-book presets came to be declared as a list of strings.
+    */
+    (value) => JSON.stringify(value));
+}
+/**
+ * An object with declared fields, for the few settings that are records rather
+ * than scalars — OceanSentinel's log-book quick-tap presets, which are
+ * `{ id, label, text }`.
+ *
+ * Every declared field must parse or the whole object is rejected, on the same
+ * grounds as `listType`: a half-understood preset is a log entry that records
+ * something other than what the navigator picked. Undeclared fields are dropped
+ * rather than carried, so a value written by a newer build cannot smuggle
+ * anything through an older one.
+ */
+function shapeType(name, fields) {
+    return make(`shape(${name})`, (raw) => {
+        let source = raw;
+        if (typeof raw === 'string') {
+            const value = text(raw);
+            if (value === null)
+                return undefined;
+            try {
+                source = JSON.parse(value);
+            }
+            catch {
+                return undefined;
+            }
+        }
+        if (source === null || typeof source !== 'object' || Array.isArray(source))
+            return undefined;
+        const out = {};
+        for (const [field, type] of Object.entries(fields)) {
+            const parsed = type.parse(source[field]);
+            if (parsed === undefined)
+                return undefined;
+            out[field] = parsed;
+        }
+        return out;
+    }, (value) => JSON.stringify(value));
 }

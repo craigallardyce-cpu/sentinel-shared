@@ -50,7 +50,14 @@ const OCEAN_BEFORE = {
   gemini_model: 'gemini-2.5-flash',
   log_auto_interval: '15',
   log_included_nmea: '["position","wind","depth"]',
-  log_quick_tap_presets: '["Reefed main","Watch change"]',
+  /*
+    The real stored shape, not a convenient one. These have always been
+    `{ id, label, text }` records; a fixture of plain strings here is what let the
+    setting be declared as a list of strings and still pass.
+  */
+  log_quick_tap_presets:
+    '[{"id":"preset_1","label":"+ Watch Handover","text":"Watch handover completed."},' +
+    '{"id":"custom_1","label":"+ Reefed main","text":"Reefed the main to the first reef."}]',
   // Device-scoped: read in place, never migrated.
   night_brightness: '45',
   ocean_sentinel_keep_awake: 'true',

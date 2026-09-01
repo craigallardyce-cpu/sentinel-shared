@@ -58,7 +58,19 @@ async function migrateLegacyKeys(options) {
         const target = [...writableScopes].reverse().find((scope) => definition.scopes.includes(scope));
         if (!target)
             continue;
-        if (settings.isConfigured(definition.key))
+        /*
+          Skip only when a real LAYER already holds a value — not when the declared
+          default is answering.
+    
+          This was `isConfigured`, which is true for both, and that silently dropped
+          the legacy value of any setting that has a default. It went unnoticed while
+          every defaulted setting happened to be device-scoped (and so never
+          migrated); the first account-scoped one with a default — the log book's
+          quick-tap presets — would have lost a navigator's edited list on upgrade
+          and shown them the starter list instead.
+        */
+        const source = settings.source(definition.key);
+        if (source !== 'unset' && source !== 'default')
             continue;
         let raw = null;
         for (const legacy of legacyKeys) {
