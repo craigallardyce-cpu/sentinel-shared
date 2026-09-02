@@ -2,6 +2,13 @@ import React, { useEffect } from 'react';
 import { Moon, Settings, Sun } from 'lucide-react';
 import { cn } from './cn';
 
+declare global {
+  interface Window {
+    /** Exposed by each app's Electron preload; absent on the web and in Capacitor. */
+    appShell?: { setNightMode?: (night: boolean) => void };
+  }
+}
+
 export interface ShellTab {
   id: string;
   label: React.ReactNode;
@@ -115,14 +122,18 @@ export function AppShell({
   const hasTabs = tabs.length > 0;
 
   // Night mode and brightness go on <html>, not this div, so portalled dialogs and
-  // toasts (rendered into document.body) are themed and dimmed too.
+  // toasts (rendered into document.body) are themed and dimmed too. On desktop
+  // the OS window-controls cluster (electron-shell's hidden title bar) is told as
+  // well, so it turns red with the rest of the screen.
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle('theme-night', !!nightMode);
     root.style.filter = brightness !== undefined && brightness !== 100 ? `brightness(${brightness}%)` : '';
+    window.appShell?.setNightMode?.(!!nightMode);
     return () => {
       root.classList.remove('theme-night');
       root.style.filter = '';
+      window.appShell?.setNightMode?.(false);
     };
   }, [nightMode, brightness]);
 
@@ -132,7 +143,7 @@ export function AppShell({
         {background && <div className="absolute inset-0 z-0">{background}</div>}
 
         <header
-          className="fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex justify-between items-center z-50 select-none px-4 sm:px-5"
+          className="sentinel-header fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex justify-between items-center z-50 select-none px-4 sm:px-5"
           style={{
             top: 'calc(var(--shell-edge) + var(--safe-area-top, 0px))',
             marginLeft: 'var(--safe-area-left, 0px)',

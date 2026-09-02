@@ -1,7 +1,7 @@
 /*
- * Red-shifted night mode for the fleet. Applied by adding `.theme-night`
- * (OceanSentinel, VesselKeeper) or `.night-mode` (HarborSentinel) to a root
- * element; every token-driven utility follows automatically.
+ * Red-shifted night mode for the fleet. Applied by @sentinel/ui's AppShell,
+ * which adds `.theme-night` to <html>; every token-driven utility follows
+ * automatically. `.night-mode` remains as an alias for anything older.
  *
  * Status colours keep three distinct luminances so a watchkeeper can still tell
  * ok / warning / alarm apart with night vision preserved:

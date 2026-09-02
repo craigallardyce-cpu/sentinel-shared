@@ -1,4 +1,12 @@
 import React from 'react';
+declare global {
+    interface Window {
+        /** Exposed by each app's Electron preload; absent on the web and in Capacitor. */
+        appShell?: {
+            setNightMode?: (night: boolean) => void;
+        };
+    }
+}
 export interface ShellTab {
     id: string;
     label: React.ReactNode;

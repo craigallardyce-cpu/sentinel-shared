@@ -22,7 +22,7 @@ Projects/
 | `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing, AIS/AIVDM decoding, the NMEA gateway rule and the TCP connection pool | all three |
 | `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global model used everywhere NWS has no data | OceanSentinel (server + client) |
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers | OceanSentinel, HarborSentinel |
-| `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
+| `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
@@ -80,6 +80,16 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |
 | `<SettingsShell>` + `SettingsSection`/`SettingsRow` — Display (night, brightness, keep-awake) → app sections → Updates → About | three differently-organised settings modals; no About surface existed |
 | `<AppShell>` + `HeaderButton`/`HeaderGroup` — glass header, left dock ≥ lg, bottom bar < lg, safe-area aware, night-mode + brightness applied on `<html>` so portals follow | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
+
+On desktop the header **is** the title bar. Each app's `main.cjs` spreads
+`hiddenTitleBarOptions()` from `@sentinel/electron-shell` into its `BrowserWindow`,
+which hides the native bar and leaves the OS window-controls cluster painted
+top-right, 32px tall. `shell.css` reads `env(titlebar-area-height)` to keep the
+floating header clear of the cluster and makes the strip above it (and the header
+itself, minus its buttons) a drag region; outside Electron the env() is undefined
+and nothing changes. The cluster follows night mode: `AppShell` calls
+`window.appShell.setNightMode`, which the preload sends over `shell:night-mode` to
+`setupTitleBarOverlay()`.
 
 `@sentinel/theme` gains `shell.css` (AppShell layout variables) and `motion.css`. The package is built with `tsc` and its `dist/` is committed, like `auth-ui`. It
 imports only `react`, `react-dom` and `lucide-react`, which every app already

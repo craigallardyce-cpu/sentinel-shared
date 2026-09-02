@@ -4,13 +4,51 @@
  * breakpoints, which inline styles cannot express.
  */
 .sentinel-shell {
-  --shell-edge: 0.5rem;        /* gap between viewport edge and the floating header */
+  /*
+   * Gap between the viewport edge and the floating header.
+   *
+   * On desktop the native title bar is hidden (electron-shell's
+   * hiddenTitleBarOptions) and the OS paints only its window-controls cluster,
+   * top-right, `env(titlebar-area-height)` tall. The header keeps clear of it
+   * by starting half a rem below that strip. Everywhere else the env() is
+   * undefined, the fallback is 0, and the edge is the plain value.
+   */
+  --shell-edge: max(0.5rem, calc(env(titlebar-area-height, 0px) + 0.5rem));
   --shell-header: 3.5rem;      /* header height (h-14) */
   --shell-gap: 0.75rem;        /* gap under the header */
   --shell-bottom-nav: 4rem;    /* bottom bar height below lg */
 }
 @media (min-width: 640px) {
-  .sentinel-shell { --shell-edge: 1.5rem; }
+  .sentinel-shell { --shell-edge: max(1.5rem, calc(env(titlebar-area-height, 0px) + 0.5rem)); }
+}
+
+/*
+ * The strip the title bar used to occupy is still where people grab a window,
+ * so it drags; so does the header itself, except for anything you press. Both
+ * are inert outside Electron: the strip is zero-height without the env(), and
+ * app-region means nothing to a browser.
+ */
+.sentinel-shell::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(titlebar-area-height, 0px);
+  z-index: 60;
+  -webkit-app-region: drag;
+}
+.sentinel-header {
+  -webkit-app-region: drag;
+}
+.sentinel-header button,
+.sentinel-header a,
+.sentinel-header input,
+.sentinel-header select,
+.sentinel-header textarea,
+.sentinel-header label,
+.sentinel-header [role="button"] {
+  -webkit-app-region: no-drag;
 }
 
 .sentinel-shell-content {

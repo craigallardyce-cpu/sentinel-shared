@@ -7,7 +7,7 @@
  * into one function. What's extracted here is genuinely identical across all
  * three apps: the auto-updater IPC wiring, the Linux GPU compatibility guard,
  * the single-instance lock, window diagnostic logging, the DevTools toggle,
- * tray creation, and the power save blocker.
+ * tray creation, the power save blocker, and the hidden title bar.
  */
 
 /**
@@ -226,6 +226,73 @@ function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeIn
   });
 }
 
+/**
+ * The window controls overlay, and the two palettes it is painted in.
+ *
+ * The native title bar is hidden on desktop: the app's own header is the
+ * bar now, so the OS no longer prints the product name a second time forty
+ * pixels above it. What remains of the frame is the OS's minimise / maximise /
+ * close cluster, painted at the top-right over the page at this height. The
+ * renderer reads `env(titlebar-area-height)` to keep its floating header
+ * clear of the cluster (theme/shell.css), and makes the strip above the
+ * header a drag region.
+ *
+ * Colours are the fleet's tokens, spelt out because the main process cannot
+ * read a stylesheet: --bg-app / --text-primary by day, and their night-mode
+ * values from theme/night.css after dark, so the cluster is not the one thing
+ * on a red screen that stays blue-grey.
+ */
+const TITLE_BAR_OVERLAY_HEIGHT = 32;
+const TITLE_BAR_PALETTES = {
+  day: { color: '#081425', symbolColor: '#d8e3fb' },
+  night: { color: '#090202', symbolColor: '#ff9e9e' }
+};
+
+/**
+ * BrowserWindow options that hide the native title bar behind the app's own
+ * header. Spread into `new BrowserWindow({...})`.
+ *
+ *   mainWindow = new BrowserWindow({ ...hiddenTitleBarOptions(), width: 1280, ... });
+ *
+ * On Windows and Linux this leaves the OS window-controls cluster painted over
+ * the page; on macOS it leaves the traffic lights, moved down to sit inside
+ * the same strip.
+ */
+function hiddenTitleBarOptions() {
+  return {
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { ...TITLE_BAR_PALETTES.day, height: TITLE_BAR_OVERLAY_HEIGHT },
+    trafficLightPosition: { x: 12, y: 8 }
+  };
+}
+
+/**
+ * Repaints the window-controls cluster when the renderer switches night mode.
+ * Paired with each app's preload.cjs, which exposes window.appShell.setNightMode
+ * on the `shell:night-mode` channel; @sentinel/ui's AppShell calls it whenever
+ * it toggles `theme-night`. macOS traffic lights are native and cannot be
+ * recoloured, so the call is a no-op there.
+ *
+ * @param {object} opts
+ * @param {import('electron').IpcMain} opts.ipcMain
+ * @param {() => import('electron').BrowserWindow | null} opts.getMainWindow
+ */
+function setupTitleBarOverlay({ ipcMain, getMainWindow }) {
+  ipcMain.on('shell:night-mode', (_event, night) => {
+    const window = getMainWindow();
+    if (!window || window.isDestroyed() || typeof window.setTitleBarOverlay !== 'function') return;
+    try {
+      window.setTitleBarOverlay({
+        ...TITLE_BAR_PALETTES[night ? 'night' : 'day'],
+        height: TITLE_BAR_OVERLAY_HEIGHT
+      });
+    } catch (err) {
+      // Not every platform paints an overlay (macOS); nothing to repaint there.
+      console.warn('[Window] Title bar overlay could not be repainted:', err?.message || err);
+    }
+  });
+}
+
 module.exports = {
   applyLinuxGpuCompatibility,
   claimSingleInstanceLock,
@@ -233,5 +300,7 @@ module.exports = {
   enableDevToolsToggle,
   startPowerSaveBlocker,
   createAppTray,
-  setupAutoUpdater
+  setupAutoUpdater,
+  hiddenTitleBarOptions,
+  setupTitleBarOverlay
 };

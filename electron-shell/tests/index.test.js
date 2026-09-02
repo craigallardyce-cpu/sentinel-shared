@@ -206,3 +206,48 @@ describe('claimSingleInstanceLock', () => {
     expect(() => app.emit('second-instance')).not.toThrow();
   });
 });
+
+describe('hiddenTitleBarOptions', () => {
+  it('hides the native bar and paints the controls cluster in the day palette', async () => {
+    const { hiddenTitleBarOptions } = await import('../src/index.js');
+    const opts = hiddenTitleBarOptions();
+    expect(opts.titleBarStyle).toBe('hidden');
+    expect(opts.titleBarOverlay).toEqual({ color: '#081425', symbolColor: '#d8e3fb', height: 32 });
+    // The traffic lights sit inside the same 32px strip the renderer reserves.
+    expect(opts.trafficLightPosition.y + 12).toBeLessThanOrEqual(32);
+  });
+});
+
+describe('setupTitleBarOverlay', () => {
+  function fakeIpcMainOn() {
+    const listeners = new Map();
+    return {
+      on: vi.fn((channel, fn) => listeners.set(channel, fn)),
+      emit: (channel, ...args) => listeners.get(channel)({}, ...args)
+    };
+  }
+
+  it('repaints the overlay for night and day on the shell:night-mode channel', async () => {
+    const { setupTitleBarOverlay } = await import('../src/index.js');
+    const ipcMain = fakeIpcMainOn();
+    const window = { isDestroyed: () => false, setTitleBarOverlay: vi.fn() };
+    setupTitleBarOverlay({ ipcMain, getMainWindow: () => window });
+
+    ipcMain.emit('shell:night-mode', true);
+    expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#090202', symbolColor: '#ff9e9e', height: 32 });
+
+    ipcMain.emit('shell:night-mode', false);
+    expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#081425', symbolColor: '#d8e3fb', height: 32 });
+  });
+
+  it('does nothing without a window, or where the platform paints no overlay', async () => {
+    const { setupTitleBarOverlay } = await import('../src/index.js');
+    const ipcMain = fakeIpcMainOn();
+    let window = null;
+    setupTitleBarOverlay({ ipcMain, getMainWindow: () => window });
+    expect(() => ipcMain.emit('shell:night-mode', true)).not.toThrow();
+
+    window = { isDestroyed: () => false }; // macOS: no setTitleBarOverlay
+    expect(() => ipcMain.emit('shell:night-mode', true)).not.toThrow();
+  });
+});

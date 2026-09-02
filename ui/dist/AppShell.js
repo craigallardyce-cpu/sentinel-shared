@@ -22,17 +22,21 @@ export function HeaderGroup({ children, className }) {
 export function AppShell({ appName, brandIcon, tabs, activeTab, onTabChange, nightMode = false, onToggleNightMode, brightness, settingsOpen = false, onOpenSettings, headerCenter, headerStatus, headerActions, dockFooter, background, passThrough = false, mainClassName, bareMain = false, children, className, }) {
     const hasTabs = tabs.length > 0;
     // Night mode and brightness go on <html>, not this div, so portalled dialogs and
-    // toasts (rendered into document.body) are themed and dimmed too.
+    // toasts (rendered into document.body) are themed and dimmed too. On desktop
+    // the OS window-controls cluster (electron-shell's hidden title bar) is told as
+    // well, so it turns red with the rest of the screen.
     useEffect(() => {
         const root = document.documentElement;
         root.classList.toggle('theme-night', !!nightMode);
         root.style.filter = brightness !== undefined && brightness !== 100 ? `brightness(${brightness}%)` : '';
+        window.appShell?.setNightMode?.(!!nightMode);
         return () => {
             root.classList.remove('theme-night');
             root.style.filter = '';
+            window.appShell?.setNightMode?.(false);
         };
     }, [nightMode, brightness]);
-    return (_jsx("div", { className: cn('sentinel-shell flex flex-col h-dvh w-screen bg-bg-app text-text-primary overflow-hidden font-sans', className), children: _jsxs("div", { className: "flex-grow flex flex-col min-h-0 overflow-hidden relative", children: [background && _jsx("div", { className: "absolute inset-0 z-0", children: background }), _jsxs("header", { className: "fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex justify-between items-center z-50 select-none px-4 sm:px-5", style: {
+    return (_jsx("div", { className: cn('sentinel-shell flex flex-col h-dvh w-screen bg-bg-app text-text-primary overflow-hidden font-sans', className), children: _jsxs("div", { className: "flex-grow flex flex-col min-h-0 overflow-hidden relative", children: [background && _jsx("div", { className: "absolute inset-0 z-0", children: background }), _jsxs("header", { className: "sentinel-header fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex justify-between items-center z-50 select-none px-4 sm:px-5", style: {
                         top: 'calc(var(--shell-edge) + var(--safe-area-top, 0px))',
                         marginLeft: 'var(--safe-area-left, 0px)',
                         marginRight: 'var(--safe-area-right, 0px)',
