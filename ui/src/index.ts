@@ -13,6 +13,8 @@ export { StatusPill, STATUS_CLASS } from './StatusPill';
 export type { Status, StatusPillProps } from './StatusPill';
 export { EmptyState } from './EmptyState';
 export type { EmptyStateProps } from './EmptyState';
+export { UnitField } from './UnitField';
+export type { UnitFieldProps } from './UnitField';
 export { Stepper } from './Stepper';
 export type { StepperProps } from './Stepper';
 export { useAppUpdater } from './useAppUpdater';

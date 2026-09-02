@@ -1,6 +1,6 @@
 import React from 'react';
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
-export type ButtonSize = 'sm' | 'md';
+export type ButtonSize = 'dense' | 'sm' | 'md';
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: ButtonVariant;
     size?: ButtonSize;
@@ -10,6 +10,15 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     loading?: boolean;
     /** Stretch to the container width. */
     block?: boolean;
+    /**
+     * Drawn lit, for a control that is *on* rather than one that was clicked —
+     * a monitored VHF channel, an open panel, a layer showing on the chart.
+     *
+     * Sets `aria-pressed`, so screen readers announce it as a toggle rather than
+     * as a button that happens to look different. Reads over any variant; it is
+     * `secondary` and `ghost` that were being hand-rolled for want of it.
+     */
+    active?: boolean;
 }
 /**
  * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY").

@@ -25,7 +25,7 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
-| `@sentinel/ui` | UI primitives built on the theme: `Button`, `Input`/`Select`/`Textarea`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
+| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | OceanSentinel, VesselKeeper |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | (landing; consumed by nobody yet) |
 
