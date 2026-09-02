@@ -46,6 +46,7 @@ export const FEATURE_KEYS = [
   'transcription_extraction',
   'important_alerts',
   'automated_log',
+  'weather_routing',
   // Vessel Sentinel
   'maintenance_log',
   'punch_list',
