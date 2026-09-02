@@ -686,8 +686,11 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 //      - two of three apps fetched their faces from fonts.googleapis.com,
 //        which on a boat means falling back to system fonts at anchor;
 //      - HarborSentinel set font-size-adjust that no other app had, so the
-//        same nominal px rendered ~8% smaller there than everywhere else.
-//    The last one is a burndown counter rather than a rule.
+//        same nominal px rendered ~8% smaller there than everywhere else;
+//      - and a sign-in bypass defaulted to ON unless a build set a variable,
+//        so v2.9.0 and v2.10.0 of OceanSentinel both shipped letting anyone in
+//        without an account.
+//    Two are burndown counters rather than rules.
 // ---------------------------------------------------------------------------
 const APP_SRC = {
   OceanSentinel: 'frontend/src',
@@ -710,6 +713,24 @@ const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
 // never got to own. Icon-only affordances are not caught, and should not be.
 const RAW_ACCENT_BUTTON = /<button\b[^>]{0,600}?(?:bg-cyan|bg-primary|text-cyan|bg-bg-card|border-cyan|bg-red|bg-green|bg-warning)/g;
 const stripCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '');
+// JS comments, minus the `//` inside a URL. Prose about a flag must not read as
+// the flag itself — this file's own history has examples of both.
+const stripJsComments = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+// A constant named like a way round something, and what it is set to.
+// SCREAMING_SNAKE only: that is how a module-level switch is written here, and
+// requiring it keeps ordinary control flow out — `shouldSkipPollingPosition` in
+// HarborSentinel's anchor watch is a real condition, not a way round anything.
+const DEBUG_CONST = /\b(?:const|let|var)\s+([A-Z][A-Z0-9_]*(?:TESTING|BYPASS|DEBUG|SKIP|UNSAFE|INSECURE|MOCK)[A-Z0-9_]*)\s*=\s*([^;\n]+)/g;
+// Only the ones holding a switch. A label or a message is not a flag.
+const LOOKS_BOOLEAN = /import\.meta\.env|process\.env|[!=]==?|\btrue\b|\bfalse\b|\?\?|&&|\|\|/;
+// The one right answer: Vite folds this to false in a build and drops the branch.
+const COMPILED_OUT = /import\.meta\.env\.DEV\b|process\.env\.NODE_ENV\s*!==\s*['"]production['"]/;
+// `env.X !== 'off'` is on whenever the variable is unset, which is every build
+// nobody remembered to configure.
+const DEFAULT_ON_ENV = /(?:import\.meta\.env|process\.env)\.([A-Z_][A-Z0-9_]*)\s*!==\s*['"][^'"]*['"]/g;
+
 // The same, but length-preserving, so an offset found in the blanked text still
 // points at the right place in the original.
 const blankCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
@@ -731,6 +752,8 @@ for (const app of presentApps) {
   const smallType = [];
   const localFaces = [];
   const rawButtons = [];
+  const shippedFlags = [];
+  const defaultOnEnv = [];
   let arbitraryText = 0;
 
   for (const f of files) {
@@ -748,6 +771,23 @@ for (const app of presentApps) {
     }
 
     for (const m of src.matchAll(RAW_ACCENT_BUTTON)) rawButtons.push(rel(f));
+
+    // A debug switch is only safe if the build cannot contain it. This exists
+    // because OceanSentinel's sign-in bypass was `VITE_… !== '0'` — on unless
+    // the build set a variable, which build.yml never did, so v2.9.0 and
+    // v2.10.0 both shipped letting anyone in without an account.
+    if (path.extname(f) !== '.css') {
+      const code = stripJsComments(src);
+      for (const m of code.matchAll(DEBUG_CONST)) {
+        const [, name, value] = m;
+        if (!LOOKS_BOOLEAN.test(value)) continue;
+        if (COMPILED_OUT.test(value)) continue;
+        shippedFlags.push(`${rel(f)} ${name} = ${value.trim().slice(0, 40)}`);
+      }
+      for (const m of code.matchAll(DEFAULT_ON_ENV)) {
+        defaultOnEnv.push(`${rel(f)} ${m[1]}`);
+      }
+    }
 
     if (path.extname(f) === '.css') {
       const css = stripCssComments(src);
@@ -786,6 +826,15 @@ for (const app of presentApps) {
     warn('type', `${app.name}: ${arbitraryText} hand-written text-[Npx] value(s). All are at or above the ` +
       `floor, so this is a burndown count, not a fault — prefer the named steps in ` +
       `@sentinel/theme/type.css as these are touched.`);
+  }
+  if (shippedFlags.length) {
+    fail('flag', `${app.name}: ${shippedFlags.length} debug/bypass switch(es) that a build can still contain — ` +
+      `gate them on import.meta.env.DEV, which Vite folds to false at compile time so the branch is ` +
+      `eliminated rather than merely disabled: ${sample(shippedFlags)}`);
+  }
+  if (defaultOnEnv.length) {
+    warn('flag', `${app.name}: ${defaultOnEnv.length} env switch(es) that are ON when the variable is unset ` +
+      `(\`env.X !== '…'\`), so every build that forgets to set it gets the flag: ${sample([...new Set(defaultOnEnv)])}`);
   }
   if (rawButtons.length) {
     const files = [...new Set(rawButtons)];
