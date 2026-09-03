@@ -24,7 +24,7 @@ import type { StorageLike } from './storage';
  * code honest — `hasFeature` accepts any string so a new catalog key does not
  * need a shared-package release before an app can gate on it.
  */
-export declare const FEATURE_KEYS: readonly ["anchor_alarm", "telegram_alerts", "weather_alerts", "tidal_info", "offline_operation", "n2k_stream", "instrument_alerts", "ais_tracking", "vpn_remote", "cloud_sync", "chart_plotter", "ships_log", "ais_tracking_cpa", "vhf_transcription", "transcription_extraction", "important_alerts", "automated_log", "weather_routing", "maintenance_log", "punch_list", "inventory", "ships_documentation", "vessel_specifications", "ai_assistant"];
+export declare const FEATURE_KEYS: readonly ["anchor_alarm", "telegram_alerts", "weather_alerts", "tidal_info", "offline_operation", "n2k_stream", "instrument_alerts", "ais_tracking", "remote_backend", "cloud_sync", "chart_plotter", "ships_log", "ais_tracking_cpa", "vhf_transcription", "transcription_extraction", "important_alerts", "automated_log", "weather_routing", "maintenance_log", "punch_list", "inventory", "ships_documentation", "vessel_specifications", "ai_assistant"];
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 export interface Entitlements {
     /** feature_key strings granted by every active tier the user holds for this product. */

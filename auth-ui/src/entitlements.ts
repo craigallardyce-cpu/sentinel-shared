@@ -36,7 +36,7 @@ export const FEATURE_KEYS = [
   'n2k_stream',
   'instrument_alerts',
   'ais_tracking',
-  'vpn_remote',
+  'remote_backend',
   'cloud_sync',
   // Ocean Sentinel (shared keys above reused where the name matches)
   'chart_plotter',
