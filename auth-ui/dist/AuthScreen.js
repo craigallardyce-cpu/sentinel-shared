@@ -278,7 +278,7 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
                         if (limits && limits.length > 0) {
                             const { active_devices, max_devices } = limits[0];
                             if (active_devices >= max_devices) {
-                                setError(`Device limit reached. You are using ${active_devices} of ${max_devices} slots. Please revoke a device from the Admin Dashboard to register this machine.`);
+                                setError(`Device limit reached. You are using ${active_devices} of ${max_devices} slots. Revoke a device on the Account Status page at marinersentinel.com/account to register this machine.`);
                                 setHasNoSubscription(false);
                                 setChecking(false);
                                 return;
