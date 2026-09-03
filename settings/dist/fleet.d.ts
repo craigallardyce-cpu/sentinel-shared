@@ -62,6 +62,7 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'nmea.gateway.port': import("./types.js").SettingSpec<number>;
     'nmea.datahub_url': import("./types.js").SettingSpec<string>;
     'connection.backend_url': import("./types.js").SettingSpec<string>;
+    'connection.pairing_token': import("./types.js").SettingSpec<string>;
     'connection.tile_proxy_url': import("./types.js").SettingSpec<string>;
     'vhf.retention_days': import("./types.js").SettingSpec<number>;
     'vhf.squelch_threshold_db': import("./types.js").SettingSpec<number>;

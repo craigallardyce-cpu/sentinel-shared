@@ -308,6 +308,39 @@ export const FLEET_SETTINGS = createRegistry({
     },
   }),
 
+  /*
+    The boat PC's pairing token, published by the machine that mints it.
+
+    Vessel-scoped, and that is the whole mechanism: the desktop reads its own
+    token over loopback and writes it here, and every device on the account
+    already syncs this layer with an offline cache. So a phone arrives holding
+    the token without anyone reading sixteen hex characters aloud across a
+    cabin, which is what OceanSentinel's settings dialog asked for.
+
+    It stays beside the address rather than replacing it. The address is still
+    typed -- it is per-device, and a typed address is the one thing that works
+    identically on the boat's own network and through a tunnel from ashore. Only
+    the credential travels this way.
+
+    Not a device setting: the token belongs to the boat's backend, not to the
+    phone reading it, and a device layer would have to be filled in per device,
+    which is the problem. Not an account setting either -- an owner with two
+    boats has two backends and two tokens.
+
+    Whoever can read this row can already reach the boat's backend on equal
+    terms, since it is the same account that owns the machine; `vessel_settings`
+    is owner-only. What changes is that the token is now as strong as the
+    account rather than as the cabin it was read out in -- and rotating it
+    finally propagates, instead of stranding every paired device.
+  */
+  'connection.pairing_token': defineSetting({
+    scopes: ['vessel'],
+    type: stringType({ maxLength: 128 }),
+    label: 'Pairing token',
+    description: 'Published by the boat PC. Devices on this account pick it up automatically.',
+    managed: true,
+  }),
+
   'connection.tile_proxy_url': defineSetting({
     scopes: ['device'],
     type: urlType(),

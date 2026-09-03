@@ -75,7 +75,20 @@ describe('the fleet registry', () => {
       if (definition.default !== undefined) continue;
       // An enum offers its own choices, so it needs no placeholder.
       if (definition.type.name.startsWith('oneOf')) continue;
+      // A managed setting is written by a machine and has no field to fill in.
+      if (definition.managed) continue;
       expect(definition.placeholder, definition.key).toBeTruthy();
+    }
+  });
+
+  it('keeps managed settings out of the dialog and gives them somewhere to live', () => {
+    for (const definition of FLEET_SETTINGS.all()) {
+      if (!definition.managed) continue;
+      // No field, so nothing to prompt with -- that is what managed means.
+      expect(definition.placeholder, definition.key).toBeUndefined();
+      // Still a real value: it needs a name and a layer that can hold it.
+      expect(definition.label, definition.key).toBeTruthy();
+      expect(definition.scopes.length, definition.key).toBeGreaterThan(0);
     }
   });
 

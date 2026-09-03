@@ -122,6 +122,19 @@ export interface SettingSpec<T> {
   readonly label: string;
   readonly description?: string;
   /**
+   * Written by a machine, never typed by anybody.
+   *
+   * Everything else here is a question put to the owner, which is why an
+   * un-defaulted setting must offer a placeholder: it will be shown as an empty
+   * field and has to say what belongs in it. A managed setting has no field —
+   * the boat PC publishes its pairing token and every device reads it — so a
+   * placeholder would describe a box that does not exist.
+   *
+   * It still carries a label and description, because it is a real value that
+   * appears in diagnostics and in whatever eventually lists what a device knows.
+   */
+  readonly managed?: boolean;
+  /**
    * Where this setting lived before it was declared, per app, most recent first.
    * The device store reads these when the namespaced key is absent, so adopting
    * the registry never loses a value somebody already set. Migration proper —
