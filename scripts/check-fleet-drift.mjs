@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { builtinModules } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -152,6 +153,10 @@ if (presentApps.length > 1) {
 //    rather than the app. This passes locally whenever sentinel-shared happens to
 //    have node_modules installed, and fails on a clean checkout (i.e. CI).
 // ---------------------------------------------------------------------------
+/** `node:fs`, and the bare `fs` spelling older code still uses. */
+const isNodeBuiltin = (spec) =>
+  spec.startsWith('node:') || builtinModules.includes(spec.split('/')[0]);
+
 const sharedImports = new Map(); // package name -> Set(bare imports)
 for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
   if (!dir.isDirectory() || dir.name === 'scripts' || dir.name === '.git') continue;
@@ -187,6 +192,19 @@ for (const app of presentApps) {
   }
   for (const shared of declared) {
     for (const imp of sharedImports.get(shared) || []) {
+      /*
+        Node builtins are not this check's business.
+
+        The check is about bare *package* imports, which Vite resolves from
+        sentinel-shared rather than from the app — that is the thing that passes
+        locally and fails on a clean checkout. `node:crypto` is not one of those:
+        aliasing it into a browser bundle would be nonsense, and a shared package
+        importing it is a server-side package (@sentinel/lan-pairing runs in the
+        two backends) that no Vite config should be resolving in the first place.
+        A frontend package reaching for one fails the build loudly and on its own.
+      */
+      if (isNodeBuiltin(imp)) continue;
+
       // An alias on 'react' also covers 'react/jsx-runtime'.
       const covered = [...aliased].some((a) => imp === a || imp.startsWith(a + '/'));
       if (!covered) {

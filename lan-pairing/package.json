@@ -1,0 +1,26 @@
+{
+  "name": "@sentinel/lan-pairing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LAN pairing auth for the fleet's on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist-cjs/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/mark-cjs.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4",
+    "@types/node": "^22.10.2"
+  }
+}

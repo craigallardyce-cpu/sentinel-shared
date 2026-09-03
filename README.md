@@ -27,7 +27,8 @@ Projects/
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | OceanSentinel, VesselKeeper |
-| `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | (landing; consumed by nobody yet) |
+| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
+| `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
 
 
 ## `@sentinel/theme`
