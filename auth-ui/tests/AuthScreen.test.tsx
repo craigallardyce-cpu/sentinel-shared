@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { AuthScreen } from '../src/AuthScreen';
+import { memoryStorage } from './memoryStorage';
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -12,9 +13,19 @@ vi.mock('@capacitor/device', () => ({
   Device: { getId: vi.fn() }
 }));
 
+/*
+  AuthScreen takes its store as a required prop, on purpose: one of the three
+  apps runs its server in the same process, and the keys built from
+  `accessStorageKey` are invisible to every check the fleet has unless the app
+  hands the store over. These tests were still asserting against the
+  `localStorage` global while passing no `storage` at all, so the component was
+  writing to `undefined`.
+*/
+const storage = memoryStorage();
+
 afterEach(() => {
   cleanup();
-  localStorage.clear();
+  storage.clear();
   vi.restoreAllMocks();
 });
 
@@ -41,6 +52,8 @@ interface MockSupabaseOptions {
   devices?: any;
   deviceLimits?: any[];
   signInError?: any;
+  /** tier_features rows, in the shape fetchEntitlements selects them. */
+  tierFeatures?: any[];
 }
 
 function makeMockSupabase(opts: MockSupabaseOptions = {}) {
@@ -51,7 +64,8 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
     bundleMappings = [],
     devices = null,
     deviceLimits = [{ active_devices: 0, max_devices: 5 }],
-    signInError = null
+    signInError = null,
+    tierFeatures = [{ features: { feature_key: 'anchor_alarm' } }]
   } = opts;
 
   let authChangeHandler: ((event: string, session: any) => void) | null = null;
@@ -72,6 +86,10 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
       if (table === 'active_user_bundles') return makeQueryBuilder({ data: bundles, error: null });
       if (table === 'bundle_tier_mappings') return makeQueryBuilder({ data: bundleMappings, error: null });
       if (table === 'devices') return makeQueryBuilder({ data: devices, error: null });
+      // Verification refreshes the entitlement cache. This table used to throw
+      // here, and refreshEntitlements swallows failures by design, so the cache
+      // was never written and nothing noticed.
+      if (table === 'tier_features') return makeQueryBuilder({ data: tierFeatures, error: null });
       throw new Error(`Unexpected table: ${table}`);
     }),
     rpc: vi.fn(async () => ({ data: deviceLimits, error: null })),
@@ -88,6 +106,7 @@ describe('AuthScreen — not configured', () => {
     const supabase = makeMockSupabase();
     render(
       <AuthScreen
+        storage={storage}
         appName="Harbor Sentinel"
         appId="HarborSentinel"
         accessStorageKey="harborsentinel_access"
@@ -109,6 +128,7 @@ describe('AuthScreen — login form', () => {
     const supabase = makeMockSupabase({ session: null });
     render(
       <AuthScreen
+        storage={storage}
         appName="Harbor Sentinel"
         appId="HarborSentinel"
         accessStorageKey="harborsentinel_access"
@@ -128,6 +148,7 @@ describe('AuthScreen — login form', () => {
     const supabase = makeMockSupabase({ session: null });
     render(
       <AuthScreen
+        storage={storage}
         appName="Harbor Sentinel"
         appId="HarborSentinel"
         accessStorageKey="harborsentinel_access"
@@ -153,6 +174,7 @@ describe('AuthScreen — login form', () => {
     const supabase = makeMockSupabase({ session: null, signInError: { message: 'Invalid credentials' } });
     render(
       <AuthScreen
+        storage={storage}
         appName="Harbor Sentinel"
         appId="HarborSentinel"
         accessStorageKey="harborsentinel_access"
@@ -176,6 +198,7 @@ describe('AuthScreen — login form', () => {
     const supabase = makeMockSupabase({ session: null });
     render(
       <AuthScreen
+        storage={storage}
         appName="Harbor Sentinel"
         appId="HarborSentinel"
         accessStorageKey="harborsentinel_access"
@@ -195,6 +218,7 @@ describe('AuthScreen — login form', () => {
     const onAuthenticated = vi.fn();
     render(
       <AuthScreen
+        storage={storage}
         appName="Ocean Sentinel"
         appId="OceanSentinel"
         accessStorageKey="oceansentinel_access"
@@ -218,6 +242,7 @@ describe('AuthScreen — subscription gating', () => {
     const supabase = makeMockSupabase({ session, subscriptions: [] });
     render(
       <AuthScreen
+        storage={storage}
         appName="Vessel Keeper"
         appId="VesselKeeper"
         accessStorageKey="vesselkeeper_access"
@@ -237,12 +262,13 @@ describe('AuthScreen — subscription gating', () => {
     const session = { user: { id: 'user-1' } };
     const supabase = makeMockSupabase({
       session,
-      subscriptions: [{ tiers: { product_id: 'prod-1' } }],
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
       devices: null
     });
     const onAuthenticated = vi.fn();
     render(
       <AuthScreen
+        storage={storage}
         appName="Vessel Keeper"
         appId="VesselKeeper"
         accessStorageKey="vesselkeeper_access"
@@ -255,20 +281,26 @@ describe('AuthScreen — subscription gating', () => {
     );
 
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
-    expect(localStorage.getItem('vesselkeeper_access')).toBe('true');
+    expect(storage.getItem('vesselkeeper_access')).toBe('true');
+    // The entitlement cache is written beside the access flag, and every
+    // app's canUse() gate reads it. Nothing covered that wiring before.
+    const cached = JSON.parse(storage.getItem('vesselkeeper_access_entitlements')!);
+    expect(cached.features).toEqual(['anchor_alarm']);
+    expect(cached.fetchedAt).toBeGreaterThan(0);
   });
 
   it('blocks registration and shows an error when the device limit is reached', async () => {
     const session = { user: { id: 'user-1' } };
     const supabase = makeMockSupabase({
       session,
-      subscriptions: [{ tiers: { product_id: 'prod-1' } }],
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
       devices: null,
       deviceLimits: [{ active_devices: 5, max_devices: 5 }]
     });
     const onAuthenticated = vi.fn();
     render(
       <AuthScreen
+        storage={storage}
         appName="Vessel Keeper"
         appId="VesselKeeper"
         accessStorageKey="vesselkeeper_access"
@@ -287,10 +319,11 @@ describe('AuthScreen — subscription gating', () => {
 
 describe('AuthScreen — legacy storage migration', () => {
   it('migrates a value under legacyStorageKey to accessStorageKey on mount', async () => {
-    localStorage.setItem('vesselsentinel_access', 'true');
+    storage.setItem('vesselsentinel_access', 'true');
     const supabase = makeMockSupabase({ session: null });
     render(
       <AuthScreen
+        storage={storage}
         appName="Vessel Keeper"
         appId="VesselKeeper"
         accessStorageKey="vesselkeeper_access"
@@ -304,8 +337,8 @@ describe('AuthScreen — legacy storage migration', () => {
     );
 
     await waitFor(() => {
-      expect(localStorage.getItem('vesselkeeper_access')).toBe('true');
-      expect(localStorage.getItem('vesselsentinel_access')).toBeNull();
+      expect(storage.getItem('vesselkeeper_access')).toBe('true');
+      expect(storage.getItem('vesselsentinel_access')).toBeNull();
     });
   });
 
@@ -313,6 +346,7 @@ describe('AuthScreen — legacy storage migration', () => {
     const supabase = makeMockSupabase({ session: null });
     render(
       <AuthScreen
+        storage={storage}
         appName="Harbor Sentinel"
         appId="HarborSentinel"
         accessStorageKey="harborsentinel_access"
@@ -324,6 +358,8 @@ describe('AuthScreen — legacy storage migration', () => {
       />
     );
     await screen.findByText('Sign in to continue');
-    expect(localStorage.getItem('harborsentinel_access')).toBeNull();
+    expect(storage.getItem('harborsentinel_access')).toBeNull();
+    // Nothing at all was written, not merely nothing under that key.
+    expect(storage.size()).toBe(0);
   });
 });

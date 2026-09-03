@@ -7,12 +7,21 @@ import {
   fetchEntitlements,
   refreshEntitlements
 } from '../src/entitlements';
+import { memoryStorage } from './memoryStorage';
+
+// The store under test, not the browser global: every one of these functions
+// takes it as its first argument, and passing the key string there instead is
+// what silently broke this suite.
+const storage = memoryStorage();
 
 afterEach(() => {
-  localStorage.clear();
+  storage.clear();
 });
 
 const KEY = 'testapp_access';
+
+/** Where readEntitlements looks, so the corrupt-cache cases can plant a value. */
+const CACHE_KEY = `${KEY}_entitlements`;
 
 // A chainable stand-in for Supabase's PostgrestFilterBuilder, resolving to a
 // per-table result: every filter method returns itself and the object is
@@ -35,39 +44,66 @@ function makeMockSupabase(results: Record<string, { data: any; error: any }>) {
 const PRODUCT = 'product-1';
 
 describe('entitlements cache', () => {
-  it('round-trips through localStorage', () => {
-    writeEntitlements(KEY, { features: ['n2k_stream'], tierNames: ['Premium'], fetchedAt: 123 });
-    expect(readEntitlements(KEY)).toEqual({
+  it('round-trips through the store it was handed', () => {
+    writeEntitlements(storage, KEY, { features: ['n2k_stream'], tierNames: ['Premium'], fetchedAt: 123 });
+    expect(readEntitlements(storage, KEY)).toEqual({
       features: ['n2k_stream'],
       tierNames: ['Premium'],
       fetchedAt: 123
     });
-    clearEntitlements(KEY);
-    expect(readEntitlements(KEY)).toBeNull();
+    clearEntitlements(storage, KEY);
+    expect(readEntitlements(storage, KEY)).toBeNull();
   });
 
   it('treats corrupt or wrong-shaped cache entries as absent', () => {
-    localStorage.setItem(`${KEY}_entitlements`, 'not json');
-    expect(readEntitlements(KEY)).toBeNull();
-    localStorage.setItem(`${KEY}_entitlements`, JSON.stringify({ features: 'nope' }));
-    expect(readEntitlements(KEY)).toBeNull();
+    storage.setItem(CACHE_KEY, 'not json');
+    expect(readEntitlements(storage, KEY)).toBeNull();
+    storage.setItem(CACHE_KEY, JSON.stringify({ features: 'nope' }));
+    expect(readEntitlements(storage, KEY)).toBeNull();
+    storage.setItem(CACHE_KEY, JSON.stringify({ features: [], tierNames: 'nope' }));
+    expect(readEntitlements(storage, KEY)).toBeNull();
   });
 });
 
 describe('hasFeature', () => {
   it('fails open when no cache exists', () => {
-    expect(hasFeature(KEY, 'n2k_stream')).toBe(true);
+    expect(readEntitlements(storage, KEY)).toBeNull();
+    expect(hasFeature(storage, KEY, 'n2k_stream')).toBe(true);
+    expect(hasFeature(storage, KEY, 'anything_at_all')).toBe(true);
+  });
+
+  // A store that throws on every access is the same situation as an empty one:
+  // nothing is known, so nothing may be taken away. This is the case that used
+  // to be tested by accident, when the key string stood in for the store.
+  it('fails open when the store itself is unusable', () => {
+    const broken = {
+      getItem: () => {
+        throw new Error('storage unavailable');
+      },
+      setItem: () => {
+        throw new Error('storage unavailable');
+      },
+      removeItem: () => {
+        throw new Error('storage unavailable');
+      }
+    };
+    expect(hasFeature(broken, KEY, 'n2k_stream')).toBe(true);
+    // Writing through it must not throw either -- the cache is an optimisation.
+    expect(() =>
+      writeEntitlements(broken, KEY, { features: [], tierNames: [], fetchedAt: 0 })
+    ).not.toThrow();
+    expect(() => clearEntitlements(broken, KEY)).not.toThrow();
   });
 
   it('answers from the cache once one exists', () => {
-    writeEntitlements(KEY, {
+    writeEntitlements(storage, KEY, {
       features: ['anchor_alarm', 'weather_alerts'],
       tierNames: ['Basic'],
       fetchedAt: Date.now()
     });
-    expect(hasFeature(KEY, 'anchor_alarm')).toBe(true);
-    expect(hasFeature(KEY, 'n2k_stream')).toBe(false);
-    expect(hasFeature(KEY, 'ai_assistant')).toBe(false);
+    expect(hasFeature(storage, KEY, 'anchor_alarm')).toBe(true);
+    expect(hasFeature(storage, KEY, 'n2k_stream')).toBe(false);
+    expect(hasFeature(storage, KEY, 'ai_assistant')).toBe(false);
   });
 });
 
@@ -191,19 +227,19 @@ describe('refreshEntitlements', () => {
       tier_features: { data: [{ features: { feature_key: 'anchor_alarm' } }], error: null }
     });
 
-    expect(await refreshEntitlements(supabase, 'user-1', PRODUCT, KEY)).toBe(true);
-    expect(readEntitlements(KEY)?.features).toEqual(['anchor_alarm']);
-    expect(hasFeature(KEY, 'n2k_stream')).toBe(false);
+    expect(await refreshEntitlements(storage, supabase, 'user-1', PRODUCT, KEY)).toBe(true);
+    expect(readEntitlements(storage, KEY)?.features).toEqual(['anchor_alarm']);
+    expect(hasFeature(storage, KEY, 'n2k_stream')).toBe(false);
   });
 
   it('leaves the previous cache standing on failure', async () => {
-    writeEntitlements(KEY, { features: ['n2k_stream'], tierNames: ['Premium'], fetchedAt: 1 });
+    writeEntitlements(storage, KEY, { features: ['n2k_stream'], tierNames: ['Premium'], fetchedAt: 1 });
     const supabase = makeMockSupabase({
       active_user_subscriptions: { data: null, error: new Error('offline') }
     });
 
-    expect(await refreshEntitlements(supabase, 'user-1', PRODUCT, KEY)).toBe(false);
-    expect(readEntitlements(KEY)?.features).toEqual(['n2k_stream']);
-    expect(hasFeature(KEY, 'n2k_stream')).toBe(true);
+    expect(await refreshEntitlements(storage, supabase, 'user-1', PRODUCT, KEY)).toBe(false);
+    expect(readEntitlements(storage, KEY)?.features).toEqual(['n2k_stream']);
+    expect(hasFeature(storage, KEY, 'n2k_stream')).toBe(true);
   });
 });
