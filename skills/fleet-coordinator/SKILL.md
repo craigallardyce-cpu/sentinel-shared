@@ -35,6 +35,13 @@ replacement wording, which keys must not change, what stays untouched. Two
 workers given the same pinned wording produced matching changes with no
 back-and-forth; two workers left to choose would not have.
 
+**The grep also decides which repos get a worker.** A repo with no hit gets
+none; the sequence in §2 orders the repos that need work, it is not a list of
+repos to touch. Ask of each candidate: is there a file here that has to change?
+A repo whose only change is the roadmap tick is covered by your own closing PR
+(§7), not a worker. The NMEA run needed two workers, not the five repos the
+roadmap item named.
+
 ## 2. Order the work
 
 The sequence is almost always:
@@ -58,7 +65,33 @@ website (migrations, copy) → `docs-kb` → `admin-app` if the catalogue change
 | `source_revision` | `main`, or a branch when testing an unmerged fix |
 | `outcome_branch` | `fleet/<initiative>/<repo>` (single-repo changes take any name) |
 | `tags` | `fleet-initiative:<name>` so the set can be listed later |
+| `model` | chosen per worker, below; omitted, it inherits yours, which is the expensive default |
 | `permission_mode` | omit; it inherits. Never `plan` — nobody is there to approve |
+
+### Pick the model per worker
+
+The cost of a worker is mostly its fixed start-up (clone, install, reading the
+conventions) times the model's rate, so the model is the one lever you hold.
+Pick the cheapest that can do the brief; a worker that fails costs a second
+worker, so when in doubt about the *brief*, fix the brief, not the model.
+
+| Model | `model` | Rate (in / out, per MTok) | Use for |
+|---|---|---|---|
+| Sonnet 5 | `claude-sonnet-5` | $2 / $10 | Fully pinned, mechanical work: a wording or row change with the exact text given, a seed or pin bump, a migration copied from a named template with the SQL given, a rehearsal or read-only diagnostic. Most fleet workers are this. |
+| Opus 5 | `claude-opus-5` | $5 / $25 | A real code change in one repo where the worker must read and judge: a component or package edit with tests and a `dist/` build, a CI failure to diagnose, anything with a test to make pass. |
+| Fable 5.1 | `claude-fable-5-1` | $10 / $50 | Only when the brief cannot pin the decisions: unfamiliar debugging, a shared-package change every consumer breaks on if wrong, work that may need redesigning mid-way. |
+
+Haiku is not a worker model; it does not hold a repo well enough.
+
+**The coordinator itself runs on Opus 5.** It greps, writes briefs and reads
+diffs, and its context is the one that grows over a run, so it is the session
+where the rate matters most; Fable adds nothing to that work at twice the
+price. Craig picks Opus when he starts the session. A session cannot change its
+own model, so if you find yourself coordinating on Fable, say so in your first
+reply and let Craig switch with `/model opus` before you spawn anything. Never
+spawn a second coordinator. If a Sonnet worker's PR comes back wrong, respawn
+on Opus with what it got wrong in the brief rather than sending a third message
+to the Sonnet session.
 
 The three apps get the fleet conventions at session start from their
 session-start hook. **Any other repo may not**: check for a `CLAUDE.md` and a
@@ -137,10 +170,22 @@ first closing PR claimed there was none and there was.
 
 Workers spend from the same usage window as the coordinator's own session.
 On 2026-09-04, four small workers came to roughly the equivalent of $4.70 at
-API rates: about $1–1.5 each, most of it fixed start-up cost, under three
-minutes wall-clock each. A large initiative with several workers draws the
-window down faster than doing the work in one session would; batch by repo,
-not by file, and don't spawn a worker for something a grep could settle.
+API rates, most of it fixed start-up cost, under three minutes wall-clock each:
+
+| Worker | Model | Cost |
+|---|---|---|
+| Rehearsal diagnostic, read-only, no commit | Opus 5 | $0.65 |
+| Tooltip fix, two rounds | Opus 5 | $2.45 |
+| Seed row rename (fully pinned) | Fable 5.1 | $1.24 |
+| Migration 051 from template (fully pinned) | Fable 5.1 | $1.56 |
+
+The two Fable workers were pinned, mechanical work that Sonnet would have done
+at a fifth of the rate; they ran on Fable only because `model` was left to
+inherit. That is what the table in §3 is for. Sonnet workers are not yet
+measured here; record the first ones. A large initiative with several workers
+draws the window down faster than doing the work in one session would; batch by
+repo, not by file, spawn only the repos §1 found, and don't spawn a worker for
+something a grep could settle.
 
 ## What has gone wrong so far
 
@@ -151,3 +196,5 @@ not by file, and don't spawn a worker for something a grep could settle.
 - The first closing PR asserted the knowledge base needed no change without
   checking; it did.
 - The website worker had no `CLAUDE.md` to read; the brief carried everything.
+- Two mechanical workers ran on the most expensive model because `model` was
+  never set; §3's table came from that.
