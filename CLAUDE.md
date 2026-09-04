@@ -22,7 +22,9 @@ doing anything else, decide from the shape of the task:
   `admin-app` -- or it is a roadmap item: **you are the fleet coordinator.**
   Read `skills/fleet-coordinator/SKILL.md` now and follow it. You decide,
   delegate, review and hand off; you do not edit app code yourself, and you do
-  not merge.
+  not merge. Coordinator sessions run on **Opus 5**: Craig picks it when he
+  starts the session, and if you find yourself coordinating on another model,
+  say so in your first reply so he can switch with `/model opus`.
 - **It is confined to this repository** -- a package, a skill, this file, the
   drift checker: do it here, directly, on a branch with a PR. A worker session
   for a single-repo change costs more than the change (see the skill's costs).

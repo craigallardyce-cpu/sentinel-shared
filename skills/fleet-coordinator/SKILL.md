@@ -81,11 +81,17 @@ worker, so when in doubt about the *brief*, fix the brief, not the model.
 | Opus 5 | `claude-opus-5` | $5 / $25 | A real code change in one repo where the worker must read and judge: a component or package edit with tests and a `dist/` build, a CI failure to diagnose, anything with a test to make pass. |
 | Fable 5.1 | `claude-fable-5-1` | $10 / $50 | Only when the brief cannot pin the decisions: unfamiliar debugging, a shared-package change every consumer breaks on if wrong, work that may need redesigning mid-way. |
 
-Haiku is not a worker model; it does not hold a repo well enough. The
-coordinator itself runs on whatever Craig started (Opus is enough: it reads
-diffs and writes briefs); never spawn a second coordinator. If a Sonnet
-worker's PR comes back wrong, respawn on Opus with what it got wrong in the
-brief rather than sending a third message to the Sonnet session.
+Haiku is not a worker model; it does not hold a repo well enough.
+
+**The coordinator itself runs on Opus 5.** It greps, writes briefs and reads
+diffs, and its context is the one that grows over a run, so it is the session
+where the rate matters most; Fable adds nothing to that work at twice the
+price. Craig picks Opus when he starts the session. A session cannot change its
+own model, so if you find yourself coordinating on Fable, say so in your first
+reply and let Craig switch with `/model opus` before you spawn anything. Never
+spawn a second coordinator. If a Sonnet worker's PR comes back wrong, respawn
+on Opus with what it got wrong in the brief rather than sending a third message
+to the Sonnet session.
 
 The three apps get the fleet conventions at session start from their
 session-start hook. **Any other repo may not**: check for a `CLAUDE.md` and a
