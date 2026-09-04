@@ -15,18 +15,25 @@ not here.
 ## The layout everything assumes
 
 The apps consume this repository's packages as `file:../sentinel-shared/<pkg>`
-dependencies, never from npm, so it must sit as a **sibling** of each app:
+dependencies, never from npm, so it must sit as a **sibling** of each app.
+`Projects/` itself is not a git repository; it is a folder of independent
+repositories, each with its own history and remote:
 
-```
-Projects/
-├── sentinel-shared/        this repo
-├── HarborSentinel/
-├── OceanSentinel/          Capacitor project is under frontend/, not the root
-├── VesselKeeper/
-├── MarinerSentinel Website/   migrations/ for the shared Supabase project
-├── docs-kb/                customer-facing knowledge base
-└── admin-app/
-```
+| Folder | What it is | Remote (`craigallardyce-cpu/…`) |
+|---|---|---|
+| `sentinel-shared/` | This repo: the `@sentinel/*` packages, the drift checker, the `sentinel-check` skill | `sentinel-shared` (**public**) |
+| `HarborSentinel/` | Vessels at anchor: anchor-watch Electron + Android app | `HarborSentinel` (private) |
+| `OceanSentinel/` | Vessels underway: chartplotter, weather, VHF monitoring and transcription, ship's log. Its Capacitor project is under `frontend/`, not the root | `OceanSentinel` (private) |
+| `VesselKeeper/` | Maintenance and ship's records; Premium only | `VesselKeeper` (private) |
+| `MarinerSentinel Website/` | Marketing site and portal (React + Express), the public shared-vessel and voyage views, and `migrations/` for the shared Supabase project | `MarinerSentinel-Website` (private) |
+| `docs-kb/` | The customer-facing knowledge base, see below | `docs-kb` (private) |
+| `admin-app/` | Admin and catalog app (Next.js + Electron). Secrets load from a gitignored `.env.local`; its history was re-initialised on first push (2026-08-18) so nothing earlier is on GitHub | `admin-app` (private) |
+| `Watch Schedule/` | Crew watch-rotation planner extracted from OceanSentinel's ship's log. Shares `@sentinel/theme` and `@sentinel/electron-shell` but deliberately has no backend, no Supabase and no Android build, and sits **outside** the fleet version alignment. Read its own `CLAUDE.md` before touching the rotation maths | `WatchSchedule` (private) |
+| `NMEA Data Simulator/` | Replays NMEA 0183 over TCP so the apps can be driven without a boat; the source of every screenshot and end-to-end test. Its `data/` captures are gitignored because both generators are deterministic; see its README to rebuild them | `NMEADataSimulator` (private, no spaces in the remote name) |
+
+Also under `Projects/` but not source and not under git: `data/` (chart index and
+downloaded ENC charts and tiles), `recordings/`, `uploads/`, `NMEA Server/` (an
+older standalone NMEA test tool) and a few loose data and log files.
 
 Every CI workflow in the three apps checks this repository out beside the app
 for the same reason. A session that starts from a single repo clone has to
@@ -34,6 +41,35 @@ reproduce this layout before anything builds.
 
 ## Working in the fleet
 
+- **Confirm which repo you are in before running git.** A `cd` made mid-session
+  persists in the shell, so a task that spans repos should verify with `pwd`.
+  When a task concerns one project, treat that folder as the working root
+  rather than operating from `Projects/` broadly.
+- **Committing and pushing to `origin` is pre-approved** for every repo listed
+  above. Merging, tagging, uploading to Play and applying migrations are not.
+- **`.env` files are never committed.** Check `.gitignore` covers a new one
+  before adding it in any project. It has happened once (OceanSentinel's
+  `backend/.env`, since untracked); treat anything that reached history as
+  exposed.
+- **Check this repository before writing marine, weather, auth, settings,
+  theme or Electron main-process code.** It almost certainly already lives in
+  a package here, and a second copy in an app is exactly the drift the checker
+  exists to catch:
+
+  | Package | Contents |
+  |---|---|
+  | `@sentinel/marine` | Navigation math, NMEA 0183 parsing, AIS/AIVDM decoding, the NMEA gateway rule and TCP connection pool |
+  | `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global fallback |
+  | `@sentinel/weather-ui` | NWS alert and forecast React components |
+  | `@sentinel/electron-shell` | Auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, hidden title bar |
+  | `@sentinel/auth-ui` | Supabase `AuthScreen` |
+  | `@sentinel/theme` | Colour and font tokens, the Tailwind role map, night mode, glass surfaces |
+  | `@sentinel/ui` | UI primitives: buttons, inputs, modals, toasts, `AppShell`, `SettingsShell`, the updater panel, `Stepper` |
+  | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels`) |
+  | `@sentinel/settings` | The settings registry: one declaration per setting, resolved through account, vessel, host and device layers |
+  | `@sentinel/lan-pairing` | LAN pairing auth for the two on-boat backends (server-side; not for Vite) |
+
+  The README here describes each one in depth.
 - **`npm install --legacy-peer-deps`** in every app, always. A pre-existing
   Capacitor v7/v8 peer conflict from `@spryrocks/capacitor-socket-connection-plugin`
   fails a plain install outright.
@@ -55,12 +91,27 @@ reproduce this layout before anything builds.
   belongs in a package here. The `sentinel-check` skill in `skills/` is the
   review pass for exactly this, and for the pre-release checklist.
 - **Verify against a clean checkout, not a working tree.** Both release failures
-  in this codebase were of that kind: state on a dev machine (a package's
-  `node_modules`, an untracked file) masked a break that only a fresh clone
-  showed. `git archive HEAD | tar -x` into a temp folder and build from there.
+  in this codebase were of that kind, and a local build proves nothing about
+  them:
+  - `sentinel-shared/*/node_modules` existing locally masked missing Vite
+    aliases; CI failed with `Rollup failed to resolve import "@capacitor/core"`.
+  - An untracked-but-present `app.html` in VesselKeeper masked it having been
+    wrongly gitignored; the release build died with `ENOENT`.
+
+  To test a clean checkout without pushing, extract the tracked files only:
+  ```bash
+  mkdir -p /tmp/sim/AppName /tmp/sim/sentinel-shared
+  cd <app> && git archive HEAD | tar -x -C /tmp/sim/AppName
+  cd sentinel-shared && git archive HEAD | tar -x -C /tmp/sim/sentinel-shared
+  cd /tmp/sim/AppName && npm install --legacy-peer-deps && npm run build
+  ```
+  Check the extraction actually produced files before trusting a pass.
 - **Every fleet app requires sign-in.** Licensing and entitlements live in
-  Supabase. The dev-only bypass some apps carry compiles to `false` in every
-  build and is not to be widened.
+  Supabase. The dev-server bypass each app carries is `import.meta.env.DEV`,
+  which Vite substitutes at compile time, so it is literally `false` in every
+  build and is not to be widened. Devices that have verified before are admitted
+  offline for 30 days (`offlineGraceDays`); that is a separate mechanism and
+  stays.
 
 ## Changing a shared package
 
@@ -86,7 +137,9 @@ per package at a time.
 
 ## Releasing
 
-The three apps release as one, on one aligned version.
+The three apps release as one, on one aligned version (v2.10.1 as of September
+2026; the root `package.json` of each app is authoritative). They drifted apart
+once, and most of the rules in this file exist because something then broke.
 
 1. Drift checker green fleet-wide.
 2. Version bumped in each app's **root** `package.json` (it drives the UI
@@ -123,6 +176,10 @@ table or column the database does not have fails silently at the PostgREST
 boundary and looks like a feature that does nothing; check the payload against
 the live schema, not against what the client used to send.
 
+After any change to the shared project (functions, views, tables, policies,
+grants, roles) run the `supabase-security-advisor` skill as the last step; it
+knows which advisor findings are accepted and flags only new ones.
+
 ## Deliberate divergence, not drift
 
 These differences between the apps are intentional. Do not harmonise them.
@@ -143,6 +200,29 @@ These differences between the apps are intentional. Do not harmonise them.
 - **HarborSentinel uses `capacitor.config.ts`**, the other two `.json`.
 
 `skills/sentinel-check/SKILL.md` §3 is the canonical list; add to it there.
+
+## The knowledge base and the roadmap
+
+`docs-kb/` is the unified, feature-organised knowledge base for the three
+products, generated from the code in four passes (inventory, shared layer,
+per-product, then troubleshooting and FAQ). It powers the AI support agent and
+the public FAQ. Its audience is non-technical boat owners: plain language, no
+code references, no internal function names. Anything the code leaves ambiguous
+is tagged `[NEEDS REVIEW]` rather than guessed.
+
+Product roles, as a customer would describe them: **HarborSentinel** for
+vessels at anchor, **OceanSentinel** for vessels underway, **VesselKeeper** for
+maintenance and ship's records. Tiers are **Basic** (one device, on-device
+functions only) and **Premium** (up to three devices, NMEA integration, cloud
+storage, AI features); VesselKeeper is Premium only. The authoritative gates are
+each app's `entitlements` module and the subscription catalog behind
+`@sentinel/auth-ui`.
+
+The fleet-wide list of open work, all of which must land before go-live
+(planned **May 2027**), is `ROADMAP.md` in `Projects/`, one level above the
+repos, consolidated on 2026-09-03 to include OceanSentinel's items.
+OceanSentinel's own `ROADMAP.md` keeps the design narrative and decision history
+behind each of its entries; it is no longer where open work is tracked.
 
 ## Where things are decided and recorded
 
