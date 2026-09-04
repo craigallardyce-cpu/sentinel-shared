@@ -219,8 +219,9 @@ each app's `entitlements` module and the subscription catalog behind
 `@sentinel/auth-ui`.
 
 The fleet-wide list of open work, all of which must land before go-live
-(planned **May 2027**), is `ROADMAP.md` in `Projects/`, one level above the
-repos, consolidated on 2026-09-03 to include OceanSentinel's items.
+(planned **May 2027**), is `ROADMAP.md` in the private `docs-kb` repository
+(moved there from `Projects/` on 2026-09-04; consolidated on 2026-09-03 to
+include OceanSentinel's items).
 OceanSentinel's own `ROADMAP.md` keeps the design narrative and decision history
 behind each of its entries; it is no longer where open work is tracked.
 
