@@ -433,16 +433,22 @@ if (exists(tokensFile)) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. The sentinel-check skill is canonical here but gets installed to the user's
+// 9. The skills in skills/ are canonical here but get installed to the user's
 //    ~/.claude/skills. Warn only if an installed copy exists and has diverged;
-//    staying silent when it is absent, since not every machine installs it.
+//    staying silent when it is absent, since not every machine installs every
+//    one. Every skill in the directory is checked, so adding one needs no edit
+//    here.
 // ---------------------------------------------------------------------------
-const canonicalSkill = path.join(SHARED_ROOT, 'skills/sentinel-check/SKILL.md');
+const skillsDir = path.join(SHARED_ROOT, 'skills');
 const home = process.env.HOME || process.env.USERPROFILE;
-if (home && exists(canonicalSkill)) {
-  const installed = path.join(home, '.claude/skills/sentinel-check/SKILL.md');
-  if (exists(installed) && readText(installed) !== readText(canonicalSkill)) {
-    warn('skill', 'installed ~/.claude/skills/sentinel-check/SKILL.md differs from the canonical copy in sentinel-shared — re-copy it');
+if (home && exists(skillsDir)) {
+  for (const name of fs.readdirSync(skillsDir)) {
+    const canonical = path.join(skillsDir, name, 'SKILL.md');
+    if (!exists(canonical)) continue;
+    const installed = path.join(home, '.claude/skills', name, 'SKILL.md');
+    if (exists(installed) && readText(installed) !== readText(canonical)) {
+      warn('skill', `installed ~/.claude/skills/${name}/SKILL.md differs from the canonical copy in sentinel-shared — re-copy it`);
+    }
   }
 }
 

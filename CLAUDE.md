@@ -47,6 +47,20 @@ reproduce this layout before anything builds.
   rather than operating from `Projects/` broadly.
 - **Committing and pushing to `origin` is pre-approved** for every repo listed
   above. Merging, tagging, uploading to Play and applying migrations are not.
+- **Work reaches `main` through a pull request**, so that a change has somewhere
+  to be reviewed, CI has something to report on, and a session that did not write
+  it can pick it up. Two conventions make a change that spans repos legible
+  without any tooling:
+  - **Branch name `fleet/<initiative>/<repo>`** for a change that has companions
+    in other repositories, so the set can be found by prefix. A change confined
+    to one repo takes any name.
+  - **A `Fleet:` line in each PR body** naming its companions by URL and saying
+    which merges first. A shared-package change merges before the apps that
+    consume it; a migration merges before, or with, the client half that needs it.
+
+  A single-repo fix small enough to review in the diff can go straight to `main`
+  — that is the author's call, not an agent's. Anything an agent wrote, and
+  anything touching more than one repository, goes through a PR.
 - **`.env` files are never committed.** Check `.gitignore` covers a new one
   before adding it in any project. It has happened once (OceanSentinel's
   `backend/.env`, since untracked); treat anything that reached history as
@@ -166,10 +180,31 @@ rename and are immutable; the drift checker enforces the `applicationId`.
 
 The fleet shares one Supabase project. Its schema of record is the live
 database plus `migrations/` in the **MarinerSentinel Website** repository,
-applied singly with `node scripts/migrate.mjs --only NNN` from a machine holding
-`DATABASE_URL`. A client change that needs a column or a table is a two-repo
-change: the migration in the website repo, the client half in the app, and the
-website PR is the one that says whether the migration has been applied.
+applied from a machine holding `DATABASE_URL`. A client change that needs a
+column or a table is a two-repo change: the migration in the website repo, the
+client half in the app, and the website PR is the one that says whether the
+migration has been applied.
+
+`public.schema_migrations` records which files have run (website migration 050),
+and `scripts/migrate.mjs` consults it:
+
+```bash
+node scripts/migrate.mjs --status      # what is applied, what is pending
+node scripts/migrate.mjs               # apply everything pending, in order
+node scripts/migrate.mjs --only 051    # apply one file
+```
+
+A bare run applies only pending files, so it is safe; before the ledger it
+re-applied all of them from 001, which is how an afternoon went on 2026-09-04.
+`--only NNN --force` re-applies a recorded file, which is only for repair.
+
+**Repairing by re-applying an old file needs care.** A migration re-run in
+isolation silently undoes every later one that touches the same object: replaying
+001–015 that day reverted five functions, and the repair itself then reverted a
+grant (049) and a price (046) because the files that set them came later than the
+ones being replayed. The rule is to re-apply, in ascending order, every later
+migration touching the same tables, functions, grants or rows — not just the ones
+that obviously conflict.
 
 Migration numbers are allocated in order in that repo. Client code naming a
 table or column the database does not have fails silently at the PostgREST
