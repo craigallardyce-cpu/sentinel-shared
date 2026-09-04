@@ -61,6 +61,13 @@ reproduce this layout before anything builds.
   A single-repo fix small enough to review in the diff can go straight to `main`
   — that is the author's call, not an agent's. Anything an agent wrote, and
   anything touching more than one repository, goes through a PR.
+
+  Before merging any PR, re-read its head SHA and confirm CI ran on that commit:
+  a branch can move between review and merge, and one did (HarborSentinel #3).
+- **A change that spans repositories is run by a coordinator session**, which
+  decomposes it, spawns one worker session per repo, reviews the diffs and
+  closes the roadmap item: `skills/fleet-coordinator/SKILL.md`. Worker sessions
+  spend from the same usage window as the session that spawned them.
 - **`.env` files are never committed.** Check `.gitignore` covers a new one
   before adding it in any project. It has happened once (OceanSentinel's
   `backend/.env`, since untracked); treat anything that reached history as
