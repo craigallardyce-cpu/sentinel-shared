@@ -49,9 +49,12 @@ These differences are intentional. Leave them alone:
 - **VesselKeeper forks and supervises its backend** as a child process; the other two
   `require()` theirs in-process. This is why it passes `onBeforeInstall: stopBackend` to
   the shared `setupAutoUpdater`.
-- **OceanSentinel treats missing Supabase config as "run offline"** and renders
-  `AuthScreen` with `allowOfflineMode`. Harbor and Vessel require sign-in, since
-  licensing lives in Supabase.
+- **The sign-in bypass is dev-server-only, in all three apps.** OceanSentinel
+  used to treat missing Supabase config as "run offline" and render `AuthScreen`
+  with `allowOfflineMode`; that was withdrawn on 2026-08-24. Every app now
+  requires sign-in, and the bypass each one carries is `import.meta.env.DEV`,
+  which Vite folds to `false` in every build. Do not widen it, and do not
+  "restore" the old behaviour in Ocean.
 - **Foreground service types differ by purpose**: OceanSentinel `microphone` (VHF
   audio), HarborSentinel `location` (anchor watch), VesselKeeper none (no background
   work).
