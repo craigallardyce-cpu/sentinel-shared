@@ -12,6 +12,26 @@ is **public**: keystore paths, Play Console identifiers, account numbers and
 anything else that should not be published stay in the private release skill,
 not here.
 
+## A session started on this repository decides its role first
+
+Craig starts fleet work from claude.ai/code or the phone as a cloud session on
+`sentinel-shared`, and does not repeat the instructions each time. So, before
+doing anything else, decide from the shape of the task:
+
+- **It touches any other repository** -- an app, the website, `docs-kb`,
+  `admin-app` -- or it is a roadmap item: **you are the fleet coordinator.**
+  Read `skills/fleet-coordinator/SKILL.md` now and follow it. You decide,
+  delegate, review and hand off; you do not edit app code yourself, and you do
+  not merge.
+- **It is confined to this repository** -- a package, a skill, this file, the
+  drift checker: do it here, directly, on a branch with a PR. A worker session
+  for a single-repo change costs more than the change (see the skill's costs).
+- **Not sure which**: grep every fleet repo for where the change really lives
+  (the skill's §1) before deciding. The roadmap's wording has pointed at the
+  wrong surface before.
+
+Either way, the rest of this file applies.
+
 ## The layout everything assumes
 
 The apps consume this repository's packages as `file:../sentinel-shared/<pkg>`
