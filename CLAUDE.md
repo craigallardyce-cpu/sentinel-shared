@@ -213,7 +213,7 @@ is tagged `[NEEDS REVIEW]` rather than guessed.
 Product roles, as a customer would describe them: **HarborSentinel** for
 vessels at anchor, **OceanSentinel** for vessels underway, **VesselKeeper** for
 maintenance and ship's records. Tiers are **Basic** (one device, on-device
-functions only) and **Premium** (up to three devices, NMEA integration, cloud
+functions only) and **Premium** (up to five devices, NMEA integration, cloud
 storage, AI features); VesselKeeper is Premium only. The authoritative gates are
 each app's `entitlements` module and the subscription catalog behind
 `@sentinel/auth-ui`.
