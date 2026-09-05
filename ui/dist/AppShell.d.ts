@@ -23,7 +23,24 @@ export interface HeaderButtonProps extends React.ButtonHTMLAttributes<HTMLButton
 }
 /** Quiet mono text button used in the header (Night / Settings / Install…). */
 export declare function HeaderButton({ icon, active, label, className, ...rest }: HeaderButtonProps): React.JSX.Element;
-/** Bordered container for a group of status pills in the header. */
+/**
+ * Bordered container for a group of status pills in the header.
+ *
+ * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
+ * status band actually holds, so a group that will not shrink makes the band's
+ * own `min-w-0` a lie: the band never gets narrower than the pills, and its
+ * `overflow-hidden` guillotines them instead — a pill sliced mid-word with a
+ * border drawn through the letters, which is what a phone header showed.
+ * Dropping `shrink-0` is not enough on its own, either: a flex item will not go
+ * below its min-content size, and a pill's min-content is its whole label
+ * because the label does not wrap. `min-w-0` is what overrides that.
+ *
+ * Shrinking then has to stop somewhere sensible, and that is each child's job
+ * rather than this one's: `StatusPill` carries a min-width of its own chrome,
+ * so it ellipsises down to a dot and stops. A child that can neither truncate
+ * nor floor itself will hold this group open and be clipped by the band, as
+ * before.
+ */
 export declare function HeaderGroup({ children, className }: {
     children: React.ReactNode;
     className?: string;

@@ -84,7 +84,12 @@ export function PlanPill({ planLabel, trial = false, daysLeft = null, onManage, 
   const convertName = `Upgrade from your ${planLabel} trial to a paid plan.`;
 
   return (
-    <span className="inline-flex items-center gap-2 min-w-0">
+    // `shrink-[3]` and `min-w-8`: in a squeezed header the plan is the thing to
+    // give way first — a plan is not a health state, and its name is in the
+    // accessible name and the tooltip either way, where "Connected" beside it
+    // is not — but it should stop at the width of the pill it holds rather than
+    // closing over it.
+    <span className="inline-flex items-center gap-2 shrink-[3] min-w-8">
       <button
         type="button"
         onClick={onManage}
@@ -93,12 +98,16 @@ export function PlanPill({ planLabel, trial = false, daysLeft = null, onManage, 
         className={cn(
           // min-h-11 (44px) for the tap target, as HeaderButton does: the pill
           // is 24px tall but the header is 56px, so the target is free.
-          'group flex items-center min-w-0 min-h-11 rounded-full cursor-pointer',
+          // `min-w-8` rather than `min-w-0`: the button has to be able to
+          // narrow with the band, but never past the pill it wraps, or the tap
+          // target would end up smaller than the thing being tapped.
+          'group flex items-center min-w-8 min-h-11 rounded-full cursor-pointer',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60'
         )}
       >
-        <StatusPill status={TONE[tone].status} className={cn('min-w-0 transition-colors', TONE[tone].hover)}>
-          <span className="truncate">{label}</span>
+        {/* `StatusPill` truncates its own label, so there is nothing to add here. */}
+        <StatusPill status={TONE[tone].status} className={cn('transition-colors', TONE[tone].hover)}>
+          {label}
         </StatusPill>
       </button>
       {trial && onConvert && (

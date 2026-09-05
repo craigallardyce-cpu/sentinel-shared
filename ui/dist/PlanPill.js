@@ -62,10 +62,19 @@ export function PlanPill({ planLabel, trial = false, daysLeft = null, onManage, 
         ? `${planLabel} trial${days === null ? '' : `, ${remainingPhrase(days)}`}. Manage or cancel your plan.`
         : `${planLabel} plan. Manage or cancel your plan.`;
     const convertName = `Upgrade from your ${planLabel} trial to a paid plan.`;
-    return (_jsxs("span", { className: "inline-flex items-center gap-2 min-w-0", children: [_jsx("button", { type: "button", onClick: onManage, title: manageName, "aria-label": manageName, className: cn(
+    return (
+    // `shrink-[3]` and `min-w-8`: in a squeezed header the plan is the thing to
+    // give way first — a plan is not a health state, and its name is in the
+    // accessible name and the tooltip either way, where "Connected" beside it
+    // is not — but it should stop at the width of the pill it holds rather than
+    // closing over it.
+    _jsxs("span", { className: "inline-flex items-center gap-2 shrink-[3] min-w-8", children: [_jsx("button", { type: "button", onClick: onManage, title: manageName, "aria-label": manageName, className: cn(
                 // min-h-11 (44px) for the tap target, as HeaderButton does: the pill
                 // is 24px tall but the header is 56px, so the target is free.
-                'group flex items-center min-w-0 min-h-11 rounded-full cursor-pointer', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60'), children: _jsx(StatusPill, { status: TONE[tone].status, className: cn('min-w-0 transition-colors', TONE[tone].hover), children: _jsx("span", { className: "truncate", children: label }) }) }), trial && onConvert && (
+                // `min-w-8` rather than `min-w-0`: the button has to be able to
+                // narrow with the band, but never past the pill it wraps, or the tap
+                // target would end up smaller than the thing being tapped.
+                'group flex items-center min-w-8 min-h-11 rounded-full cursor-pointer', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60'), children: _jsx(StatusPill, { status: TONE[tone].status, className: cn('transition-colors', TONE[tone].hover), children: label }) }), trial && onConvert && (
             // The package's own ghost Button rather than a hand-styled one: it is
             // transparent at rest, so it reads like the Night/Settings controls
             // beside it, and `sm` keeps a 40px target for a thumb on a phone.
