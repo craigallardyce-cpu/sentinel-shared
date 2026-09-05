@@ -26,6 +26,24 @@ import type { StorageLike } from './storage';
  */
 export declare const FEATURE_KEYS: readonly ["anchor_alarm", "telegram_alerts", "weather_alerts", "tidal_info", "offline_operation", "n2k_stream", "instrument_alerts", "ais_tracking", "remote_backend", "cloud_sync", "chart_plotter", "ships_log", "ais_tracking_cpa", "vhf_transcription", "transcription_extraction", "important_alerts", "automated_log", "weather_routing", "maintenance_log", "punch_list", "inventory", "ships_documentation", "vessel_specifications", "ai_assistant"];
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
+/** One product the account holds a tier for, for display only. */
+export interface AccountProduct {
+    productId: string;
+    /** The catalog's display name for the product, '' if the catalog did not give one. */
+    productName: string;
+    tierNames: string[];
+}
+/**
+ * The account's whole subscription shape, across every product — what a plan
+ * pill needs to say "Premium Suite" rather than "Premium", and to tell a
+ * customer who holds Ocean but not this product what they do have.
+ */
+export interface AccountEntitlements {
+    /** Bundle tier names held, e.g. ["Premium Suite"]. Empty when à la carte. */
+    bundleNames: string[];
+    /** Every product the account holds a tier for, this one included. */
+    products: AccountProduct[];
+}
 export interface Entitlements {
     /** feature_key strings granted by every active tier the user holds for this product. */
     features: string[];
@@ -33,6 +51,12 @@ export interface Entitlements {
     tierNames: string[];
     /** Epoch ms of the last successful online refresh. */
     fetchedAt: number;
+    /** Strongest status among this product's grants: 'active' if any grant is active, else 'trialing'. */
+    status?: 'active' | 'trialing';
+    /** Epoch ms when this product's access ends. Null/undefined = open-ended. When trialing, the soonest end among the trialing grants. */
+    currentPeriodEnd?: number | null;
+    /** The account's whole subscription shape, across every product. */
+    account?: AccountEntitlements;
 }
 export declare function readEntitlements(storage: StorageLike, accessStorageKey: string): Entitlements | null;
 export declare function writeEntitlements(storage: StorageLike, accessStorageKey: string, entitlements: Entitlements): void;
@@ -58,6 +82,12 @@ export declare function hasFeature(storage: StorageLike, accessStorageKey: strin
  * trial, and an expired one needs no job to revoke it: it simply stops being
  * returned. The views are security_invoker, so the caller's RLS still confines
  * them to their own rows.
+ *
+ * The views are `SELECT *` over their tables (website migration 036), so the
+ * rows already carry `status` and `current_period_end`, and they already cover
+ * every product the account holds. The selects below reach for those columns
+ * and for the product's display name; nothing extra is queried, so the plan
+ * label and the trial countdown cost no round trip beyond the gating fetch.
  *
  * Throws when the lookup cannot be completed (offline, permissions), so the
  * caller can keep the previous cache rather than overwrite it with less.
