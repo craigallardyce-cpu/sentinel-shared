@@ -231,6 +231,31 @@ surfaced rather than leaving them in chat. Check the knowledge base for a
 `[NEEDS REVIEW]` tag the change removes (`grep -n "NEEDS REVIEW" 0*.md`); the
 first closing PR claimed there was none and there was.
 
+### Archive the workers
+
+**Archiving spent workers is the coordinator's job, not Craig's** (his instruction,
+2026-09-05). A worker is spent when its PR is merged or closed *and* the session
+is idle — not when the PR merely opens, because a review can still send you back
+to that session, and not while anything is queued against it.
+
+`list_sessions` with `mine: true` gives every session and its status in one call;
+read the status there rather than assuming, then `archive_session` each spent
+worker. Archiving releases the container and is reversible — `unarchive_session`
+brings one back — so the cost of archiving too early is a re-open, and the cost
+of never archiving is a drawer of dead containers nobody can tell from live ones.
+
+Three you never archive:
+
+- **Yourself.** You are the running session.
+- **The session that spawned you.** It is Craig's, and it is where the next
+  coordinator is started from.
+- **Anything you did not spawn as a worker.** Craig's own CLI and phone sessions
+  appear in the same list, tagged `remote-control-sdk` or with a `bridge`
+  environment. They are not yours to close, whatever their status says.
+
+A worker that failed to initialise, or whose PR you closed unmerged, is spent
+too: it has nothing left to give and archiving it is how the list stays honest.
+
 ## What it costs
 
 Workers spend from the same usage window as the coordinator's own session.
