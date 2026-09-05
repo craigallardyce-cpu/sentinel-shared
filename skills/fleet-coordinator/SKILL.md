@@ -127,6 +127,44 @@ If it is behind, say so in your review before anything else: the diff you are
 about to read was written against a tree that no longer exists, and a clean-looking
 diff can still conflict or, worse, silently undo something merged since.
 
+
+### The siblings are stale too, and that is a build failure
+
+The branch is only half of it. Every fleet repo is present in a worker's
+container as a sibling — shallow, lower-case, with capitalised symlinks so
+`check-fleet-drift.mjs` finds them — but **only the repo named in `source_url`
+is cloned at session start.** The rest are a snapshot, refreshed when somebody
+last thought to refresh them and not otherwise. The reflogs say so plainly: the
+ones in this session were last moved by a `pull --ff-only` that a coordinator ran
+by hand.
+
+That matters more than a stale branch does, because the apps consume
+`@sentinel/*` through `file:` symlinks into the sibling. A stale
+`sentinel-shared` does not produce a subtle wrong answer; it produces a build
+that cannot resolve an import that exists on `main`. The HUD worker came up on a
+HarborSentinel seven commits behind whose sibling predated `PlanPill`, so
+`main` **would not build at all** before it had touched anything — a red build
+that was nobody's fault and told it nothing about its own change.
+
+So make the first act of every worker a pre-flight, and put it in the brief:
+
+```bash
+cd ~/<repo>          && git fetch origin main -q && git pull --ff-only origin main -q
+cd ~/sentinel-shared && git fetch origin main -q && git pull --ff-only origin main -q
+git -C ~/<repo> log --oneline -1 && git -C ~/sentinel-shared log --oneline -1
+cd ~/<repo> && npm install --legacy-peer-deps && npm run build   # must pass BEFORE any edit
+```
+
+A green build here is the baseline the worker's own verification is measured
+against. A red one is a finding, not a task: it means the container is behind or
+the fleet is broken, and either way the worker should say so in its first reply
+and in Worker notes rather than starting to fix code it did not break. Pull the
+siblings a change depends on — `sentinel-shared` for any app, and the website
+for a client half whose migration lives there.
+
+The coordinator has the same problem. Your own siblings go stale under you while
+you review, so `git fetch` before you read anything off one, and never quote a
+sibling's file as current without it.
 ### The brief
 
 Self-contained, in this order. Copy the shape; fill in the specifics.
@@ -135,18 +173,24 @@ Self-contained, in this order. Copy the shape; fill in the specifics.
    questions; make reasonable calls and record them in the PR.
 2. *The initiative* in two or three sentences, including where the change
    really lives and what every other surface already says.
-3. *Your part*: the exact change, the exact wording, file paths, and what must
+3. *Pre-flight, before any edit*: fast-forward this repo and the siblings the
+   change depends on, then build. The commands are above; give them verbatim,
+   with the sibling list filled in. Say that a red build here is a finding to
+   report, not a task to start on.
+4. *Your part*: the exact change, the exact wording, file paths, and what must
    **not** change (keys, descriptions, identifiers, history). Name a template
    file to copy the style of (a migration: 043 and 049).
-4. *Conventions*: one repo, one branch, one PR; never `main`; never merge;
+5. *Conventions*: one repo, one branch, one PR; never `main`; never merge;
    never apply a migration ("Not applied", with the command Craig runs);
    the verification commands for that repo and what CI runs; commit author
    `Craig Allardyce <support@marinersentinel.com>`.
-5. *The pull request*: body sections to include — What, Where it shows,
+6. *The pull request*: body sections to include — What, Where it shows,
    Migration status, Verified, a `Fleet:` line naming the companions by repo and
    branch and which merges first, and **Worker notes**: anything missing from
-   the brief or the repo that it had to work around, or "nothing".
-6. *Stop when the PR is open.*
+   the brief or the repo that it had to work around, or "nothing" — including
+   the two pre-flight SHAs, so the base it worked from is on the record rather
+   than inferred.
+7. *Stop when the PR is open.*
 
 For a diagnostic run (a rehearsal), say "change no files, commit nothing", ask
 the questions so that a "no" is a useful answer, and have it post the report as
@@ -297,10 +341,18 @@ something a grep could settle.
 - The website worker had no `CLAUDE.md` to read; the brief carried everything.
 - Two mechanical workers ran on the most expensive model because `model` was
   never set; §3's table came from that.
-- A worker created with `source_revision: main` came up two merges behind it, so
-  the brief's claim that the repo had a `CLAUDE.md` was false and the worker's
-  notes said so. Believe the Worker notes over your own brief, and check the
-  merge-base.
+- **Three stale checkouts in one day, and the third would not build.** The
+  no-harness worker came up two merges behind, so its brief's claim that the repo
+  had a `CLAUDE.md` was false. The plan-visibility worker came up three commits
+  behind and carried a function `main` had deleted, so its PR conflicted. The HUD
+  worker came up seven commits behind with a `sentinel-shared` sibling older than
+  `PlanPill`, so `HarborSentinel`'s own `main` did not compile before it had
+  changed a line. Each cost the worker real time before it worked out that the
+  ground was wrong rather than its own change, and the third could as easily have
+  been read as a bug it had introduced. §3's pre-flight came from these: the fix
+  is two fetches and a build at the top of the brief, not sharper reviewing at
+  the bottom. The first of the three is also where the standing rule comes from:
+  when a worker's notes contradict the brief you wrote it, believe the notes.
 - A two-dot diff against a shallow clone made a three-line PR look as though it
   had deleted five files. Confirm against GitHub's computed diff before saying
   anything to anyone about what a worker changed.
