@@ -148,7 +148,74 @@ if (presentApps.length > 1) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Vite must be able to resolve every bare import the shared packages make.
+// 3. Each app's lockfile must record the shared package versions that are
+//    actually on disk. `file:` deps install as symlinks, so the code an app runs
+//    is whatever sentinel-shared holds -- but npm still writes the linked
+//    package's version into a path-keyed lockfile entry, and that copy goes stale
+//    the moment a shared package is bumped without re-installing the consumers.
+//
+//    Nothing else catches this. Sections 1 and 2 read package.json only, where
+//    every app declares the identical `file:../sentinel-shared/<pkg>` and so
+//    nothing can diverge. And CI cannot catch it either: all three apps install
+//    with `npm install --legacy-peer-deps`, which tolerates the mismatch and
+//    silently rewrites the entry in the runner rather than failing, the way
+//    `npm ci` would. @sentinel/theme went to 0.5.0 on 2026-09-01 and two apps
+//    still recorded 0.4.0 four days later, through green CI both times.
+//
+//    CLAUDE.md already prescribes the step that was skipped -- after changing a
+//    shared package, each consuming app runs `npm install --legacy-peer-deps &&
+//    npm run build` -- so this check enforces an existing rule rather than a new
+//    one. A stale version FAILs: the lockfile misdescribes code that is really
+//    installed. An entry for a package no longer in sentinel-shared only WARNs:
+//    npm marks it extraneous and installs nothing, so it is untidiness, not a
+//    misdescription.
+// ---------------------------------------------------------------------------
+const sharedVersions = new Map(); // @sentinel/x -> version on disk
+for (const entry of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const pkgFile = path.join(SHARED_ROOT, entry.name, 'package.json');
+  if (!exists(pkgFile)) continue;
+  const pkg = readJson(pkgFile);
+  if (typeof pkg.name === 'string' && pkg.name.startsWith('@sentinel/')) {
+    sharedVersions.set(pkg.name, pkg.version);
+  }
+}
+
+for (const app of presentApps) {
+  // Same sub-root list as section 1: OceanSentinel splits its deps three ways.
+  const lockFiles = [path.join(ROOT, app.name, 'package-lock.json')];
+  for (const sub of ['frontend', 'backend']) {
+    lockFiles.push(path.join(ROOT, app.name, sub, 'package-lock.json'));
+  }
+  for (const lockFile of lockFiles) {
+    if (!exists(lockFile)) continue;
+    const rel = path.relative(path.join(ROOT, app.name), lockFile);
+    let lock;
+    try {
+      lock = readJson(lockFile);
+    } catch {
+      fail('lockfile', `${app.name}: ${rel} is not valid JSON`);
+      continue;
+    }
+    for (const [key, entry] of Object.entries(lock.packages || {})) {
+      // Path-keyed entries carry the linked package's name and version;
+      // the node_modules/@sentinel/* twins are bare symlink records.
+      if (!/(^|\/)sentinel-shared\//.test(key)) continue;
+      if (!entry || typeof entry.name !== 'string' || !entry.name.startsWith('@sentinel/')) continue;
+      if (!sharedVersions.has(entry.name)) {
+        warn('lockfile', `${app.name}: ${rel} records ${entry.name}, which is not a package in sentinel-shared; re-run npm install --legacy-peer-deps to drop it`);
+        continue;
+      }
+      const onDisk = sharedVersions.get(entry.name);
+      if (entry.version !== onDisk) {
+        fail('lockfile', `${app.name}: ${rel} records ${entry.name} ${entry.version}, but sentinel-shared has ${onDisk}; re-run npm install --legacy-peer-deps in that package root and commit the lockfile`);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Vite must be able to resolve every bare import the shared packages make.
 //    file: deps are symlinks, so Vite resolves those imports from sentinel-shared
 //    rather than the app. This passes locally whenever sentinel-shared happens to
 //    have node_modules installed, and fails on a clean checkout (i.e. CI).
@@ -215,7 +282,7 @@ for (const app of presentApps) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Local re-copies of code that now lives in @sentinel/*.
+// 5. Local re-copies of code that now lives in @sentinel/*.
 // ---------------------------------------------------------------------------
 for (const app of presentApps) {
   const srcDir = path.join(ROOT, app.name, exists(path.join(ROOT, app.name, 'frontend', 'src')) ? 'frontend/src' : 'src');
@@ -232,7 +299,7 @@ for (const app of presentApps) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Android parity + the applicationId/appId relationship.
+// 6. Android parity + the applicationId/appId relationship.
 // ---------------------------------------------------------------------------
 for (const app of presentApps) {
   const aDir = path.join(ROOT, app.name, app.androidDir);
@@ -285,7 +352,7 @@ for (const app of presentApps) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. OceanSentinel bundles its backend to the repo root, so root package.json
+// 7. OceanSentinel bundles its backend to the repo root, so root package.json
 //    must mirror the backend's runtime deps or the packaged app dies at startup.
 // ---------------------------------------------------------------------------
 for (const app of presentApps.filter((a) => a.mirrorsBackendDeps)) {
@@ -302,7 +369,7 @@ for (const app of presentApps.filter((a) => a.mirrorsBackendDeps)) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. The workflow pins sentinel-shared by SHA.
+// 8. The workflow pins sentinel-shared by SHA.
 //
 //    A pin only means anything against what is PUBLISHED. actions/checkout
 //    fetches the pinned ref from GitHub, so a SHA that exists only on somebody's
@@ -372,7 +439,7 @@ for (const app of presentApps) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Palette integrity.
+// 9. Palette integrity.
 //
 //    All three apps import @sentinel/theme/index.css, which carries the raw tokens,
 //    the Tailwind @theme role map (roles.css), night mode and the glass surfaces.
@@ -433,7 +500,7 @@ if (exists(tokensFile)) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. The skills in skills/ are canonical here but get installed to the user's
+// 10. The skills in skills/ are canonical here but get installed to the user's
 //    ~/.claude/skills. Warn only if an installed copy exists and has diverged;
 //    staying silent when it is absent, since not every machine installs every
 //    one. Every skill in the directory is checked, so adding one needs no edit
@@ -453,7 +520,7 @@ if (home && exists(skillsDir)) {
 }
 
 // ---------------------------------------------------------------------------
-// 10. Settings drift.
+// 11. Settings drift.
 //
 //     Nine checks never noticed that `harbor_sentinel_keep_awake` and
 //     `ocean_sentinel_keep_awake` were one setting under two names, that
@@ -498,7 +565,7 @@ try {
     ({ DEFAULT_NMEA_TARGET } = await import(pathToFileURL(marineDist).href));
   }
 } catch (err) {
-  warn('settings', `could not load the settings registry, so check 10 was skipped: ${err.message}`);
+  warn('settings', `could not load the settings registry, so check 11 was skipped: ${err.message}`);
 }
 
 if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
@@ -699,7 +766,7 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 }
 
 // ---------------------------------------------------------------------------
-// 11. Theme adoption.
+// 12. Theme adoption.
 //
 //    Colour has been tokenised since v2.8, but type, faces and shadows only
 //    joined it in v2.9, and each of these guards a regression that shipped:
