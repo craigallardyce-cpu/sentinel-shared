@@ -262,6 +262,13 @@ These differences between the apps are intentional. Do not harmonise them.
   `node_modules`, so any runtime dependency added to `backend/package.json`
   must also be added to the root `package.json`.
 - **HarborSentinel uses `capacitor.config.ts`**, the other two `.json`.
+- **OceanSentinel's Android `versionCode` is a wall-clock timestamp** (~53,000,000)
+  while the other two derive theirs from the root `package.json` (~21,100). Play
+  version codes only ever go up, so this app cannot be moved onto the fleet scheme.
+  Its `versionName` was aligned to `package.json` on 2026-09-05; the code was
+  deliberately left alone. Release step 2's claim that the root `package.json`
+  drives Android `versionName`/`versionCode` holds for HarborSentinel and
+  VesselKeeper, and for OceanSentinel's `versionName` only.
 
 `skills/sentinel-check/SKILL.md` §3 is the canonical list; add to it there.
 
