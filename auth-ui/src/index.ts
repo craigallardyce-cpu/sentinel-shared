@@ -12,4 +12,4 @@ export {
   fetchEntitlements,
   refreshEntitlements
 } from './entitlements';
-export type { Entitlements, FeatureKey } from './entitlements';
+export type { Entitlements, FeatureKey, AccountEntitlements, AccountProduct } from './entitlements';
