@@ -20,7 +20,7 @@ jobs:
       # One package failing should not hide the state of the others.
       fail-fast: false
       matrix:
-        package: [auth-ui, charts, electron-shell, marine, settings, weather]
+        package: [auth-ui, charts, electron-shell, marine, settings, ui, weather]
 
     # Each package is its own npm project with its own vitest config, so every
     # command runs from the package directory rather than the repo root.
