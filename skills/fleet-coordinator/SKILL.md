@@ -279,12 +279,23 @@ something a grep could settle.
 - A two-dot diff against a shallow clone made a three-line PR look as though it
   had deleted five files. Confirm against GitHub's computed diff before saying
   anything to anyone about what a worker changed.
-- **A repo's `pull_request` checks silently did not run at all.** HarborSentinel
-  produced no run on PR creation and none on a later push, while the other two
-  apps fired within seconds of each. "No run" is not "not finished yet": compare
-  against a sibling PR's timing before believing it is a queue delay. Both
-  workflows there carry `workflow_dispatch`, which is the fleet's own manual
-  trigger and the way to get a real run — an empty commit or a close-and-reopen
-  is never it. A `workflow_dispatch` run tests the branch rather than the merge
-  result, so it is only equivalent while the branch is not behind `main`, which
-  is one more reason to know the merge-base first.
+- **A conflicted PR gets no `pull_request` checks, and that is the signal.**
+  HarborSentinel's plan-visibility PR produced no run at all on creation, while
+  its two siblings fired within seconds. Not a broken repo: a `pull_request`
+  workflow checks out `refs/pull/N/merge`, and GitHub cannot compute that ref
+  while the PR conflicts, so nothing runs. Missing checks therefore mean *the
+  branch does not merge* far more often than they mean a broken pipeline —
+  invert the usual reading, and go look at the merge-base (§3) rather than at
+  the workflow file. The runs appeared by themselves within seconds of the merge
+  commit that resolved the conflict being pushed.
+  `workflow_dispatch` is the honest way to exercise a branch meanwhile — an
+  empty commit or a close-and-reopen is never it — but it tests the branch, not
+  the merge result, so it is only equivalent once the branch is not behind
+  `main`.
+- **Do not call a missing run a failure until you have waited for one.** The
+  same PR was reported a second time as "the trigger did not fire on a push
+  either". It had: the `pull_request` runs landed about forty seconds after that
+  push, seven seconds before a `workflow_dispatch` fired at them impatiently.
+  The first report was right and the second was noise, and both went to Craig
+  as fact. A run that has not appeared yet looks exactly like one that never
+  will; only elapsed time tells them apart.
