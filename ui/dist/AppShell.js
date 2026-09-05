@@ -9,9 +9,26 @@ export function HeaderButton({ icon, active = false, label, className, ...rest }
         // sit in a 56px header, so the target can be full-height for free.
         'flex items-center gap-1.5 font-mono text-[13px] font-bold tracking-widest transition-colors duration-150 cursor-pointer min-h-11', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 rounded-md px-1', active ? 'text-cyan drop-shadow-[0_0_8px_var(--color-cyan-glow)]' : 'text-text-muted hover:text-text-primary', className), "aria-pressed": active, ...rest, children: [_jsx("span", { className: "shrink-0", "aria-hidden": true, children: icon }), label && _jsx("span", { className: "hidden sm:inline", children: label })] }));
 }
-/** Bordered container for a group of status pills in the header. */
+/**
+ * Bordered container for a group of status pills in the header.
+ *
+ * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
+ * status band actually holds, so a group that will not shrink makes the band's
+ * own `min-w-0` a lie: the band never gets narrower than the pills, and its
+ * `overflow-hidden` guillotines them instead — a pill sliced mid-word with a
+ * border drawn through the letters, which is what a phone header showed.
+ * Dropping `shrink-0` is not enough on its own, either: a flex item will not go
+ * below its min-content size, and a pill's min-content is its whole label
+ * because the label does not wrap. `min-w-0` is what overrides that.
+ *
+ * Shrinking then has to stop somewhere sensible, and that is each child's job
+ * rather than this one's: `StatusPill` carries a min-width of its own chrome,
+ * so it ellipsises down to a dot and stops. A child that can neither truncate
+ * nor floor itself will hold this group open and be clipped by the band, as
+ * before.
+ */
 export function HeaderGroup({ children, className }) {
-    return (_jsx("div", { className: cn('flex items-center gap-2 px-2 py-1 rounded-lg border border-border-color/60 bg-bg-card/50 shadow-inner select-none shrink-0', className), children: children }));
+    return (_jsx("div", { className: cn('flex items-center gap-2 px-2 py-1 rounded-lg border border-border-color/60 bg-bg-card/50 shadow-inner select-none min-w-0', className), children: children }));
 }
 /**
  * The fleet application frame: floating glass header, left dock from `lg`

@@ -49,10 +49,27 @@ export function HeaderButton({ icon, active = false, label, className, ...rest }
   );
 }
 
-/** Bordered container for a group of status pills in the header. */
+/**
+ * Bordered container for a group of status pills in the header.
+ *
+ * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
+ * status band actually holds, so a group that will not shrink makes the band's
+ * own `min-w-0` a lie: the band never gets narrower than the pills, and its
+ * `overflow-hidden` guillotines them instead — a pill sliced mid-word with a
+ * border drawn through the letters, which is what a phone header showed.
+ * Dropping `shrink-0` is not enough on its own, either: a flex item will not go
+ * below its min-content size, and a pill's min-content is its whole label
+ * because the label does not wrap. `min-w-0` is what overrides that.
+ *
+ * Shrinking then has to stop somewhere sensible, and that is each child's job
+ * rather than this one's: `StatusPill` carries a min-width of its own chrome,
+ * so it ellipsises down to a dot and stops. A child that can neither truncate
+ * nor floor itself will hold this group open and be clipped by the band, as
+ * before.
+ */
 export function HeaderGroup({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('flex items-center gap-2 px-2 py-1 rounded-lg border border-border-color/60 bg-bg-card/50 shadow-inner select-none shrink-0', className)}>
+    <div className={cn('flex items-center gap-2 px-2 py-1 rounded-lg border border-border-color/60 bg-bg-card/50 shadow-inner select-none min-w-0', className)}>
       {children}
     </div>
   );
@@ -162,6 +179,18 @@ export function AppShell({
             that absorbs the squeeze. Whatever else happens, Night and Settings
             stay reachable, because a control you cannot see is worse than a
             status you cannot read.
+
+            Absorbing the squeeze has to reach the pills themselves, though.
+            `min-w-0` here only lets the *band* narrow; what is inside has to
+            be able to narrow with it, and for a while it could not —
+            `HeaderGroup` was `shrink-0`, so the band never got smaller than
+            the pills and `overflow-hidden` did the only thing left to it,
+            cutting a label off mid-word. It is what a phone header showed once
+            two pills shared this band. The group shrinks now, and the pills
+            ellipsise down to a dot rather than being sliced. `overflow-hidden`
+            stays as the last resort for content that still will not yield —
+            content this package cannot see — but it is no longer the
+            mechanism.
           */}
           <div className="flex items-center gap-2 mr-2 shrink-0 min-w-0">
             {brandIcon && <span className="text-cyan shrink-0" aria-hidden>{brandIcon}</span>}

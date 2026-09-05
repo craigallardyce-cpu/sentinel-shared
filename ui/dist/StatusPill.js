@@ -13,5 +13,18 @@ export function StatusPill({ status, children, pulse = false, compact = false, s
     if (compact) {
         return (_jsx("span", { className: cn('inline-flex items-center', className), title: title, role: "img", "aria-label": title ?? status, children: dot }));
     }
-    return (_jsxs("span", { title: title, className: cn('inline-flex items-center gap-1.5 rounded-full border font-medium whitespace-nowrap', size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-2.5 text-sm', c.text, c.bg, c.border, className), children: [dot, children] }));
+    return (_jsxs("span", { title: title, className: cn(
+        // A pill in the header's status band has to be able to give ground, and
+        // the label truncating is not on its own enough to let it: `nowrap`
+        // makes the pill's min-content its full label width, which is the
+        // automatic minimum size a flex item refuses to shrink below, so the
+        // band cannot narrow and the pill ends up cut off mid-word instead.
+        //
+        // An explicit min-width does both halves of the job. It overrides that
+        // automatic minimum, so the pill shrinks and the label ellipsises; and
+        // it stops the shrinking at the dot and the padding, so the pill never
+        // closes over its own contents and draws its border through them. The
+        // floor is per size, because the chrome is: 8px dot + 6px gap + the
+        // horizontal padding + 2px of border.
+        'inline-flex items-center gap-1.5 rounded-full border font-medium whitespace-nowrap', size === 'sm' ? 'h-6 px-2 text-xs min-w-8' : 'h-7 px-2.5 text-sm min-w-9', c.text, c.bg, c.border, className), children: [dot, children || children === 0 ? _jsx("span", { className: "truncate", children: children }) : null] }));
 }
