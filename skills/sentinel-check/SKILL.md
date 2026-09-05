@@ -65,7 +65,7 @@ These differences are intentional. Leave them alone:
   Harbor and VesselKeeper derive it from the root `package.json`
   (`major*10000 + minor*100 + patch + buildNumber`, so 2.11.0 gives ~21100).
   OceanSentinel's `frontend/android/app/build.gradle` instead computes
-  `(currentTimeMillis()/1000) - 1704067200`, which is around **53,000,000**. Play
+  `(currentTimeMillis()/1000) - 1704067200`, which is around **84,500,000** (September 2026, and climbing by 86,400 a day). Play
   version codes are monotonic and permanent: once a package has accepted a code,
   it will reject any bundle numbered lower, forever. So this app can never be
   moved onto the fleet scheme, however much it looks like drift. Decided
