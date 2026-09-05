@@ -46,7 +46,7 @@ repositories, each with its own history and remote:
 | `sentinel-shared/` | This repo: the `@sentinel/*` packages, the drift checker, the `sentinel-check` skill | `sentinel-shared` (**public**) |
 | `HarborSentinel/` | Vessels at anchor: anchor-watch Electron + Android app | `HarborSentinel` (private) |
 | `OceanSentinel/` | Vessels underway: chartplotter, weather, VHF monitoring and transcription, ship's log. Its Capacitor project is under `frontend/`, not the root | `OceanSentinel` (private) |
-| `VesselKeeper/` | Maintenance and ship's records; Premium only | `VesselKeeper` (private) |
+| `VesselKeeper/` | Maintenance and ship's records; one feature set at two device counts (see the tiers note below) | `VesselKeeper` (private) |
 | `MarinerSentinel Website/` | Marketing site and portal (React + Express), the public shared-vessel and voyage views, and `migrations/` for the shared Supabase project | `MarinerSentinel-Website` (private) |
 | `docs-kb/` | The customer-facing knowledge base, see below | `docs-kb` (private) |
 | `admin-app/` | Admin and catalog app (Next.js + Electron). Secrets load from a gitignored `.env.local`; its history was re-initialised on first push (2026-08-18) so nothing earlier is on GitHub | `admin-app` (private) |
@@ -276,11 +276,23 @@ is tagged `[NEEDS REVIEW]` rather than guessed.
 
 Product roles, as a customer would describe them: **HarborSentinel** for
 vessels at anchor, **OceanSentinel** for vessels underway, **VesselKeeper** for
-maintenance and ship's records. Tiers are **Basic** (one device, on-device
-functions only) and **Premium** (up to five devices, NMEA integration, cloud
-storage, AI features); VesselKeeper is Premium only. The authoritative gates are
-each app's `entitlements` module and the subscription catalog behind
-`@sentinel/auth-ui`.
+maintenance and ship's records. For the two watch apps, tiers are **Basic** (one
+device, on-device functions only) and **Premium** (up to five devices, NMEA
+integration, cloud storage, AI features).
+
+**VesselKeeper is not split that way, and since 2026-09-05 it is not Premium
+only.** It has one feature set — the AI assistant and cloud library included —
+sold at two device counts: **Standalone** ($19.99, one device), which is also
+what the **Basic Suite** maps to, and **Premium Suite** (five devices), reachable
+only through that bundle. So "Basic" means *one device* for VesselKeeper and
+*one device and no NMEA or AI* for HarborSentinel and OceanSentinel. The website's
+`NOT_IN_BASIC` guardrail in `scripts/check-pricing-drift.mjs` applies only to
+products that genuinely split, and says so; if VesselKeeper ever gains a real
+feature-split Basic tier it comes back under the rule.
+
+The authoritative gates are each app's `entitlements` module and the subscription
+catalog behind `@sentinel/auth-ui`, which resolve on `product_id` and
+`tier_features` — never on a tier's name.
 
 The fleet-wide list of open work, all of which must land before go-live
 (planned **May 2027**), is `ROADMAP.md` in the private `docs-kb` repository
