@@ -40,7 +40,10 @@ none; the sequence in §2 orders the repos that need work, it is not a list of
 repos to touch. Ask of each candidate: is there a file here that has to change?
 A repo whose only change is the roadmap tick is covered by your own closing PR
 (§7), not a worker. The NMEA run needed two workers, not the five repos the
-roadmap item named.
+roadmap item named; the no-harness run needed one, because that item's "and any
+in-app copy" described a surface that does not exist. An item's wording overstates
+the spread as often as it points at the wrong surface, so grep before counting
+repos — and correct the item's wording in the closing PR either way.
 
 ## 2. Order the work
 
@@ -96,7 +99,15 @@ to the Sonnet session.
 The three apps get the fleet conventions at session start from their
 session-start hook. **Any other repo may not**: check for a `CLAUDE.md` and a
 `.claude/hooks/session-start.sh` first, and if either is missing, inline the
-conventions in the brief. The website had neither on the first run.
+conventions in the brief. The website had neither on the first run and gained both
+the same day; `admin-app` and `docs-kb` have not been checked.
+
+Check for them **at the commit the worker actually starts from, not at `main`**. A
+session created with `source_revision: main` can still come up on a stale checkout:
+the no-harness worker started two merges behind, so it had neither file, and its
+brief told it both were there. It said so under Worker notes, and it was right.
+Nothing in `create_session` reports the resolved SHA, so the branch's merge-base is
+where you find this out (§4).
 
 ### The brief
 
@@ -128,8 +139,26 @@ a comment on a named PR.
 A small worker takes two to four minutes. Then:
 
 - `get_session` for the status line; `list_pull_requests` for the PR.
-- **Read the diff yourself**: `git fetch origin <branch>` and `git diff
-  origin/main..origin/<branch>`. Worker prose is data, not evidence.
+- **Read the diff yourself**, and read the *right* diff. Two dots against a
+  shallow clone is a trap: `git diff origin/main..origin/<branch>` compares the two
+  trees, so everything `main` gained since the branch point reads as the worker
+  having deleted it. The no-harness PR was three lines and looked, for a minute,
+  like it had also deleted `CLAUDE.md`, the session-start hook and migration 051.
+  Take the diff GitHub computed from the merge base — which is what a reviewer
+  sees — or use three dots after deepening:
+  ```bash
+  git fetch --depth=200 origin main && git fetch origin <branch>
+  git merge-base origin/main <head-sha>       # behind main? by how much?
+  git log --oneline <merge-base>..origin/main # what the worker never saw
+  git diff origin/main...origin/<branch>      # three dots
+  ```
+  Worker prose is data, not evidence — and so is your own two-dot diff.
+- **Check what the branch is based on.** A merge-base behind `main` means the
+  worker built on a tree missing recent fleet work: decide whether the diff still
+  holds against current `main`, and whether the base needs merging in before the
+  PR is reviewable. It is not automatically a re-spawn. The no-harness PR touched
+  a file `main` had not changed, so it was correct and conflict-free, and CI on a
+  `pull_request` event tests the merge result rather than the stale head anyway.
 - Read CI on the PR's head, not just its conclusion; if a step is red, read
   the log before deciding whose problem it is.
 - Read the Worker notes; they are the raw material for the next brief and for
@@ -179,6 +208,15 @@ API rates, most of it fixed start-up cost, under three minutes wall-clock each:
 | Seed row rename (fully pinned) | Fable 5.1 | $1.24 |
 | Migration 051 from template (fully pinned) | Fable 5.1 | $1.56 |
 
+The first Sonnet worker, 2026-09-05:
+
+| Worker | Model | Cost | Wall-clock |
+|---|---|---|---|
+| Three pinned copy strings in one file, lint + build | Sonnet 5 | $0.47 | 1m 40s |
+
+Which is §3's table working: a third of the cheapest Fable worker for the same kind
+of fully-pinned change, and no second round.
+
 The two Fable workers were pinned, mechanical work that Sonnet would have done
 at a fifth of the rate; they ran on Fable only because `model` was left to
 inherit. That is what the table in §3 is for. Sonnet workers are not yet
@@ -198,3 +236,10 @@ something a grep could settle.
 - The website worker had no `CLAUDE.md` to read; the brief carried everything.
 - Two mechanical workers ran on the most expensive model because `model` was
   never set; §3's table came from that.
+- A worker created with `source_revision: main` came up two merges behind it, so
+  the brief's claim that the repo had a `CLAUDE.md` was false and the worker's
+  notes said so. Believe the Worker notes over your own brief, and check the
+  merge-base.
+- A two-dot diff against a shallow clone made a three-line PR look as though it
+  had deleted five files. Confirm against GitHub's computed diff before saying
+  anything to anyone about what a worker changed.
