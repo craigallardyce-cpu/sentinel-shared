@@ -61,6 +61,18 @@ These differences are intentional. Leave them alone:
 - **Weather services genuinely differ** — Harbor has caching and offline detection,
   Ocean has Open-Meteo fallback and wind-grid building. Merging them means writing new
   code, not extracting existing code.
+- **OceanSentinel's Android `versionCode` is wall-clock time, and must stay that way.**
+  Harbor and VesselKeeper derive it from the root `package.json`
+  (`major*10000 + minor*100 + patch + buildNumber`, so 2.11.0 gives ~21100).
+  OceanSentinel's `frontend/android/app/build.gradle` instead computes
+  `(currentTimeMillis()/1000) - 1704067200`, which is around **53,000,000**. Play
+  version codes are monotonic and permanent: once a package has accepted a code,
+  it will reject any bundle numbered lower, forever. So this app can never be
+  moved onto the fleet scheme, however much it looks like drift. Decided
+  2026-09-05, with the reasoning also in a comment above `autoVersionCode`.
+  The `versionName` *was* aligned in the same pass — it now reads
+  `rootProject.ext.appVersionName` from `package.json`, so the store listing
+  matches the fleet version even though the code beside it does not.
 
 ## 4. Verify against a clean checkout, not your working tree
 
