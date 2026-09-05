@@ -107,7 +107,25 @@ session created with `source_revision: main` can still come up on a stale checko
 the no-harness worker started two merges behind, so it had neither file, and its
 brief told it both were there. It said so under Worker notes, and it was right.
 Nothing in `create_session` reports the resolved SHA, so the branch's merge-base is
-where you find this out (§4).
+where you find this out.
+
+**Check the merge-base the moment the branch exists — not at review, and not at
+merge.** It has happened twice. The second time, HarborSentinel's plan-visibility
+worker came up three commits behind and its branch still carried a function `main`
+had deleted, so the PR conflicted; the coordinator had read the diff, called it
+correct, and told Craig `main` had not moved — all true of the diff, all wrong
+about the base. The check is two commands and it decides how you read everything
+after it:
+
+```bash
+git fetch --depth=200 origin main && git fetch origin <branch>
+git merge-base origin/main <head-sha>       # equal to main's tip, or behind?
+git log --oneline <merge-base>..origin/main # what the worker never saw
+```
+
+If it is behind, say so in your review before anything else: the diff you are
+about to read was written against a tree that no longer exists, and a clean-looking
+diff can still conflict or, worse, silently undo something merged since.
 
 ### The brief
 
@@ -159,6 +177,24 @@ A small worker takes two to four minutes. Then:
   PR is reviewable. It is not automatically a re-spawn. The no-harness PR touched
   a file `main` had not changed, so it was correct and conflict-free, and CI on a
   `pull_request` event tests the merge result rather than the stale head anyway.
+- **Resolving a stale base is yours, and it is not mechanical.** Merge `main` into
+  the branch (never rebase or force-push a worker's branch) and read what git did
+  *outside* the conflict markers as carefully as inside them. HarborSentinel's
+  conflict was the new `planState` against `main`'s deletion of `planLabel` —
+  obvious. What was not obvious: git auto-merged the import line to `main`'s
+  version, which had dropped `readEntitlements` when `planLabel` went, and
+  `planState` needs it. Clearing the markers alone would have produced a branch
+  that does not compile. Build and test the resolved tree before pushing, never
+  just the resolution.
+- **Verify with the repo's own tooling, in the repo.** Two false alarms came from
+  the coordinator's own checkout, not the worker's code: a committed `dist/` read
+  as stale because `tsc` ran with no `node_modules` and degraded declarations for
+  files the PR never touched, and a lint count that differed because it was
+  measured in a throwaway worktree with a symlinked `node_modules`. Both were
+  reported before being understood. If your own measurement disagrees with a green
+  CI run on the same commit, suspect your measurement first — and do not go
+  spelunking with `git stash` and `git checkout <ref> -- .` in a tree that holds an
+  in-progress merge, which destroyed one and needed the merge redone.
 - Read CI on the PR's head, not just its conclusion; if a step is red, read
   the log before deciding whose problem it is.
 - Read the Worker notes; they are the raw material for the next brief and for
@@ -243,3 +279,12 @@ something a grep could settle.
 - A two-dot diff against a shallow clone made a three-line PR look as though it
   had deleted five files. Confirm against GitHub's computed diff before saying
   anything to anyone about what a worker changed.
+- **A repo's `pull_request` checks silently did not run at all.** HarborSentinel
+  produced no run on PR creation and none on a later push, while the other two
+  apps fired within seconds of each. "No run" is not "not finished yet": compare
+  against a sibling PR's timing before believing it is a queue delay. Both
+  workflows there carry `workflow_dispatch`, which is the fleet's own manual
+  trigger and the way to get a real run — an empty commit or a close-and-reopen
+  is never it. A `workflow_dispatch` run tests the branch rather than the merge
+  result, so it is only equivalent while the branch is not behind `main`, which
+  is one more reason to know the merge-base first.
