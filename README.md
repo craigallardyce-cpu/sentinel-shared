@@ -25,7 +25,7 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
-| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `EmptyState` | all three |
+| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | OceanSentinel, VesselKeeper |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
@@ -76,6 +76,7 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
 | `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
 | `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) | ad-hoc emerald/amber/rose/cyan status dots |
+| `PlanPill` — the plan or trial in the header, built from `StatusPill`, with a `Button` to convert during a trial. Presentational: it takes `planLabel`/`trial`/`daysLeft` and two callbacks, and renders nothing until the plan is known | nothing — the apps showed no plan state at all, so a customer had to leave to find out what they were on |
 | `EmptyState` (`panel` / `inline`) | bare italic sentences in one place, illustrated blocks in another |
 | `Stepper` (moved here from `auth-ui`; token defaults, so wrappers are no longer needed) | three per-app 14-line wrappers |
 | `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |

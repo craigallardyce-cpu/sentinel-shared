@@ -11,6 +11,8 @@ export { ToastProvider, useToast, toast, confirm } from './Toast';
 export type { ToastKind, ToastOptions, ToastItem, ConfirmOptions, ToastProviderProps } from './Toast';
 export { StatusPill, STATUS_CLASS } from './StatusPill';
 export type { Status, StatusPillProps } from './StatusPill';
+export { PlanPill } from './PlanPill';
+export type { PlanPillProps } from './PlanPill';
 export { EmptyState } from './EmptyState';
 export type { EmptyStateProps } from './EmptyState';
 export { UnitField } from './UnitField';
