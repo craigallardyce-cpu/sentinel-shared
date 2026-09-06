@@ -318,3 +318,24 @@ behind each of its entries; it is no longer where open work is tracked.
   second checklist.
 - **Each app's `CLAUDE.md`:** the traps specific to that app, and how to verify
   a change there.
+
+## How a session reports back
+
+Craig reads these on a phone as often as at a desk. Length is not the measure of
+care, and a long explanation of a small change buries the one line that matters.
+
+- **Lead with the finding.** What changed, what broke, what you decided — first
+  sentence, not after the reasoning that got you there.
+- **Explanations and descriptions get one pass, not three.** Say a thing once.
+  Do not re-derive a decision already made, restate the brief back, or survey
+  options you did not take.
+- **Keep the state block.** Every report ends with the fleet state (each repo's
+  head SHA) and what is still on Craig's plate — tags, migrations, secrets,
+  anything only he can do. That is not padding; it is the part he acts on, and
+  a session that drops it makes him go and look.
+- **Keep the provenance of a claim.** "I verified X" and "the worker says X" are
+  different claims and stay different. Cutting that distinction is how a wrong
+  premise reaches `main`; it has been caught four times by keeping it.
+
+The two rules pull against each other on purpose: shorten the prose, never the
+evidence or the state.
