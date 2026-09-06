@@ -45,6 +45,17 @@ in-app copy" described a surface that does not exist. An item's wording overstat
 the spread as often as it points at the wrong surface, so grep before counting
 repos — and correct the item's wording in the closing PR either way.
 
+**Check the item's premise, not just its surface.** Three items in the week of
+2026-09-06 had premises that had expired between filing and pickup: the
+downloads page said "fleet is at 2.10.1" when it was at 2.11.0, half of Q27 was
+already fixed, and `readEntitlements` had been filed as having no consumer on
+the morning its third consumer was written. That last one was the dangerous
+shape — actioned as written, the fix was to delete an export all three apps
+import. A roadmap entry is a claim about the code as it stood on the day
+somebody typed it. Verify it before costing the work, and close it as
+already-done or wrongly-premised where that is the honest answer; that is a
+result, not a wasted run.
+
 ## 2. Order the work
 
 The sequence is almost always:
@@ -149,11 +160,22 @@ that was nobody's fault and told it nothing about its own change.
 So make the first act of every worker a pre-flight, and put it in the brief:
 
 ```bash
-cd ~/<repo>          && git fetch origin main -q && git pull --ff-only origin main -q
-cd ~/sentinel-shared && git fetch origin main -q && git pull --ff-only origin main -q
-git -C ~/<repo> log --oneline -1 && git -C ~/sentinel-shared log --oneline -1
-cd ~/<repo> && npm install --legacy-peer-deps && npm run build   # must pass BEFORE any edit
+# Checkouts sit at /home/user/<Repo>, spelled as GitHub spells the repo --
+# /home/user/HarborSentinel, /home/user/sentinel-shared. NOT ~/<repo>.
+ls -d /home/user/*/                       # confirm before trusting either form
+cd /home/user/<Repo>            && git fetch origin main -q && git pull --ff-only origin main -q
+cd /home/user/sentinel-shared  && git fetch origin main -q && git pull --ff-only origin main -q
+git -C /home/user/<Repo> log --oneline -1 && git -C /home/user/sentinel-shared log --oneline -1
+cd /home/user/<Repo> && npm install --legacy-peer-deps && npm run build   # must pass BEFORE any edit
 ```
+
+This block gave `~/<repo>`, lower-cased, until 2026-09-06, when the
+alarm-display worker reported the paths as its first Worker note. It found the
+checkout anyway, so the cost was small — but a brief that is wrong about where
+the repo is spends the worker's first minutes teaching it not to trust the
+brief. The `ls` line is there so the next one settles it in one command
+instead. Note the capitalisation is the repo's own, not a convention: the app
+repos are capitalised and `sentinel-shared` is not.
 
 A green build here is the baseline the worker's own verification is measured
 against. A red one is a finding, not a task: it means the container is behind or
@@ -318,6 +340,20 @@ The first Sonnet worker, 2026-09-05:
 | Worker | Model | Cost | Wall-clock |
 |---|---|---|---|
 | Three pinned copy strings in one file, lint + build | Sonnet 5 | $0.47 | 1m 40s |
+
+The first Opus worker at real scope, 2026-09-06:
+
+| Worker | Model | Cost | Wall-clock |
+|---|---|---|---|
+| Four display fixes in one app, two new test files, lint + tests + build + drift | Opus 5 | $3.72 | 9m |
+
+Five times the Sonnet worker, for four items rather than three pinned strings —
+and it earned the rate twice over. The brief left item 2's implementation open
+and it chose a testable one; then it found a hole the brief had not seen, where
+a second alarm inside the same sticky window would have inherited the first
+one's acknowledgement. Neither is work a pinned copy change needs, which is the
+whole of the choice: pay Opus where the worker must decide something, not
+where it must type something.
 
 Which is §3's table working: a third of the cheapest Fable worker for the same kind
 of fully-pinned change, and no second round.
