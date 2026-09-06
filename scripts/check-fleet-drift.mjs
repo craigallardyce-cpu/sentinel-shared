@@ -135,7 +135,7 @@ if (presentApps.length > 1) {
     }
   }
 
-  // 2. App versions should stay aligned - the fleet released as one at v2.8.0.
+  // 2. App versions should stay aligned - the fleet releases as one.
   const versions = new Map();
   for (const app of presentApps) {
     const v = readJson(path.join(ROOT, app.name, 'package.json')).version;

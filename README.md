@@ -26,7 +26,7 @@ Projects/
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState` | all three |
-| `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | OceanSentinel, VesselKeeper |
+| `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
 
@@ -112,6 +112,11 @@ an argument, so it has no runtime dependencies and never bundles a second client
 - **OceanSentinel reads and writes the same record** — MMSI as before, plus the
   boat name, and it adopts a name set elsewhere only while its own is still the
   seed value, so it never overwrites a name the user typed locally.
+- **HarborSentinel reads it, and only the MMSI.** `useAisProximityAlarm`
+  fetches the profile once a session to learn the boat's own MMSI, so the
+  vessel's own AIS transmission is not tracked as a target against it. The value
+  is cached on the device, a failed read leaves the cached one standing, and
+  this app never writes to the record.
 - **Writes are best-effort by design**: offline or signed-out returns false
   quietly and the app keeps its local value. Treat the shared record as
   eventually consistent, not a hard dependency.
