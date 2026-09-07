@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
-import { refreshEntitlements, clearEntitlements } from './entitlements';
+import type { Entitlements } from './entitlements';
+import { refreshEntitlements, clearEntitlements, fetchEntitlements, writeEntitlements } from './entitlements';
 
 /**
  * Structural (not imported) subset of Supabase's SupabaseClient — avoids a
@@ -52,6 +53,13 @@ export interface AuthScreenProps {
   /** Resolves the local hardware footprint used for device-limit enforcement (desktop only; native platforms use Capacitor's Device.getId() instead). */
   fetchMachineId: () => Promise<{ machineId: string }>;
   onAuthenticated: () => void;
+  /**
+   * A feature key this product needs in order to be useful on a desktop.
+   * When set and the app is running on a desktop, an account whose tier does not
+   * grant it is refused BEFORE a device slot is consumed. Omitted by products
+   * that work fine on a desktop (VesselKeeper), so they are unaffected.
+   */
+  desktopRequiresFeature?: string;
   /** If set, any value under this old key is migrated to accessStorageKey on mount. */
   legacyStorageKey?: string;
   /** If true, shows "Run Offline (Local-Only Mode)" buttons that bypass auth entirely by calling onAuthenticated. */
@@ -166,6 +174,7 @@ export function AuthScreen({
   isConfigured,
   fetchMachineId,
   onAuthenticated,
+  desktopRequiresFeature,
   legacyStorageKey,
   allowOfflineMode = false,
   offlineGraceDays = 0
@@ -366,6 +375,43 @@ export function AuthScreen({
       const hasAccess = await hasActiveSubscription(userId);
 
       if (hasAccess) {
+        // Basic is a phone and tablet plan. A desktop computer has no GPS of
+        // its own, so on the two watch apps a Basic tier cannot do the job it
+        // was sold for on this machine.
+        //
+        // This sits BEFORE the devices table is read or written, and that
+        // ordering is the whole point: Basic is max_devices 1, so a customer
+        // who opens the desktop app first has their single slot consumed by
+        // the machine that cannot run the watch, and the phone the plan is
+        // actually for is then refused with "Device limit reached". Any
+        // enforcement after the insert creates the lockout it means to prevent.
+        //
+        // Gated on the read, like `remote_backend`: it applies whether or not
+        // this machine is already registered, so a boat that lapses from
+        // Premium stops here immediately and works again the moment the
+        // subscription returns. An existing devices row is never deleted —
+        // refusing is not revoking, and an upgrade should just work.
+        let entitlements: Entitlements | null = null;
+        if (desktopRequiresFeature && !Capacitor.isNativePlatform()) {
+          try {
+            entitlements = await fetchEntitlements(supabase, userId, productId);
+          } catch (featureErr) {
+            // Fail OPEN. A failed lookup means "we could not check", which is
+            // not "you do not have one" — the same doctrine as
+            // hasActiveSubscription above and hasFeature with no cache. This
+            // is a licensing decision, not a security boundary.
+            console.error('Desktop entitlement check failed:', featureErr);
+            entitlements = null;
+          }
+
+          if (entitlements && !entitlements.features.includes(desktopRequiresFeature)) {
+            setError(`This plan runs on a phone or tablet, using that device's own GPS. A desktop computer has no GPS of its own, so ${appName} needs Premium to run here. Install ${appName} on your phone or tablet, or upgrade at marinersentinel.com/account.`);
+            setHasNoSubscription(false);
+            setChecking(false);
+            return;
+          }
+        }
+
         // Enforce hardware device limits
         try {
           const { machineId, platformName } = await resolveDeviceIdentity(fetchMachineId);
@@ -422,7 +468,17 @@ export function AuthScreen({
         // Refresh the cached tier entitlements alongside every online
         // verification. A failed refresh keeps the previous cache — features
         // are never taken away because a lookup did not complete.
-        await refreshEntitlements(storage, supabase, userId, productId, accessStorageKey);
+        //
+        // The desktop guard above may already have fetched them; reuse that
+        // result rather than a second round trip. It is only ever non-null
+        // when the fetch succeeded, so the invariant holds either way: a
+        // failure there leaves it null and falls back to refreshEntitlements,
+        // which keeps the previous cache when it too cannot complete.
+        if (entitlements) {
+          writeEntitlements(storage, accessStorageKey, entitlements);
+        } else {
+          await refreshEntitlements(storage, supabase, userId, productId, accessStorageKey);
+        }
         // Re-stamp on every online verification, so the clock runs from the last time
         // this device actually reached Supabase rather than from first sign-in.
         if (offlineGraceDays > 0) {
