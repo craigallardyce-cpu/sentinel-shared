@@ -14,6 +14,16 @@
  * zero runtime dependencies and never bundles its own client copy.
  */
 export interface VesselProfile {
+    /**
+     * The vessel's identity, and what everything else should reference.
+     *
+     * Stable across a rename, which `vesselSlug` is not: the slug is the display
+     * handle the public logbook URL is built from, and an owner renaming their
+     * boat changes it. Migration 053 (MarinerSentinel Website) made this the
+     * primary key for exactly that reason.
+     */
+    id: string;
+    /** The display handle, unique across the fleet. Changes when the boat is renamed. */
     vesselSlug: string;
     name: string;
     /** e.g. Sloop, Ketch, Trawler. Free text. */
@@ -28,22 +38,55 @@ export interface VesselProfile {
 }
 /** Identity fields a signed-in client is allowed to update (see migration 007). */
 export type VesselProfilePatch = Partial<Pick<VesselProfile, 'name' | 'vesselType' | 'mmsi'>>;
-export declare const DEFAULT_VESSEL_SLUG = "sentinel";
+/**
+ * Which vessel a helper acts on.
+ *
+ * Omitted means **the caller's own** — the row whose `user_id` is the signed-in
+ * account, which RLS already restricts the client to seeing. That is what every
+ * call site in the fleet has always meant: all five of them called these helpers
+ * with no target at all and silently got `vessel_slug = 'sentinel'`, a literal
+ * that was correct while there was one boat in the database and wrong for the
+ * second customer to sign up.
+ *
+ * A string is read as a slug, so anything that was passing one still works.
+ */
+export type VesselTarget = string | {
+    id: string;
+} | {
+    slug: string;
+};
 export interface SupabaseLike {
     from(table: string): any;
 }
 /**
- * Read the shared vessel record. Returns null when the row does not exist or
- * the read fails (offline) — callers keep their local value in that case.
+ * Read a vessel record. Returns null when the row does not exist or the read
+ * fails (offline) — callers keep their local value in that case.
+ *
+ * With no target this is the caller's own vessel. It used to be
+ * `vessel_slug = 'sentinel'`, which every app in the fleet inherited by
+ * default and which pointed all of them at the same single row.
  */
-export declare function fetchVesselProfile(supabase: SupabaseLike, vesselSlug?: string): Promise<VesselProfile | null>;
+export declare function fetchVesselProfile(supabase: SupabaseLike, target?: VesselTarget): Promise<VesselProfile | null>;
+/**
+ * The caller's own vessel, as the two things other packages need to address it.
+ *
+ * `@sentinel/settings` needs both: the uuid to anchor `vessel_settings`, and the
+ * slug because `merge_vessel_settings(slug text, …)` kept its signature through
+ * migration 053. Exported so that store resolves a vessel the same way this
+ * package does, rather than growing a second opinion about which boat is meant
+ * — which is the drift this repository exists to prevent.
+ */
+export declare function resolveOwnVessel(supabase: SupabaseLike): Promise<{
+    id: string;
+    vesselSlug: string;
+} | null>;
 /**
  * Write identity fields through to the shared record. Best-effort by design:
  * returns false (and stays quiet) when offline or unauthorised, so callers can
  * treat the shared record as eventually consistent rather than a hard
  * dependency. Requires a signed-in client for name/vesselType (migration 007).
  */
-export declare function saveVesselProfile(supabase: SupabaseLike, patch: VesselProfilePatch, vesselSlug?: string): Promise<boolean>;
+export declare function saveVesselProfile(supabase: SupabaseLike, patch: VesselProfilePatch, target?: VesselTarget): Promise<boolean>;
 /**
  * How the vessel is driven — and why it is a fleet-wide fact rather than an
  * OceanSentinel one.
