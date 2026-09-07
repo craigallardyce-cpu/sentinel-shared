@@ -963,6 +963,11 @@ const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
 // A hand-rolled button wearing the fleet's own colours is one @sentinel/ui
 // never got to own. Icon-only affordances are not caught, and should not be.
 const RAW_ACCENT_BUTTON = /<button\b[^>]{0,600}?(?:bg-cyan|bg-primary|text-cyan|bg-bg-card|border-cyan|bg-red|bg-green|bg-warning)/g;
+// The same colours, with whatever variant prefix they carry, so a hit that only
+// happens on hover can be told from one that is there at rest. Group 1 is the
+// prefix and is empty for a resting colour.
+const BUTTON_COLOUR_HIT =
+  /(?:([a-z-]+(?:\[[^\]]*\])?:)+)?(bg-cyan|bg-primary|text-cyan|bg-bg-card|border-cyan|bg-red|bg-green|bg-warning)/g;
 const stripCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '');
 // JS comments, minus the `//` inside a URL. Prose about a flag must not read as
 // the flag itself — this file's own history has examples of both.
@@ -1021,7 +1026,45 @@ for (const app of presentApps) {
       if (parseFloat(m[1]) < 12) smallType.push(`${rel(f)} ${m[0]}`);
     }
 
-    for (const m of src.matchAll(RAW_ACCENT_BUTTON)) rawButtons.push(rel(f));
+    /*
+      Two exclusions the rule always claimed and never made.
+
+      Measured across the fleet before they existed: 75 flagged, of which only
+      26 were what the warning describes. The other 49 were noise of two kinds,
+      and a count inflated threefold is a count nobody works down.
+
+      1. Icon-only affordances. RAW_ACCENT_BUTTON's own comment says these "are
+         not caught, and should not be" -- but 38 of the 75 were, because a
+         close X or a chevron picks up `hover:bg-bg-card` in its class list.
+         @sentinel/ui's Button takes a label; an icon-only control is a
+         different component, and telling someone to convert 38 of them is
+         telling them to do the wrong thing.
+
+      2. A fleet colour that only ever appears behind a state prefix. A button
+         that turns cyan on hover is not "wearing fleet colours"; it is wearing
+         a hover affordance, which is exactly what a plain button should do.
+         25 of the 75 matched on nothing else.
+
+      What is left is a button with a label, painted a fleet colour at rest --
+      which is the thing Button should own, and the thing the warning says.
+    */
+    for (const m of src.matchAll(RAW_ACCENT_BUTTON)) {
+      const tagEnd = src.indexOf('>', m.index);
+      if (tagEnd === -1) continue;
+      const tag = src.slice(m.index, tagEnd + 1);
+
+      // Every colour hit in the opening tag, with whatever prefix it carried.
+      const hits = [...tag.matchAll(BUTTON_COLOUR_HIT)];
+      if (hits.length && hits.every((h) => h[1])) continue;
+
+      const close = src.indexOf('</button>', tagEnd);
+      const body = close === -1 ? '' : src.slice(tagEnd + 1, close);
+      // Strip child elements and JSX expressions; what remains is the label.
+      const label = body.replace(/<[^>]*>/g, '').replace(/\{[^{}]*\}/g, '').trim();
+      if (!label) continue;
+
+      rawButtons.push(rel(f));
+    }
 
     // A debug switch is only safe if the build cannot contain it. This exists
     // because OceanSentinel's sign-in bypass was `VITE_… !== '0'` — on unless
