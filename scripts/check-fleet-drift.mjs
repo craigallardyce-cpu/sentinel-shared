@@ -555,6 +555,45 @@ const APP_REGISTRY_KEY = {
 // that is where the migration reads them from.
 const SETTINGS_MODULE = /(^|\/)lib\/settings\.(t|j)s$/;
 
+/*
+  A key held in a constant is still a key.
+
+  Until this existed the scan matched only a string literal in the first
+  argument, so `localStorage.getItem(LIMITS_KEY)` was invisible and every app
+  that used a constant was flattered by exactly the number of keys it had been
+  tidy enough to name. Fifteen were hidden this way when the resolver was
+  written -- eleven in OceanSentinel, four in HarborSentinel -- and four of those
+  (MEASUREMENT_STANDARD_KEY, SETTINGS_KEY, POLAR_CHOICE_KEY, RANGE_KEY) are
+  plainly settings rather than cache, which is the class this check exists to
+  find. Migrating two of HarborSentinel's chart keys onto the registry moved the
+  count 6 -> 6 because neither had ever been counted.
+
+  Module-level and SCREAMING_CASE only, which is how the fleet writes them, and
+  how every one of the fifteen was written. Resolving arbitrary expressions needs
+  a parser; resolving a named constant needs a map, and the map is what was
+  missing. Collected across the whole app rather than per file, so a key imported
+  from a constants module resolves without following the import.
+*/
+// `export` matters: MEASUREMENT_STANDARD_KEY, the clearest setting of the
+// fifteen, and all three apps' OFFLINE_ACCESS_KEY are exported, and a first
+// version of this rule that omitted the keyword missed every one of them.
+const KEY_CONSTANT = /^(?:export\s+)?(?:const|let|var)\s+([A-Z][A-Z0-9_]*)\s*=\s*['"`]([^'"`]+)['"`]/;
+
+/*
+  Not every key is a setting, and the ones that are not had nowhere to go.
+
+  10d's own comment says "most are cached records or credentials rather than
+  settings" -- and then offered them no way to say so. The only exits were to
+  declare a record as a setting, which is a lie the registry then carries, or to
+  rename it `sentinel.*`, which is a storage migration for every install. So the
+  count could never honestly reach zero, and a number that cannot reach zero
+  stops being read.
+
+  This is the idiom the type floor already uses: say why, next to the code. The
+  marker is accepted on the line itself or within 400 characters above it.
+*/
+const SETTINGS_DATA_EXEMPT = 'settings-data-exempt';
+
 let FLEET_SETTINGS = null;
 let DEFAULT_NMEA_TARGET = null;
 try {
@@ -591,6 +630,34 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
     const directUses = [];
     const foreignNames = [];
     const gatewayLiterals = [];
+    const exemptKeys = new Set();
+
+    /*
+      Pass one: every module-level key constant in the app, by name.
+
+      A whole-app map rather than a per-file one, because these are routinely
+      declared in one module and imported into another; following the import
+      would mean resolving module specifiers, and the name is enough. Where two
+      files declare the same name with different values the first wins and the
+      collision is reported, so a wrong resolution is visible rather than quiet.
+    */
+    const keyConstants = new Map();
+    const constantCollisions = [];
+    for (const file of files) {
+      const rel = path.relative(appRoot, file).replace(/\\/g, '/');
+      readText(file).split(/\r?\n/).forEach((line, i) => {
+        const m = KEY_CONSTANT.exec(line);
+        if (!m) return;
+        const [, name, value] = m;
+        if (keyConstants.has(name)) {
+          if (keyConstants.get(name).value !== value) {
+            constantCollisions.push(`${name} is '${keyConstants.get(name).value}' at ${keyConstants.get(name).at} and '${value}' at ${rel}:${i + 1}`);
+          }
+          return;
+        }
+        keyConstants.set(name, { value, at: `${rel}:${i + 1}` });
+      });
+    }
 
     for (const file of files) {
       const rel = path.relative(appRoot, file).replace(/\\/g, '/');
@@ -598,7 +665,13 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 
       let inBlockComment = false;
 
-      readText(file).split(/\r?\n/).forEach((line, i) => {
+      const src = readText(file);
+      // Offset of each line's start, so the exemption lookback can read the 400
+      // characters above a call the same way the type floor does.
+      const lineStarts = [];
+      { let o = 0; for (const l of src.split(/\r?\n/)) { lineStarts.push(o); o += l.length + 1; } }
+
+      src.split(/\r?\n/).forEach((line, i) => {
         const at = `${rel}:${i + 1}`;
 
         /*
@@ -629,10 +702,37 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
         */
         // The first argument only. Matching every quoted string on the line
         // collected the VALUES too, which made a stored '100' look like a key.
-        for (const m of isComment ? [] : line.matchAll(/localStorage\s*\.\s*(?:get|set|remove)Item\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+        //
+        // Two shapes now: the literal, and a SCREAMING_CASE constant resolved
+        // through the app-wide map built above. An identifier that resolves to
+        // nothing is left alone rather than guessed at -- it is a key this check
+        // still cannot see, and pretending otherwise is how the count started
+        // lying in the first place.
+        const keysOnLine = [];
+        if (!isComment) {
+          for (const m of line.matchAll(/localStorage\s*\.\s*(?:get|set|remove)Item\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+            keysOnLine.push(m[1]);
+          }
+          for (const m of line.matchAll(/localStorage\s*\.\s*(?:get|set|remove)Item\s*\(\s*([A-Z][A-Z0-9_]*)\s*[,)]/g)) {
+            const resolved = keyConstants.get(m[1]);
+            if (resolved) keysOnLine.push(resolved.value);
+          }
+        }
+
+        for (const key of keysOnLine) {
           {
-            const key = m[1];
             usedKeys.add(key);
+
+            /*
+              An exemption is per use site, not per key: the reason has to sit
+              next to the code that stores the thing. Read from 400 characters
+              above the line through the end of the line itself, so a comment
+              above the call and a trailing one both count.
+            */
+            const from = Math.max(0, lineStarts[i] - 400);
+            if (src.slice(from, lineStarts[i] + line.length).includes(SETTINGS_DATA_EXEMPT)) {
+              exemptKeys.add(key);
+            }
 
             if (ownerOfLegacyKey.has(`${appKey}:${key}`)) {
               if (!isSettingsModule) directUses.push(`${at} -> ${ownerOfLegacyKey.get(`${appKey}:${key}`)}`);
@@ -683,17 +783,27 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
         `(${DEFAULT_NMEA_TARGET.host}) outside a placeholder or comment: ${some(gatewayLiterals, 4)}`);
     }
 
+    if (constantCollisions.length) {
+      warn('settings', `${app.name}: ${constantCollisions.length} key constant name(s) declared twice with ` +
+        `different values, so the resolution above took the first: ${some(constantCollisions, 2)}`);
+    }
+
     /*
       10d. Flat keys the registry has never heard of.
 
-      Most are cached records or credentials rather than settings, which is the
-      point: this number is the size of the remaining question, and it should
-      only ever go down.
+      This is the size of the remaining QUESTION -- which keys nobody has yet
+      said are settings or not -- rather than a debt. A record or a credential
+      answers it by saying so where it is stored; a setting answers it by being
+      declared. Either way the number goes down, and it can now honestly reach
+      zero, which it could not while a cached voyage list had no way to be
+      anything but undeclared.
     */
-    const undeclared = [...usedKeys].filter((k) => !allLegacyKeys.has(k) && !k.startsWith('sentinel.'));
+    const undeclared = [...usedKeys].filter(
+      (k) => !allLegacyKeys.has(k) && !k.startsWith('sentinel.') && !exemptKeys.has(k));
     if (undeclared.length) {
       warn('settings', `${app.name}: ${undeclared.length} localStorage key(s) not declared in the registry ` +
-        `(cached data and credentials belong here; settings do not): ${some(undeclared, 6)}`);
+        `— declare a setting in @sentinel/settings, or mark a record or credential where it is stored with a ` +
+        `/* ${SETTINGS_DATA_EXEMPT}: why */ comment: ${some(undeclared, 6)}`);
     }
   }
 
