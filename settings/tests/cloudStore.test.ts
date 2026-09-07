@@ -96,7 +96,7 @@ describe('loading', () => {
 
   it('reads the blob and the identity columns as one set of keys', async () => {
     const { client } = fakeClient(VESSEL);
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     expect(store.get('nmea.gateway.host')).toBe('192.168.86.33');
@@ -132,7 +132,7 @@ describe('writing', () => {
     // Read-modify-write would lose whatever another device saved in between --
     // the same whole-document clobber POST /config had to be taught out of.
     const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     await store.set('nmea.gateway.port', '11102');
@@ -147,7 +147,7 @@ describe('writing', () => {
 
   it('writes an identity key to the public vessels row, not into the blob', async () => {
     const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     await store.set('vessel.name', 'Saorsaa');
@@ -162,7 +162,7 @@ describe('writing', () => {
     // Otherwise the screen shows a value nothing is holding, which is the exact
     // shape of "settings appear not to persist".
     const { client } = fakeClient(VESSEL, { failWrites: true });
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     await expect(store.set('nmea.gateway.host', '10.10.10.1')).rejects.toThrow(/permission denied/);
@@ -171,7 +171,7 @@ describe('writing', () => {
 
   it('clears a blob key through the same merge function', async () => {
     const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     await store.clear('nmea.datahub_url');
@@ -183,7 +183,7 @@ describe('writing', () => {
 
   it('clears an identity key by nulling its column', async () => {
     const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     await store.clear('vessel.mmsi');
@@ -196,7 +196,7 @@ describe('writing', () => {
 describe('the whole chain, against the live rows', () => {
   it('reads configuration and identity from their separate tables', async () => {
     const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client);
+    const store = createVesselStore(client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     await store.load();
 
     expect(calls.filter((call) => call.kind === 'select').map((call) => call.table)).toEqual([
@@ -212,7 +212,7 @@ describe('the whole chain, against the live rows', () => {
     const { client: vesselClient } = fakeClient(VESSEL);
 
     const account = createAccountStore(accountClient, 'user-1');
-    const vessel = createVesselStore(vesselClient);
+    const vessel = createVesselStore(vesselClient, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     const device = createDeviceStore(memoryStorage({ 'sentinel.display.night_brightness': '40' }), {
       app: 'harbor',
       registry: FLEET_SETTINGS,
@@ -234,7 +234,7 @@ describe('the whole chain, against the live rows', () => {
 
   it('lets a device override the boat without touching the boat', async () => {
     const { client: vesselClient, calls } = fakeClient(VESSEL);
-    const vessel = createVesselStore(vesselClient);
+    const vessel = createVesselStore(vesselClient, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
     const device = createDeviceStore(memoryStorage(), { app: 'harbor', registry: FLEET_SETTINGS });
 
     const settings = createSettingsStore({ registry: FLEET_SETTINGS, stores: [vessel, device] });
@@ -273,11 +273,11 @@ describe('the offline cache', () => {
 
   it('answers on the very first render, before load() has resolved', async () => {
     const storage = cacheStorage();
-    const first = createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage);
+    const first = createVesselStore(fakeClient(VESSEL).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage);
     await first.load();
 
     // A later boot, same device: the values are there before anything is fetched.
-    const second = createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage);
+    const second = createVesselStore(fakeClient(VESSEL).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage);
     expect(second.loaded).toBe(false);
     expect(second.get('vessel.name')).toBe('Saorsa');
     expect(second.get('nmea.gateway.host')).toBe('192.168.86.33');
@@ -285,26 +285,26 @@ describe('the offline cache', () => {
 
   it('keeps working with no network at all', async () => {
     const storage = cacheStorage();
-    const online = createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage);
+    const online = createVesselStore(fakeClient(VESSEL).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage);
     await online.load();
 
     // Offline: the read fails, and the cached values must survive it. Losing every
     // account and vessel setting the moment a boat leaves wifi would be worse than
     // any staleness.
-    const offline = createVesselStore(fakeClient({}).client, 'sentinel', storage);
+    const offline = createVesselStore(fakeClient({}).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage);
     await expect(offline.load()).resolves.toBe(false);
     expect(offline.get('vessel.name')).toBe('Saorsa');
   });
 
   it('is replaced wholesale when the server answers, so it is never authoritative', async () => {
     const storage = cacheStorage();
-    await createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage).load();
+    await createVesselStore(fakeClient(VESSEL).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage).load();
 
     const renamed = {
       vessel_settings: { settings: { 'nmea.gateway.host': '10.10.10.1' } },
       vessels: { name: 'Saorsaa', mmsi: null, vessel_type: '' },
     };
-    const store = createVesselStore(fakeClient(renamed).client, 'sentinel', storage);
+    const store = createVesselStore(fakeClient(renamed).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage);
     await store.load();
 
     expect(store.get('vessel.name')).toBe('Saorsaa');
@@ -323,6 +323,148 @@ describe('the offline cache', () => {
 
   it('survives a corrupt cache entry rather than failing to construct', () => {
     const storage = cacheStorage({ 'sentinel.cloud.vessel.sentinel': 'not json' });
-    expect(() => createVesselStore(fakeClient(VESSEL).client, 'sentinel', storage)).not.toThrow();
+    expect(() => createVesselStore(fakeClient(VESSEL).client, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }), storage)).not.toThrow();
+  });
+});
+
+/**
+ * Addressing a vessel after website migration 053.
+ *
+ * The row is found by `vessel_id` now, not by `vessel_slug` — the fleet used to
+ * address one hard-coded slug, `'sentinel'`, which was every customer's boat at
+ * once. The slug has not gone away: 053 deliberately kept
+ * `merge_vessel_settings(slug text, …)` at its existing signature, so the merge
+ * RPC is still handed one. Both come from the same resolver, so this package and
+ * `@sentinel/vessel` cannot form different opinions about which boat is meant.
+ */
+function recordingClient() {
+  const matches: Array<{ kind: string; table?: string; fn?: string; match?: unknown; args?: unknown }> = [];
+  const client: SupabaseLike = {
+    from(table: string) {
+      return {
+        select: () => ({
+          match: (m: unknown) => ({
+            maybeSingle: async () => {
+              matches.push({ kind: 'select', table, match: m });
+              return { data: null, error: null };
+            },
+          }),
+        }),
+        update: () => ({
+          match: async (m: unknown) => {
+            matches.push({ kind: 'update', table, match: m });
+            return { error: null };
+          },
+        }),
+      };
+    },
+    rpc: async (fn: string, args?: Record<string, unknown>) => {
+      matches.push({ kind: 'rpc', fn, args });
+      return { data: null, error: null };
+    },
+  };
+  return { client, matches };
+}
+
+const OWN = async () => ({ id: 'v-uuid-1', vesselSlug: 'saorsa-ii' });
+
+describe('addressing the vessel by id', () => {
+  it('reads both tables by uuid, never by the slug', async () => {
+    const { client, matches } = recordingClient();
+    await createVesselStore(client, OWN).load();
+
+    expect(matches.find(m => m.table === 'vessel_settings')?.match).toEqual({ vessel_id: 'v-uuid-1' });
+    expect(matches.find(m => m.table === 'vessels')?.match).toEqual({ id: 'v-uuid-1' });
+    expect(JSON.stringify(matches)).not.toContain('vessel_slug');
+  });
+
+  it('still hands the merge function a slug, because 053 kept that signature', async () => {
+    const { client, matches } = recordingClient();
+    const store = createVesselStore(client, OWN);
+    await store.load();
+    await store.set('nmea.gateway.port', '10110');
+
+    const rpc = matches.find(m => m.kind === 'rpc');
+    expect(rpc?.fn).toBe('merge_vessel_settings');
+    expect((rpc?.args as Record<string, unknown>).slug).toBe('saorsa-ii');
+  });
+
+  it('writes an identity column to the vessel row by uuid', async () => {
+    const { client, matches } = recordingClient();
+    const store = createVesselStore(client, OWN);
+    await store.load();
+    await store.set('vessel.name', 'Saorsa II');
+
+    const update = matches.find(m => m.kind === 'update');
+    expect(update?.table).toBe('vessels');
+    expect(update?.match).toEqual({ id: 'v-uuid-1' });
+  });
+
+  it('resolves once and reuses it, rather than asking on every call', async () => {
+    const { client } = recordingClient();
+    const resolve = vi.fn(OWN);
+    const store = createVesselStore(client, resolve);
+    await store.load();
+    await store.set('nmea.gateway.port', '10110');
+    await store.clear('nmea.gateway.port');
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('when no vessel resolves', () => {
+  it('reads nothing rather than reading some other boat', async () => {
+    const { client, matches } = recordingClient();
+    const loaded = await createVesselStore(client, async () => null).load();
+
+    expect(loaded).toBe(false);
+    expect(matches).toEqual([]);
+  });
+
+  it('refuses a write, naming the setting, instead of failing silently', async () => {
+    const { client } = recordingClient();
+    const store = createVesselStore(client, async () => null);
+    await expect(store.set('vessel.name', 'Saorsa II')).rejects.toThrow(/vessel\.name/);
+  });
+
+  it('tries again next time — offline now is not offline forever', async () => {
+    const { client } = recordingClient();
+    let answer: { id: string; vesselSlug: string } | null = null;
+    const store = createVesselStore(client, async () => answer);
+
+    expect(await store.load()).toBe(false);
+    answer = { id: 'v-uuid-1', vesselSlug: 'saorsa-ii' };
+    await store.load();
+
+    expect(await store.load()).toBe(false); // no row in this fake, but it asked
+  });
+
+  it('still answers from the cache, which is the whole point of having one', async () => {
+    const storage = memoryStorage({ 'sentinel.cloud.vessel': JSON.stringify({ 'vessel.name': 'Saorsa' }) });
+    const { client } = recordingClient();
+
+    expect(createVesselStore(client, async () => null, storage).get('vessel.name')).toBe('Saorsa');
+  });
+});
+
+describe('the cache across the slug-to-uuid move', () => {
+  it('carries the entry written under the old slug-shaped key', () => {
+    // What a device that upgrades while offline actually has on disk.
+    const storage = memoryStorage({
+      'sentinel.cloud.vessel.sentinel': JSON.stringify({ 'vessel.name': 'Saorsa' }),
+    });
+    const { client } = recordingClient();
+
+    expect(createVesselStore(client, OWN, storage).get('vessel.name')).toBe('Saorsa');
+  });
+
+  it('prefers the current key when both exist', () => {
+    const storage = memoryStorage({
+      'sentinel.cloud.vessel': JSON.stringify({ 'vessel.name': 'Newer' }),
+      'sentinel.cloud.vessel.sentinel': JSON.stringify({ 'vessel.name': 'Older' }),
+    });
+    const { client } = recordingClient();
+
+    expect(createVesselStore(client, OWN, storage).get('vessel.name')).toBe('Newer');
   });
 });

@@ -68,7 +68,7 @@ function build(seed: Record<string, string>, rows: Record<string, Record<string,
   const store = storage(seed);
   const { api, merged, updated } = client(rows);
   const account = createAccountStore(api, 'user-1');
-  const vessel = createVesselStore(api);
+  const vessel = createVesselStore(api, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
   const device = createDeviceStore(store, { app: 'ocean', registry: FLEET_SETTINGS });
   const settings = createSettingsStore({ registry: FLEET_SETTINGS, stores: [account, vessel, device] });
   return { store, api, merged, updated, account, vessel, settings };

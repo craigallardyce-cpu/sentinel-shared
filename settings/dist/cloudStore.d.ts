@@ -37,8 +37,14 @@ export interface CloudStoreOptions {
     client: SupabaseLike;
     /** Table holding the row for this layer. */
     table: string;
-    /** How to find the one row — `{ user_id }` or `{ vessel_slug }`. */
-    match: Record<string, string>;
+    /**
+     * How to find the one row — `{ user_id }`, say.
+     *
+     * Omitted only when `address` supplies it at runtime, which is what the vessel
+     * layer does now that a vessel is addressed by a uuid nobody knows until the
+     * server says so.
+     */
+    match?: Record<string, string>;
     /** The jsonb column the settings blob lives in. */
     jsonColumn: string;
     /**
@@ -60,13 +66,31 @@ export interface CloudStoreOptions {
      */
     columnsTable?: {
         table: string;
-        match: Record<string, string>;
+        match?: Record<string, string>;
     };
     /** The server-side merge function, and any fixed arguments it takes. */
     merge: {
         fn: string;
         args?: Record<string, unknown>;
     };
+    /**
+     * Work out which row this store addresses, when that can only be known at
+     * runtime. Resolved once, on first use, and reused thereafter.
+     *
+     * The vessel layer needs it: since website migration 053 a vessel is addressed
+     * by its uuid, and which uuid belongs to the signed-in account is a question
+     * only the server can answer. Returning null means "not resolvable yet" -- no
+     * row is read or written, and the next call tries again, which is the right
+     * behaviour for a device that is simply offline.
+     *
+     * Deliberately consulted inside `load`, `set` and `clear` rather than before
+     * construction. Constructing lazily would be simpler and would break the case
+     * this store exists for: `readCache()` runs synchronously so the layer can
+     * answer on the first render and keep answering with no network. A store that
+     * waited for a round trip before it existed would give a boat with no internet
+     * an empty settings screen for the whole session.
+     */
+    address?: () => Promise<Addressing | null>;
     /**
      * Where to keep the last successful load, so this layer can answer before
      * `load()` resolves and while there is no network.
@@ -80,7 +104,29 @@ export interface CloudStoreOptions {
     cache?: {
         storage: StorageLike;
         prefix?: string;
+        /**
+         * Keys this layer used to cache under, newest first, read once if the
+         * current key holds nothing.
+         *
+         * Needed because the vessel layer's key used to contain the value it
+         * addressed by. Moving from `vessel_slug` to `vessel_id` changes the key, and
+         * without carrying the old one across, a device that upgrades while offline
+         * loses every cached vessel setting and shows declared defaults until it next
+         * reaches the server -- on a boat, possibly the whole season. The cache is
+         * never authoritative, but "not authoritative" is not the same as "safe to
+         * drop on the floor".
+         */
+        legacyKeys?: readonly string[];
     };
+}
+/** Where a lazily-addressed store's row lives, once something has resolved it. */
+export interface Addressing {
+    /** Finds the blob row, e.g. `{ vessel_id: '…' }`. */
+    match: Record<string, string>;
+    /** Finds the mapped-columns row, when `columnsTable` is in play. */
+    identityMatch?: Record<string, string>;
+    /** Extra arguments the merge function needs, e.g. the slug it still takes. */
+    mergeArgs?: Record<string, unknown>;
 }
 export interface CloudStore extends ScopeStore {
     /**
@@ -102,7 +148,6 @@ export declare function createCloudStore(options: CloudStoreOptions): CloudStore
  * `system_config` reached fourteen of them.
  */
 export declare function createAccountStore(client: SupabaseLike, userId: string, cacheStorage?: StorageLike): CloudStore;
-export declare const DEFAULT_VESSEL_SLUG = "sentinel";
 /**
  * The vessel layer: `public.vessels`, one row per boat.
  *
@@ -113,4 +158,7 @@ export declare const DEFAULT_VESSEL_SLUG = "sentinel";
  * it on `vessels` published the gateway address to every signed-in user of the
  * project, which is not a hypothetical: it was verified before being moved.
  */
-export declare function createVesselStore(client: SupabaseLike, vesselSlug?: string, cacheStorage?: StorageLike): CloudStore;
+export declare function createVesselStore(client: SupabaseLike, resolve: () => Promise<{
+    id: string;
+    vesselSlug: string;
+} | null>, cacheStorage?: StorageLike): CloudStore;

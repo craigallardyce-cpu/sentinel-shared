@@ -23,12 +23,11 @@
  * depends on no Supabase library and three apps install nothing new.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_VESSEL_SLUG = void 0;
 exports.createCloudStore = createCloudStore;
 exports.createAccountStore = createAccountStore;
 exports.createVesselStore = createVesselStore;
 function createCloudStore(options) {
-    const { scope, client, table, match, jsonColumn, columns = {}, columnsTable, merge } = options;
+    const { scope, client, table, match = {}, jsonColumn, columns = {}, columnsTable, merge } = options;
     const identity = columnsTable ?? { table, match };
     const hasColumns = Object.keys(columns).length > 0;
     const cache = new Map();
@@ -39,12 +38,29 @@ function createCloudStore(options) {
       in as somebody else, or switching boats, cannot read back the previous
       account's settings from a stale cache.
     */
-    const cacheKey = `${options.cache?.prefix ?? 'sentinel.cloud.'}${scope}.${Object.values(match).join('.')}`;
+    /*
+      Keyed on what is known at construction.
+  
+      A lazily-addressed store has no identity yet -- that is the point -- so its
+      key is the scope alone. That also stops the key moving again the next time
+      the addressing does: one built from the identity changes whenever the
+      identity does, and each such change silently empties the cache on the one
+      layer that has to answer with no network.
+  
+      It does NOT rescue the entry written under the old key. Carrying that across
+      is what `cache.legacyKeys` is for, and the vessel store passes the old name.
+    */
+    const cacheKey = `${options.cache?.prefix ?? 'sentinel.cloud.'}${scope}${options.address ? '' : `.${Object.values(match).join('.')}`}`;
     function readCache() {
         if (!options.cache)
             return;
         try {
-            const raw = options.cache.storage.getItem(cacheKey);
+            let raw = options.cache.storage.getItem(cacheKey);
+            for (const legacy of options.cache.legacyKeys ?? []) {
+                if (raw !== null)
+                    break;
+                raw = options.cache.storage.getItem(legacy);
+            }
             if (!raw)
                 return;
             const parsed = JSON.parse(raw);
@@ -70,6 +86,26 @@ function createCloudStore(options) {
         }
     }
     readCache();
+    /*
+      Resolved once, then reused. A null answer is not cached: it means the client
+      could not reach the server or is not signed in yet, and the next call should
+      try again rather than leave the layer dead for the session.
+    */
+    let addressed = null;
+    async function addressing() {
+        if (!options.address) {
+            return { match, identityMatch: identity.match, mergeArgs: merge.args };
+        }
+        if (addressed)
+            return addressed;
+        try {
+            addressed = await options.address();
+        }
+        catch {
+            addressed = null;
+        }
+        return addressed;
+    }
     const notify = () => {
         for (const listener of listeners)
             listener();
@@ -94,7 +130,10 @@ function createCloudStore(options) {
             try {
                 const next = new Map();
                 let found = false;
-                const blobRow = await client.from(table).select(jsonColumn).match(match).maybeSingle();
+                const at = await addressing();
+                if (!at)
+                    return false; // Not resolvable yet; the cache still answers.
+                const blobRow = await client.from(table).select(jsonColumn).match(at.match).maybeSingle();
                 if (!blobRow.error && blobRow.data) {
                     found = true;
                     const blob = blobRow.data[jsonColumn];
@@ -110,7 +149,7 @@ function createCloudStore(options) {
                     const identityRow = await client
                         .from(identity.table)
                         .select(identityColumns)
-                        .match(identity.match)
+                        .match(at.identityMatch ?? identity.match)
                         .maybeSingle();
                     if (!identityRow.error && identityRow.data) {
                         found = true;
@@ -158,17 +197,20 @@ function createCloudStore(options) {
             const previous = cache.get(key);
             cache.set(key, raw);
             try {
+                const at = await addressing();
+                if (!at)
+                    throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not saved.`);
                 const column = columns[key];
                 if (column) {
                     const { error } = await client
                         .from(identity.table)
                         .update({ [column]: raw, updated_at: new Date().toISOString() })
-                        .match(identity.match);
+                        .match(at.identityMatch ?? identity.match);
                     if (error)
                         throw new Error(error.message ?? String(error));
                 }
                 else {
-                    const { error } = await client.rpc(merge.fn, { ...merge.args, patch: { [key]: raw } });
+                    const { error } = await client.rpc(merge.fn, { ...(at.mergeArgs ?? merge.args), patch: { [key]: raw } });
                     if (error)
                         throw new Error(error.message ?? String(error));
                 }
@@ -190,17 +232,20 @@ function createCloudStore(options) {
             const previous = cache.get(key);
             cache.delete(key);
             try {
+                const at = await addressing();
+                if (!at)
+                    throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not cleared.`);
                 const column = columns[key];
                 if (column) {
                     const { error } = await client
                         .from(identity.table)
                         .update({ [column]: null, updated_at: new Date().toISOString() })
-                        .match(identity.match);
+                        .match(at.identityMatch ?? identity.match);
                     if (error)
                         throw new Error(error.message ?? String(error));
                 }
                 else {
-                    const { error } = await client.rpc(merge.fn, { ...merge.args, remove_keys: [key] });
+                    const { error } = await client.rpc(merge.fn, { ...(at.mergeArgs ?? merge.args), remove_keys: [key] });
                     if (error)
                         throw new Error(error.message ?? String(error));
                 }
@@ -240,7 +285,6 @@ function createAccountStore(client, userId, cacheStorage) {
         cache: cacheStorage ? { storage: cacheStorage } : undefined,
     });
 }
-exports.DEFAULT_VESSEL_SLUG = 'sentinel';
 /**
  * The vessel layer: `public.vessels`, one row per boat.
  *
@@ -251,22 +295,51 @@ exports.DEFAULT_VESSEL_SLUG = 'sentinel';
  * it on `vessels` published the gateway address to every signed-in user of the
  * project, which is not a hypothetical: it was verified before being moved.
  */
-function createVesselStore(client, vesselSlug = exports.DEFAULT_VESSEL_SLUG, cacheStorage) {
+function createVesselStore(client, resolve, cacheStorage) {
     return createCloudStore({
         scope: 'vessel',
         client,
         // Configuration lives apart from the public identity row, because that row is
         // readable by anyone with the shared voyage link.
         table: 'vessel_settings',
-        match: { vessel_slug: vesselSlug },
         jsonColumn: 'settings',
         columns: {
             'vessel.name': 'name',
             'vessel.mmsi': 'mmsi',
             'vessel.type': 'vessel_type',
         },
-        columnsTable: { table: 'vessels', match: { vessel_slug: vesselSlug } },
-        merge: { fn: 'merge_vessel_settings', args: { slug: vesselSlug } },
-        cache: cacheStorage ? { storage: cacheStorage } : undefined,
+        columnsTable: { table: 'vessels' },
+        merge: { fn: 'merge_vessel_settings' },
+        /*
+          Both handles, because the schema still needs both.
+    
+          Migration 053 made `id` the vessel's identity and added `vessel_id` to
+          `vessel_settings`, so the rows are addressed by uuid. It deliberately kept
+          `merge_vessel_settings(slug text, ...)` at its existing signature, so the
+          merge RPC is still given a slug. Pass `resolveOwnVessel` from
+          `@sentinel/vessel`; this package does not resolve a vessel itself, so the
+          two cannot end up with different opinions about which boat is meant.
+        */
+        address: async () => {
+            const own = await resolve();
+            if (!own)
+                return null;
+            return {
+                match: { vessel_id: own.id },
+                identityMatch: { id: own.id },
+                mergeArgs: { slug: own.vesselSlug },
+            };
+        },
+        cache: cacheStorage
+            ? {
+                storage: cacheStorage,
+                /*
+                  `vessel_slug` was part of this layer's cache key until the uuid
+                  replaced it, so the old name is read once -- otherwise a device that
+                  upgrades with no network loses every cached vessel setting.
+                */
+                legacyKeys: ['sentinel.cloud.vessel.sentinel'],
+            }
+            : undefined,
     });
 }

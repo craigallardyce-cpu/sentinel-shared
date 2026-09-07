@@ -36,7 +36,6 @@ export {
   createAccountStore,
   createCloudStore,
   createVesselStore,
-  DEFAULT_VESSEL_SLUG,
 } from './cloudStore.js';
 export type { CloudStore, CloudStoreOptions, SupabaseLike } from './cloudStore.js';
 
