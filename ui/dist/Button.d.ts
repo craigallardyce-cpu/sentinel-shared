@@ -1,5 +1,5 @@
 import React from 'react';
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
+export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'success' | 'alarm' | 'danger' | 'ghost';
 export type ButtonSize = 'dense' | 'sm' | 'md';
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: ButtonVariant;
@@ -21,8 +21,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     active?: boolean;
 }
 /**
- * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY").
- * `primary` is for the one main action on a surface; `danger` for destructive
- * actions; everything else is `secondary` or `ghost`.
+ * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY"),
+ * with one exception: `alarm` labels are the shout they already are on the
+ * screens that raise them.
+ *
+ * `primary` is the one main action on a surface; `accent` a notable secondary
+ * one; `success` a completion; `alarm` acknowledging an alarm; `danger` a
+ * destructive action; everything else `secondary` or `ghost`.
  */
 export declare const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttributes<HTMLButtonElement>>;

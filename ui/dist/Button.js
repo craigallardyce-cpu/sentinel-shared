@@ -2,9 +2,48 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from './cn';
+/*
+  `accent`, `success` and `alarm` were added from evidence rather than taste.
+
+  A drift-checker pass over the three apps found 26 hand-rolled buttons wearing
+  fleet colours, and 11 of them had no correct target here. That is not the apps
+  being lazy: four independent surfaces reached for a solid green, four for a
+  tinted accent, and one for a bright red, because this file offered none of
+  them. A component that does not cover what the fleet actually builds gets
+  worked around, and every workaround is a button that stops following the
+  theme.
+
+  What each replaces, and why it is not one of the existing four:
+
+  * `accent` — a notable action that is not THE action on the surface:
+    HarborSentinel's "Open NMEA Data Monitor", OceanSentinel's log-book
+    presets. All four sites had independently written the same thing
+    (`bg-primary/15 border-primary/40 text-primary`). The only close variant
+    was `active`, which sets `aria-pressed` and would announce an action as a
+    toggle stuck on — a semantic regression, not a visual one, which is why
+    these could not simply be converted.
+
+  * `success` — a completion: VesselKeeper's "mark done" on maintenance tasks
+    and punch-list items, OceanSentinel's preset apply. All four had written
+    `bg-green text-bg-app font-bold`, and all four wrote `hover:bg-green`,
+    which is a hover state that does nothing; the shared one brightens like
+    `primary` does.
+
+  * `alarm` — acknowledging or silencing an alarm, which is not `danger`.
+    `danger` is for a destructive action the owner may not have meant, and is
+    drawn dim and outlined to be resistible. Acknowledging an anchor-drag alarm
+    is the opposite: it wants to be the brightest thing on a dark screen at
+    04:00, found by a hand that is already reaching. HarborSentinel's
+    ACKNOWLEDGE ALARMS had it right at `bg-red text-bg-app` — note the fleet's
+    `--color-red` is the pale #ffb4ab, so this reads as high-contrast rather
+    than as the deep `red-dim` that `danger` fills with.
+*/
 const VARIANT = {
     primary: 'bg-cyan text-bg-app hover:brightness-110 active:brightness-95 shadow-[0_0_12px_var(--color-cyan-glow)]',
     secondary: 'bg-bg-card text-text-primary border border-border-color hover:bg-bg-card-hover hover:border-cyan/50',
+    accent: 'bg-cyan/15 text-cyan border border-cyan/40 hover:bg-cyan/25 active:brightness-95',
+    success: 'bg-green text-bg-app hover:brightness-110 active:brightness-95 shadow-[0_0_12px_var(--color-green-glow)]',
+    alarm: 'bg-red text-bg-app hover:brightness-110 active:brightness-95 shadow-[0_0_12px_var(--color-red-glow)]',
     danger: 'bg-red-dim text-red border border-red/40 hover:bg-red/15',
     ghost: 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-card-hover',
 };
@@ -29,9 +68,13 @@ const SIZE = {
  */
 const ACTIVE = 'bg-cyan-dim border border-cyan text-cyan shadow-[0_0_12px_var(--color-cyan-glow)] hover:bg-cyan-dim';
 /**
- * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY").
- * `primary` is for the one main action on a surface; `danger` for destructive
- * actions; everything else is `secondary` or `ghost`.
+ * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY"),
+ * with one exception: `alarm` labels are the shout they already are on the
+ * screens that raise them.
+ *
+ * `primary` is the one main action on a surface; `accent` a notable secondary
+ * one; `success` a completion; `alarm` acknowledging an alarm; `danger` a
+ * destructive action; everything else `secondary` or `ghost`.
  */
 export const Button = React.forwardRef(function Button({ variant = 'secondary', size = 'md', icon, loading = false, block = false, active, className, children, disabled, type = 'button', ...rest }, ref) {
     return (_jsxs("button", { ref: ref, type: type, disabled: disabled || loading, "aria-pressed": active === undefined ? undefined : active, className: cn('inline-flex items-center justify-center font-medium select-none whitespace-nowrap transition-[background-color,border-color,filter,transform] duration-150', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app', 'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 active:scale-[0.98]', VARIANT[variant], SIZE[size], 
