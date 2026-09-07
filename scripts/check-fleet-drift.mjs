@@ -666,12 +666,25 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
       let inBlockComment = false;
 
       const src = readText(file);
-      // Offset of each line's start, so the exemption lookback can read the 400
-      // characters above a call the same way the type floor does.
-      const lineStarts = [];
-      { let o = 0; for (const l of src.split(/\r?\n/)) { lineStarts.push(o); o += l.length + 1; } }
+      const lines = src.split(/\r?\n/);
 
-      src.split(/\r?\n/).forEach((line, i) => {
+      /*
+        Whether each line was comment, decided as we go, so the exemption
+        lookback can read the WHOLE comment block above a call rather than a
+        fixed window of characters.
+
+        The type floor looks back 400 characters and that was the first thing
+        tried here too. It fails in the one case that matters: an exemption
+        whose reason is worth reading. The four anchor-watch records and the two
+        consent latches both needed a paragraph to explain -- the consent one
+        because the reason it must NOT become a setting is the whole point --
+        and a paragraph is longer than 400 characters, so the marker fell out of
+        its own window and the keys stayed flagged. A rule that punishes the
+        thorough explanation and rewards the terse one is backwards.
+      */
+      const commentFlags = [];
+
+      lines.forEach((line, i) => {
         const at = `${rel}:${i + 1}`;
 
         /*
@@ -691,6 +704,7 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
           inBlockComment = true;
         }
         const isComment = wasInBlockComment || inBlockComment || line.trim().startsWith('//');
+        commentFlags[i] = isComment;
 
         /*
           10a. A registry-owned key still read or written by hand.
@@ -725,14 +739,50 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 
             /*
               An exemption is per use site, not per key: the reason has to sit
-              next to the code that stores the thing. Read from 400 characters
-              above the line through the end of the line itself, so a comment
-              above the call and a trailing one both count.
+              next to the code that stores the thing. The line itself counts, so
+              a trailing marker works, and so does the whole contiguous comment
+              block above it, however long -- blank lines between the comment and
+              the code do not break the association, because people leave them.
             */
-            const from = Math.max(0, lineStarts[i] - 400);
-            if (src.slice(from, lineStarts[i] + line.length).includes(SETTINGS_DATA_EXEMPT)) {
-              exemptKeys.add(key);
+            let text = line;
+            /*
+              Walk up to the comment block that introduces this statement, then
+              read all of it.
+
+              Both halves are load-bearing, and each was found by getting it
+              wrong. Reading only the contiguous comment immediately above meant
+              that of four consecutive getItem lines under one heading, only the
+              first was covered -- yet one reason plainly governs all four.
+              Reading a fixed character window instead meant a reason longer
+              than the window fell out of it. So: skip the handful of code lines
+              the comment introduces, then take the block whole.
+            */
+            /*
+              A more permissive comment test than commentFlags, on purpose.
+
+              The shared tracker exists to stop rules 10a-10c reading
+              commented-out code, and it does not treat a self-closing one-line
+              block comment as a comment at all -- for its purpose that costs
+              nothing. Here it cost four of fifteen markers: every two-line
+              marker was honoured and every one-liner was read as code. Widening
+              the shared flag would change what the other rules count, so this
+              walk uses its own test and leaves that alone.
+            */
+            const commentish = (j) => {
+              if (commentFlags[j]) return true;
+              const t = lines[j].trim();
+              return t.startsWith('//') || t.startsWith('/*') || t.startsWith('*');
+            };
+            let codeLines = 0;
+            for (let j = i - 1; j >= 0; j--) {
+              if (lines[j].trim() === '') continue;
+              if (commentish(j)) {
+                for (; j >= 0 && (commentish(j) || lines[j].trim() === ''); j--) text += lines[j];
+                break;
+              }
+              if (++codeLines > 10) break;
             }
+            if (text.includes(SETTINGS_DATA_EXEMPT)) exemptKeys.add(key);
 
             if (ownerOfLegacyKey.has(`${appKey}:${key}`)) {
               if (!isSettingsModule) directUses.push(`${at} -> ${ownerOfLegacyKey.get(`${appKey}:${key}`)}`);
