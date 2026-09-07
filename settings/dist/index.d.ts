@@ -6,7 +6,7 @@ export { createRegistry, defaultFor, defineSetting } from './registry.js';
 export type { AnyDefinition, AnySpec, Registry } from './registry.js';
 export { createSettingsStore } from './store.js';
 export type { Resolvable, Resolved, SettingsStore, SettingsStoreOptions } from './store.js';
-export { createAccountStore, createCloudStore, createVesselStore, DEFAULT_VESSEL_SLUG, } from './cloudStore.js';
+export { createAccountStore, createCloudStore, createVesselStore, } from './cloudStore.js';
 export type { CloudStore, CloudStoreOptions, SupabaseLike } from './cloudStore.js';
 export { browserStorage, createDeviceStore, createHostStore, DEFAULT_PREFIX } from './deviceStore.js';
 export type { DeviceStore, DeviceStoreOptions, HostStoreOptions, StorageLike } from './deviceStore.js';
