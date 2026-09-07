@@ -67,6 +67,13 @@ export interface AuthScreenProps {
         machineId: string;
     }>;
     onAuthenticated: () => void;
+    /**
+     * A feature key this product needs in order to be useful on a desktop.
+     * When set and the app is running on a desktop, an account whose tier does not
+     * grant it is refused BEFORE a device slot is consumed. Omitted by products
+     * that work fine on a desktop (VesselKeeper), so they are unaffected.
+     */
+    desktopRequiresFeature?: string;
     /** If set, any value under this old key is migrated to accessStorageKey on mount. */
     legacyStorageKey?: string;
     /** If true, shows "Run Offline (Local-Only Mode)" buttons that bypass auth entirely by calling onAuthenticated. */
@@ -93,4 +100,4 @@ export interface AuthScreenProps {
  * Exported so apps can show the remaining allowance alongside their offline indicator.
  */
 export declare function offlineGraceRemaining(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number): number;
-export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, legacyStorageKey, allowOfflineMode, offlineGraceDays }: AuthScreenProps): React.JSX.Element;
+export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays }: AuthScreenProps): React.JSX.Element;
