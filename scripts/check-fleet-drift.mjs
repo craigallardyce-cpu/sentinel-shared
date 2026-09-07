@@ -757,11 +757,27 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
               than the window fell out of it. So: skip the handful of code lines
               the comment introduces, then take the block whole.
             */
+            /*
+              A more permissive comment test than commentFlags, on purpose.
+
+              The shared tracker exists to stop rules 10a-10c reading
+              commented-out code, and it does not treat a self-closing one-line
+              block comment as a comment at all -- for its purpose that costs
+              nothing. Here it cost four of fifteen markers: every two-line
+              marker was honoured and every one-liner was read as code. Widening
+              the shared flag would change what the other rules count, so this
+              walk uses its own test and leaves that alone.
+            */
+            const commentish = (j) => {
+              if (commentFlags[j]) return true;
+              const t = lines[j].trim();
+              return t.startsWith('//') || t.startsWith('/*') || t.startsWith('*');
+            };
             let codeLines = 0;
             for (let j = i - 1; j >= 0; j--) {
               if (lines[j].trim() === '') continue;
-              if (commentFlags[j]) {
-                for (; j >= 0 && (commentFlags[j] || lines[j].trim() === ''); j--) text += lines[j];
+              if (commentish(j)) {
+                for (; j >= 0 && (commentish(j) || lines[j].trim() === ''); j--) text += lines[j];
                 break;
               }
               if (++codeLines > 10) break;
