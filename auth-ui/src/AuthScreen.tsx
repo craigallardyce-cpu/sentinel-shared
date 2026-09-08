@@ -416,12 +416,26 @@ export function AuthScreen({
         try {
           const { machineId, platformName } = await resolveDeviceIdentity(fetchMachineId);
 
-          // Check if this hardware is already registered
+          // A slot belongs to a product, not to a machine, because Android will not give
+          // us a per-machine identity to key one on. Device.getId() returns
+          // Settings.Secure.ANDROID_ID, which Android scopes to the app's signing key, so
+          // two fleet apps on one phone report two unrelated machineIds and nothing in the
+          // payload says they are the same handset. Desktop is the exact opposite:
+          // fetchMachineId() reads real hardware, so three apps on one computer report one
+          // id and share one row.
+          //
+          // Counting a single pool therefore charged the same act differently by platform --
+          // opening a second app cost a slot on a phone and nothing on a desktop -- and the
+          // customer saw an unexplained duplicate rather than a second app. Keying the row
+          // and the count on productId makes the platforms agree: each product carries its
+          // own allowance, and "up to 5 devices" means five per app on whatever hardware
+          // the customer owns.
           const { data: existingDevice, error: devError } = await supabase
             .from('devices')
             .select('id')
             .eq('user_id', userId)
             .eq('device_identifier', machineId)
+            .eq('product_id', productId)
             .maybeSingle();
 
           if (devError) throw devError;
@@ -432,13 +446,15 @@ export function AuthScreen({
               .update({ last_active_at: new Date().toISOString() })
               .eq('id', existingDevice.id);
           } else {
-            const { data: limits, error: limitErr } = await supabase.rpc('get_user_device_limits');
+            const { data: limits, error: limitErr } = await supabase.rpc('get_user_device_limits', {
+              p_product_id: productId
+            });
             if (limitErr) throw limitErr;
 
             if (limits && limits.length > 0) {
               const { active_devices, max_devices } = limits[0];
               if (active_devices >= max_devices) {
-                setError(`Device limit reached. You are using ${active_devices} of ${max_devices} slots. Revoke a device on the Account Status page at marinersentinel.com/account to register this machine.`);
+                setError(`Device limit reached. You are using ${active_devices} of ${max_devices} ${appName} device slots. Revoke a device on the Account Status page at marinersentinel.com/account to register this machine.`);
                 setHasNoSubscription(false);
                 setChecking(false);
                 return;
@@ -450,7 +466,8 @@ export function AuthScreen({
               .insert({
                 user_id: userId,
                 device_identifier: machineId,
-                device_name: platformName
+                device_name: platformName,
+                product_id: productId
               });
 
             if (insErr) throw insErr;

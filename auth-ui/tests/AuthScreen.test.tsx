@@ -78,6 +78,10 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
   } = opts;
 
   let authChangeHandler: ((event: string, session: any) => void) | null = null;
+  // Every builder handed out for `devices`, so a test can read back the filters
+  // the component applied and the row it tried to insert. A slot is now scoped
+  // to a product, and that is only observable in those two places.
+  const deviceBuilders: any[] = [];
 
   const supabase = {
     auth: {
@@ -94,7 +98,11 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
       if (table === 'active_user_subscriptions') return makeQueryBuilder({ data: subscriptions, error: null });
       if (table === 'active_user_bundles') return makeQueryBuilder({ data: bundles, error: null });
       if (table === 'bundle_tier_mappings') return makeQueryBuilder({ data: bundleMappings, error: null });
-      if (table === 'devices') return makeQueryBuilder({ data: devices, error: null });
+      if (table === 'devices') {
+        const builder = makeQueryBuilder({ data: devices, error: null });
+        deviceBuilders.push(builder);
+        return builder;
+      }
       // Verification refreshes the entitlement cache. This table used to throw
       // here, and refreshEntitlements swallows failures by design, so the cache
       // was never written and nothing noticed.
@@ -106,6 +114,7 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
       throw new Error(`Unexpected table: ${table}`);
     }),
     rpc: vi.fn(async () => ({ data: deviceLimits, error: null })),
+    __deviceBuilders: deviceBuilders,
     __triggerAuthChange: (event: string, s: any) => authChangeHandler?.(event, s)
   };
 
@@ -300,6 +309,107 @@ describe('AuthScreen — subscription gating', () => {
     const cached = JSON.parse(storage.getItem('vesselkeeper_access_entitlements')!);
     expect(cached.features).toEqual(['anchor_alarm']);
     expect(cached.fetchedAt).toBeGreaterThan(0);
+  });
+
+  /*
+   * A device slot belongs to a product, not to a machine.
+   *
+   * Android's Device.getId() is Settings.Secure.ANDROID_ID, which is scoped to the
+   * app signing key, so two fleet apps on one phone report two unrelated ids and
+   * nothing says they are one handset; a desktop's fetchMachineId() reads hardware,
+   * so three apps there share one id. A single pool charged those two platforms
+   * differently for the same act, and a customer with the Suite on one phone lost a
+   * slot per app with no way to see why. These three cover the parts of that fix
+   * that are visible from outside the component.
+   */
+  it('registers the device against the product this app sells, and looks it up the same way', async () => {
+    const session = { user: { id: 'user-1' } };
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
+      devices: null
+    });
+    const onAuthenticated = vi.fn();
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Vessel Keeper"
+        appId="VesselKeeper"
+        accessStorageKey="vesselkeeper_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+      />
+    );
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+
+    // The lookup and the insert are separate from('devices') calls, so they are
+    // separate builders.
+    const [lookup] = supabase.__deviceBuilders;
+    expect(lookup.eq).toHaveBeenCalledWith('device_identifier', 'test-machine-id');
+    expect(lookup.eq).toHaveBeenCalledWith('product_id', 'prod-1');
+
+    const inserted = supabase.__deviceBuilders.find((b: any) => b.insert.mock.calls.length > 0);
+    expect(inserted).toBeDefined();
+    expect(inserted.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ device_identifier: 'test-machine-id', product_id: 'prod-1' })
+    );
+  });
+
+  it('asks for the limit of this product, not of the whole account', async () => {
+    const session = { user: { id: 'user-1' } };
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
+      devices: null
+    });
+    const onAuthenticated = vi.fn();
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Vessel Keeper"
+        appId="VesselKeeper"
+        accessStorageKey="vesselkeeper_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+      />
+    );
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    expect(supabase.rpc).toHaveBeenCalledWith('get_user_device_limits', { p_product_id: 'prod-1' });
+  });
+
+  it('names the app in the limit message, because the count is now per app', async () => {
+    const session = { user: { id: 'user-1' } };
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
+      devices: null,
+      deviceLimits: [{ active_devices: 5, max_devices: 5 }]
+    });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Vessel Keeper"
+        appId="VesselKeeper"
+        accessStorageKey="vesselkeeper_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+
+    expect(
+      await screen.findByText(/You are using 5 of 5 Vessel Keeper device slots/)
+    ).toBeInTheDocument();
   });
 
   it('blocks registration and shows an error when the device limit is reached', async () => {
