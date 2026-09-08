@@ -378,6 +378,34 @@ surfaced rather than leaving them in chat. Check the knowledge base for a
 `[NEEDS REVIEW]` tag the change removes (`grep -n "NEEDS REVIEW" 0*.md`); the
 first closing PR claimed there was none and there was.
 
+**This check is the only thing keeping the knowledge base honest, so do it
+properly.** It was done thinly for a week and left six tags describing work that
+had already shipped — the swept-up pass on 2026-09-08 took the file from 19 real
+tags to 12 in one sitting. There is no scheduled sweep and deliberately so: a tag
+goes stale at the moment the work lands, which is here, and a weekly job is a
+slower version of this same check that also has to be maintained. Four things
+that pass make it wrong, all found the hard way:
+
+- **Six of the matches are not tags.** Each file's header carries a legend line
+  explaining the convention (*"`[NEEDS REVIEW]` is decided behaviour the app does
+  not do yet"*). Count those and every number you report is wrong.
+- **Tags come in pairs.** The same fact is stated in the product file and again in
+  `05-troubleshooting.md` — the pairing token, the alarm wording, the share-link
+  check. Resolve both copies together or the docs end up contradicting themselves.
+- **A string in the source is not necessarily a string a customer can see.**
+  VesselKeeper's `handleFetchDocumentContent` still returns a message, is
+  re-exported twice, and is called by nothing. It was one step from being filed
+  into the KB's string list, which would have taught the support agent to
+  recognise a message the app cannot produce.
+- **The roadmap narrows the reading; it does not decide it.** Check it first,
+  because most tags map to an open item and that is cheap. Then read the code
+  anyway for anything whose item is closed, absent or ambiguous — in the week of
+  2026-09-08 the roadmap was wrong in both directions, including items closed as
+  wrongly premised while the code stayed as it was.
+
+Cite `file:line` for every verdict. This feeds customer-facing copy and the
+support agent, so a verdict without evidence is a guess with consequences.
+
 ### Archive the workers
 
 **Archiving spent workers is the coordinator's job, not Craig's** (his instruction,
