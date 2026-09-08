@@ -5,16 +5,97 @@ description: Run a change that spans more than one Mariner Sentinel repository a
 
 # Fleet coordinator
 
-Written from the first two runs (2026-09-04): a dress rehearsal on HarborSentinel
-and the "no product names in NMEA copy" initiative across the website, admin-app
-and docs-kb. Everything below is what actually worked or actually went wrong,
-not a design. Update it after each run.
+Written from the runs since 2026-09-04: a dress rehearsal on HarborSentinel, the
+"no product names in NMEA copy" initiative across the website, admin-app and
+docs-kb, and the single-repo runs since. Everything below is what actually worked
+or actually went wrong, not a design. Update it after each run.
 
 The shape: **you** are Tier 0, one session per initiative, not persistent. You
 never edit app code yourself; you decide, delegate, review and close. Each
 **worker** is a fresh cloud session on one repo that opens one pull request and
 stops. Craig merges, applies migrations and releases. A worker sees nothing of
 your conversation, so everything it needs travels in its brief.
+
+## 0. Put the fleet in scope, before anything else
+
+A cloud session starts with **one repository**: the one it was started from.
+Every other fleet repo is refused by the GitHub tools with
+
+```
+Access denied: repository "craigallardyce-cpu/harborsentinel" is not configured
+for this session. Allowed repositories: craigallardyce-cpu/sentinel-shared
+```
+
+and `/home/user` holds that one checkout and nothing else — so §1's "grep every
+fleet repo", §4's diff reading and §5's merge all fail on their first call until
+this is done. Do it as the first act of a coordinating run, before costing any
+work. (This is the coordinator's own container. It is not the same as a worker's,
+which §3 describes: do not assume either from the other.)
+
+**`list_repos` enumerates what the workspace can reach.** All nine, with the
+casing GitHub holds — `sentinel-shared`, `docs-kb`, `HarborSentinel`,
+`OceanSentinel`, `VesselKeeper`, `MarinerSentinel-Website`, `admin-app`,
+`WatchSchedule`, `NMEADataSimulator`.
+
+### Attaching is cheap; cloning is not. They buy different things
+
+| | `add_repo` alone | `add_repo` + clone |
+|---|---|---|
+| Cost | one call | minutes, and disk |
+| GitHub API reads: `get_file_contents`, `list_commits`, `pull_request_read` (diff, checks, reviews), `list_pull_requests`, `merge_pull_request` | ✅ | ✅ |
+| `git grep` across the tree, `git log -S`, reading history | ❌ | ✅ |
+
+**Attach every repo at the start of the run. Clone only what §1's grep needs.**
+Spawning a worker is `create_session` with a `source_url` (§3) and was not tested
+from an unattached repo — but *reviewing what it opens* is `pull_request_read`,
+and that is refused without the attach. So a session that attaches nothing can
+still delegate and then cannot read what came back, which is the worse half of
+the loop to lose. Attach first and the question does not arise.
+
+Two things this buys immediately:
+
+- **Fleet state in one call per repo, without cloning.** `get_file_contents`
+  returns the head SHA it read from, so a handoff's SHA table can be checked
+  against the live repos before trusting it. All six were confirmed that way on
+  2026-09-08, four of them never cloned.
+- **`search_code` is not a substitute for cloning.** It returns
+  `{"total_count": 0, "incomplete_results": true}` for strings that are certainly
+  present — these private repos are not indexed. Tried twice on HarborSentinel
+  before giving up and cloning; a `total_count: 0` here means *not indexed*, never
+  *not present*, and reading it as the latter would answer §1's question exactly
+  backwards.
+
+### Cloning, when a grep really needs it
+
+```bash
+# ONE at a time. The session's git proxy caps concurrency and a second
+# concurrent clone 429s both. Give it ~10 minutes, not the default timeout.
+git clone --depth 1 https://github.com/craigallardyce-cpu/<repo> /home/user/<repo>
+```
+
+**The clone path is lower-cased**, whatever the repo's own casing —
+`/home/user/harborsentinel`, not `/home/user/HarborSentinel`. The drift checker
+resolves the fleet from *capitalised* siblings, so it sees nothing until you add
+them:
+
+```bash
+ln -sfn /home/user/harborsentinel /home/user/HarborSentinel
+ln -sfn /home/user/oceansentinel /home/user/OceanSentinel
+node /home/user/sentinel-shared/scripts/check-fleet-drift.mjs   # now full-fleet
+```
+
+**A shallow clone degrades history-dependent work silently, and both failures
+look like answers.** `git log -S'<string>'` finds nothing, and the drift
+checker's pin rule falls back to *"pins sentinel-shared@X, which this checkout
+cannot verify is on the remote"* instead of saying whether the pin is actually
+stale. Both were hit on 2026-09-08, and the second reads like a real finding.
+
+```bash
+git -C /home/user/<repo> fetch --depth=200 origin main   # then re-run
+```
+
+Prefer a bounded `--depth` over `--unshallow`: some repos' policy hooks block the
+latter.
 
 ## 1. Find out where the change really lives
 
@@ -367,6 +448,17 @@ repo, not by file, spawn only the repos §1 found, and don't spawn a worker for
 something a grep could settle.
 
 ## What has gone wrong so far
+
+- **A coordinating session spent its first calls discovering it could see one
+  repository.** 2026-09-08: `list_commits` on the three apps and the website all
+  came back "not configured for this session", so the fleet-state table in the
+  handoff could not be checked and §1's grep could not run. Recovered with
+  `add_repo`, but only after the run had already been planned around what could
+  be reached. §0 exists so the next session does this in its first minute instead
+  of its tenth. The same run then read `search_code`'s `total_count: 0` on a
+  private repo as "the string is not there" for a moment before noticing
+  `incomplete_results: true` — the answer that looks most like a finished search
+  is the one this tool gives when it has not searched at all.
 
 - The `@../sentinel-shared/CLAUDE.md` import is *external* and never loads in
   an unattended session; the hook now copies the file into `.claude/rules/`.
