@@ -171,16 +171,26 @@ if (presentApps.length > 1) {
 //    npm marks it extraneous and installs nothing, so it is untidiness, not a
 //    misdescription.
 // ---------------------------------------------------------------------------
-const sharedVersions = new Map(); // @sentinel/x -> version on disk
+/*
+  Every package in this repo, by the name it actually publishes under.
+
+  Keyed off package.json rather than the directory name or a name prefix,
+  because neither holds for all of them: `charts/` is `@mariner-sentinel/charts`,
+  the one package outside the `@sentinel/*` scope. A prefix test excluded it from
+  version alignment and from the lockfile check, and an assumed
+  `@sentinel/${dir.name}` filed its imports under a name no app can depend on --
+  so all three rules passed it in silence, which is the failure direction this
+  checker exists to avoid.
+*/
+const sharedVersions = new Map(); // package name -> version on disk
 for (const entry of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
   const pkgFile = path.join(SHARED_ROOT, entry.name, 'package.json');
   if (!exists(pkgFile)) continue;
   const pkg = readJson(pkgFile);
-  if (typeof pkg.name === 'string' && pkg.name.startsWith('@sentinel/')) {
-    sharedVersions.set(pkg.name, pkg.version);
-  }
+  if (typeof pkg.name === 'string') sharedVersions.set(pkg.name, pkg.version);
 }
+const fleetPackageNames = new Set(sharedVersions.keys());
 
 for (const app of presentApps) {
   // Same sub-root list as section 1: OceanSentinel splits its deps three ways.
@@ -202,7 +212,10 @@ for (const app of presentApps) {
       // Path-keyed entries carry the linked package's name and version;
       // the node_modules/@sentinel/* twins are bare symlink records.
       if (!/(^|\/)sentinel-shared\//.test(key)) continue;
-      if (!entry || typeof entry.name !== 'string' || !entry.name.startsWith('@sentinel/')) continue;
+      // Any named entry under sentinel-shared/ is one of this repo's packages,
+      // whatever scope it publishes under; sharedVersions below is what decides
+      // whether it is still one, so no name prefix is involved.
+      if (!entry || typeof entry.name !== 'string') continue;
       if (!sharedVersions.has(entry.name)) {
         warn('lockfile', `${app.name}: ${rel} records ${entry.name}, which is not a package in sentinel-shared; re-run npm install --legacy-peer-deps to drop it`);
         continue;
@@ -226,25 +239,6 @@ const isNodeBuiltin = (spec) =>
   spec.startsWith('node:') || builtinModules.includes(spec.split('/')[0]);
 
 const sharedImports = new Map(); // package name -> Set(bare imports)
-/*
-  Every package in this repo, by the name it actually publishes under.
-
-  Keyed off package.json rather than the directory name, because the two are not
-  always the same: `charts/` is `@mariner-sentinel/charts`, the one package that
-  does not use the `@sentinel/*` scope. Assuming `@sentinel/${dir.name}` filed
-  its imports under a name no app can ever depend on, so the alias rule below
-  looked the package up, found nothing, and passed it in silence -- the failure
-  direction this checker exists to avoid.
-*/
-const fleetPackageNames = new Set();
-for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
-  if (!dir.isDirectory()) continue;
-  const pkgFile = path.join(SHARED_ROOT, dir.name, 'package.json');
-  if (!exists(pkgFile)) continue;
-  const name = readJson(pkgFile).name;
-  if (typeof name === 'string') fleetPackageNames.add(name);
-}
-
 for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
   if (!dir.isDirectory() || dir.name === 'scripts' || dir.name === '.git') continue;
   const distDir = path.join(SHARED_ROOT, dir.name, 'dist');
