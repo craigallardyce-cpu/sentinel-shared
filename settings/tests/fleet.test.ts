@@ -150,6 +150,41 @@ describe('the settings that had drifted', () => {
     expect(legacy?.ocean).toEqual(['ocean_sentinel_keep_awake']);
   });
 
+  /*
+    The chart preferences are the second pair the two apps named differently,
+    and the pair that was declared for OceanSentinel only -- so HarborSentinel
+    carried them in app code instead (`migrateLegacyChartPrefs`). Both strings
+    are taken from each repo's history, not its current tree: an app stops
+    writing a legacy key the moment it adopts the registry, so the live source
+    cannot tell you what the key was.
+
+    Worth a test rather than a comment because the failure is silent: a wrong
+    or missing alias does not throw, it just leaves the stored preference
+    unreachable, and the customer sees a setting quietly revert.
+  */
+  it('carries both chart preferences for both apps that stored them', () => {
+    const mode = FLEET_SETTINGS.get('chart.mode').legacy;
+    expect(mode?.ocean).toEqual(['vessel_chart_mode']);
+    expect(mode?.harbor).toEqual(['vessel_chart_mode']);
+
+    // The one that differs, and the reason the app-side migration exists.
+    const auto = FLEET_SETTINGS.get('chart.auto_select').legacy;
+    expect(auto?.ocean).toEqual(['vessel_chart_auto']);
+    expect(auto?.harbor).toEqual(['vessel_chart_auto_select']);
+  });
+
+  /*
+    The two apps also encoded the boolean differently, so an alias is only
+    useful if the type reads both spellings.
+  */
+  it('reads both apps\' spellings of the stored chart-follow boolean', () => {
+    const type = FLEET_SETTINGS.get('chart.auto_select').type;
+    expect(type.parse('true')).toBe(true);   // OceanSentinel
+    expect(type.parse('false')).toBe(false);
+    expect(type.parse('1')).toBe(true);      // HarborSentinel
+    expect(type.parse('0')).toBe(false);
+  });
+
   it('holds the boat identity fields only at the vessel layer', () => {
     for (const key of ['vessel.name', 'vessel.mmsi', 'vessel.type']) {
       expect(FLEET_SETTINGS.get(key).scopes, key).toEqual(['vessel']);

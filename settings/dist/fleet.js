@@ -600,7 +600,7 @@ export const FLEET_SETTINGS = createRegistry({
         type: stringType({ maxLength: 64 }),
         default: 'noaa_enc',
         label: 'Base chart',
-        legacy: { ocean: ['vessel_chart_mode'] },
+        legacy: { ocean: ['vessel_chart_mode'], harbor: ['vessel_chart_mode'] },
     }),
     'chart.auto_select': defineSetting({
         scopes: ['device'],
@@ -608,7 +608,15 @@ export const FLEET_SETTINGS = createRegistry({
         default: true,
         label: 'Follow the vessel',
         description: 'Pick the highest-authority chart covering the boat. Choosing one turns this off.',
-        legacy: { ocean: ['vessel_chart_auto'] },
+        /*
+          HarborSentinel's key is not the same string as OceanSentinel's. Both apps
+          wrote this preference before the registry existed, and they named it
+          differently -- checked against each repo's history rather than its current
+          tree, since a legacy key is by definition one the app has stopped writing.
+          The encodings differ too ('true'/'false' in ocean, '1'/'0' in harbor), and
+          boolType reads both.
+        */
+        legacy: { ocean: ['vessel_chart_auto'], harbor: ['vessel_chart_auto_select'] },
     }),
     'chart.orientation': defineSetting({
         scopes: ['device'],
