@@ -182,3 +182,36 @@ test('an aliased bare import in that same package passes', () => {
   });
   assert.doesNotMatch(runChecker(root), /no alias for it/);
 });
+
+/*
+  The lockfile check had the same name-prefix defect as the alias rule: it only
+  considered entries named `@sentinel/…`, so a `@mariner-sentinel/charts` whose
+  recorded version had drifted from the one on disk was passed over in silence.
+  A stale lockfile entry is the documented duplicate-instance class, so silence
+  is the expensive answer here.
+*/
+const lockfileFor = (name, version) => JSON.stringify({
+  name: 'harbor-sentinel',
+  lockfileVersion: 3,
+  packages: { '../sentinel-shared/charts': { name, version } },
+});
+
+test('a drifted version is caught for a package outside the @sentinel scope', () => {
+  const root = fixture({
+    ...sharedPackage('charts', '@mariner-sentinel/charts', 'export const a = 1;\n'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    // sharedPackage writes version 1.0.3; the lockfile disagrees.
+    'HarborSentinel/package-lock.json': lockfileFor('@mariner-sentinel/charts', '1.0.2'),
+  });
+  assert.match(runChecker(root),
+    /records @mariner-sentinel\/charts 1\.0\.2, but sentinel-shared has 1\.0\.3/);
+});
+
+test('a matching version for that package is not reported', () => {
+  const root = fixture({
+    ...sharedPackage('charts', '@mariner-sentinel/charts', 'export const a = 1;\n'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    'HarborSentinel/package-lock.json': lockfileFor('@mariner-sentinel/charts', '1.0.3'),
+  });
+  assert.doesNotMatch(runChecker(root), /@mariner-sentinel\/charts/);
+});
