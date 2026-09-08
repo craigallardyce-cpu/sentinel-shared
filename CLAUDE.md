@@ -111,13 +111,17 @@ reproduce this layout before anything builds.
   | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels`) |
   | `@sentinel/settings` | The settings registry: one declaration per setting, resolved through account, vessel, host and device layers |
   | `@sentinel/lan-pairing` | LAN pairing auth for the two on-boat backends (server-side; not for Vite) |
+  | `@mariner-sentinel/charts` | The nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. Note the scope: this one package is `@mariner-sentinel/*`, not `@sentinel/*` |
 
   The README here describes each one in depth.
 - **`npm install --legacy-peer-deps`** in every app, always. A pre-existing
   Capacitor v7/v8 peer conflict from `@spryrocks/capacitor-socket-connection-plugin`
   fails a plain install outright.
-- **Run the drift checker before and after a change.** From `Projects/` it
-  compares the whole fleet; from an app folder it checks that app only:
+- **Run the drift checker before and after a change.** Its scope comes from the
+  app directories sitting beside `sentinel-shared`, not from the directory you
+  run it in — so on a machine with all three checkouts it is always full-fleet,
+  wherever you stand. The per-app scope is what CI gets, because CI checks out
+  one app and the shared repo and nothing else:
   ```bash
   node sentinel-shared/scripts/check-fleet-drift.mjs
   ```

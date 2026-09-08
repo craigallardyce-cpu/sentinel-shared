@@ -19,6 +19,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { builtinModules } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { findCheckoutRef } from './lib/yaml-scan.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(SHARED_ROOT, '..');
@@ -225,10 +226,32 @@ const isNodeBuiltin = (spec) =>
   spec.startsWith('node:') || builtinModules.includes(spec.split('/')[0]);
 
 const sharedImports = new Map(); // package name -> Set(bare imports)
+/*
+  Every package in this repo, by the name it actually publishes under.
+
+  Keyed off package.json rather than the directory name, because the two are not
+  always the same: `charts/` is `@mariner-sentinel/charts`, the one package that
+  does not use the `@sentinel/*` scope. Assuming `@sentinel/${dir.name}` filed
+  its imports under a name no app can ever depend on, so the alias rule below
+  looked the package up, found nothing, and passed it in silence -- the failure
+  direction this checker exists to avoid.
+*/
+const fleetPackageNames = new Set();
+for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
+  if (!dir.isDirectory()) continue;
+  const pkgFile = path.join(SHARED_ROOT, dir.name, 'package.json');
+  if (!exists(pkgFile)) continue;
+  const name = readJson(pkgFile).name;
+  if (typeof name === 'string') fleetPackageNames.add(name);
+}
+
 for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
   if (!dir.isDirectory() || dir.name === 'scripts' || dir.name === '.git') continue;
   const distDir = path.join(SHARED_ROOT, dir.name, 'dist');
   if (!exists(distDir)) continue;
+  const pkgFile = path.join(SHARED_ROOT, dir.name, 'package.json');
+  const pkgName = exists(pkgFile) ? readJson(pkgFile).name : null;
+  if (typeof pkgName !== 'string') continue;
   const imports = new Set();
   for (const f of walk(distDir)) {
     if (!f.endsWith('.js')) continue;
@@ -240,7 +263,7 @@ for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
     for (const m of src.matchAll(statements)) imports.add(m[1]);
     for (const m of src.matchAll(/\bimport\s+['"]([^'".][^'"]*)['"]/g)) imports.add(m[1]);
   }
-  sharedImports.set(`@sentinel/${dir.name}`, imports);
+  sharedImports.set(pkgName, imports);
 }
 
 for (const app of presentApps) {
@@ -255,7 +278,9 @@ for (const app of presentApps) {
     const p = path.join(ROOT, app.name, sub, 'package.json');
     if (!exists(p)) continue;
     const pkg = readJson(p);
-    for (const d of Object.keys(pkg.dependencies || {})) if (d.startsWith('@sentinel/')) declared.add(d);
+    // Membership, not a name prefix: @mariner-sentinel/charts is a fleet package
+    // too, and a prefix test silently excluded it from this rule entirely.
+    for (const d of Object.keys(pkg.dependencies || {})) if (fleetPackageNames.has(d)) declared.add(d);
   }
   for (const shared of declared) {
     for (const imp of sharedImports.get(shared) || []) {
@@ -413,10 +438,19 @@ const releaseHead = shallow ? null : git([
 for (const app of presentApps) {
   const wf = path.join(ROOT, app.name, '.github/workflows/build.yml');
   if (!exists(wf)) continue;
-  const m = readText(wf).match(/repository:\s*\S*sentinel-shared[\s\S]{0,400}?ref:\s*([0-9a-f]{7,40})/);
-  if (!m) { warn('pin', `${app.name}: shared checkout is not pinned to a SHA`); continue; }
+  // Structural, not a character window: a comment above `ref:` used to make a
+  // correctly pinned workflow report as unpinned. See scripts/lib/yaml-scan.mjs.
+  const ref = findCheckoutRef(readText(wf), 'sentinel-shared');
+  if (!ref) { warn('pin', `${app.name}: shared checkout is not pinned to a SHA`); continue; }
+  if (!/^[0-9a-f]{7,40}$/.test(ref)) {
+    // Pinned to something, just not to a commit. The old rule matched only hex
+    // and so reported this identically to no pin at all, which sent whoever
+    // read it looking for a missing line rather than a wrong one.
+    warn('pin', `${app.name}: shared checkout is pinned to '${ref}' rather than a SHA, so a release builds against whatever that ref points at when the tag is cut`);
+    continue;
+  }
 
-  const pin = m[1];
+  const pin = ref;
   if (!publishedHead) {
     warn('pin', `${app.name}: cannot resolve sentinel-shared origin/main, so the pin ${pin.slice(0, 7)} could not be checked`);
     continue;
