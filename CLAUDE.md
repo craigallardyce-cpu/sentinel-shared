@@ -30,7 +30,9 @@ doing anything else, decide from the shape of the task:
   for a single-repo change costs more than the change (see the skill's costs).
 - **Not sure which**: grep every fleet repo for where the change really lives
   (the skill's §1) before deciding. The roadmap's wording has pointed at the
-  wrong surface before.
+  wrong surface before. A cloud session can reach only the repo it started
+  from until it attaches the others, so do the skill's §0 first — otherwise
+  that grep silently covers one repository.
 
 Either way, the rest of this file applies.
 
