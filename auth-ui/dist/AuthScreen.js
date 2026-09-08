@@ -292,29 +292,38 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
                 // Enforce hardware device limits
                 try {
                     const { machineId, platformName } = await resolveDeviceIdentity(fetchMachineId);
-                    // A slot belongs to a product, not to a machine, because Android will not give
-                    // us a per-machine identity to key one on. Device.getId() returns
-                    // Settings.Secure.ANDROID_ID, which Android scopes to the app's signing key, so
-                    // two fleet apps on one phone report two unrelated machineIds and nothing in the
-                    // payload says they are the same handset. Desktop is the exact opposite:
-                    // fetchMachineId() reads real hardware, so three apps on one computer report one
-                    // id and share one row.
+                    // A slot is a DEVICE, held across the whole fleet: the subscription covers
+                    // every app it includes, so five devices means five machines that may run
+                    // any of them, not five per app.
                     //
-                    // Counting a single pool therefore charged the same act differently by platform --
-                    // opening a second app cost a slot on a phone and nothing on a desktop -- and the
-                    // customer saw an unexplained duplicate rather than a second app. Keying the row
-                    // and the count on productId makes the platforms agree: each product carries its
-                    // own allowance, and "up to 5 devices" means five per app on whatever hardware
-                    // the customer owns.
-                    const { data: existingDevice, error: devError } = await supabase
+                    // The identifier carries that. On the desktop fetchMachineId() reads real
+                    // hardware, so every fleet app on one computer reports the same value. On
+                    // native, Device.getId() is Settings.Secure.ANDROID_ID, which Android scopes
+                    // to the app's SIGNING KEY -- not to the package -- so apps signed with one
+                    // key share it and apps signed with different keys do not. The fleet signs
+                    // with one keystore, so one handset reports one machineId to all three apps.
+                    // That is load-bearing: if the three ever ship under different app signing
+                    // keys (Play App Signing assigns one per app unless told otherwise), a single
+                    // phone starts reporting three identifiers and this count silently becomes
+                    // per-app again.
+                    //
+                    // Rows stay per (device, product) so the account page can show which apps a
+                    // device runs. Only the COUNT is fleet-wide, and it counts distinct
+                    // identifiers -- see get_user_device_limits (website migration 056).
+                    const { data: knownRows, error: devError } = await supabase
                         .from('devices')
-                        .select('id')
+                        .select('id, product_id')
                         .eq('user_id', userId)
-                        .eq('device_identifier', machineId)
-                        .eq('product_id', productId)
-                        .maybeSingle();
+                        .eq('device_identifier', machineId);
                     if (devError)
                         throw devError;
+                    const existingDevice = (knownRows || []).find((r) => r.product_id === productId);
+                    // Any row at all means this hardware already holds one of the account's
+                    // slots. Registering it for a further app must therefore skip the limit
+                    // check entirely: a phone that is already one of five devices would
+                    // otherwise be refused the moment it opened the fourth fleet app, having
+                    // been counted against a ceiling it is itself part of.
+                    const deviceAlreadyCounted = (knownRows || []).length > 0;
                     if (existingDevice) {
                         await supabase
                             .from('devices')
@@ -322,18 +331,18 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
                             .eq('id', existingDevice.id);
                     }
                     else {
-                        const { data: limits, error: limitErr } = await supabase.rpc('get_user_device_limits', {
-                            p_product_id: productId
-                        });
-                        if (limitErr)
-                            throw limitErr;
-                        if (limits && limits.length > 0) {
-                            const { active_devices, max_devices } = limits[0];
-                            if (active_devices >= max_devices) {
-                                setError(`Device limit reached. You are using ${active_devices} of ${max_devices} ${appName} device slots. Revoke a device on the Account Status page at marinersentinel.com/account to register this machine.`);
-                                setHasNoSubscription(false);
-                                setChecking(false);
-                                return;
+                        if (!deviceAlreadyCounted) {
+                            const { data: limits, error: limitErr } = await supabase.rpc('get_user_device_limits');
+                            if (limitErr)
+                                throw limitErr;
+                            if (limits && limits.length > 0) {
+                                const { active_devices, max_devices } = limits[0];
+                                if (active_devices >= max_devices) {
+                                    setError(`Device limit reached. You are using ${active_devices} of ${max_devices} device slots. Revoke a device on the Account Status page at marinersentinel.com/account to register this one.`);
+                                    setHasNoSubscription(false);
+                                    setChecking(false);
+                                    return;
+                                }
                             }
                         }
                         const { error: insErr } = await supabase

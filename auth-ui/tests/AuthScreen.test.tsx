@@ -312,17 +312,16 @@ describe('AuthScreen — subscription gating', () => {
   });
 
   /*
-   * A device slot belongs to a product, not to a machine.
+   * A device slot is a DEVICE, across the whole fleet.
    *
-   * Android's Device.getId() is Settings.Secure.ANDROID_ID, which is scoped to the
-   * app signing key, so two fleet apps on one phone report two unrelated ids and
-   * nothing says they are one handset; a desktop's fetchMachineId() reads hardware,
-   * so three apps there share one id. A single pool charged those two platforms
-   * differently for the same act, and a customer with the Suite on one phone lost a
-   * slot per app with no way to see why. These three cover the parts of that fix
-   * that are visible from outside the component.
+   * The subscription covers every app it includes, so five devices means five
+   * machines that may run any of them. The identifier carries that: desktop
+   * reads real hardware, and Android's ANDROID_ID is scoped to the signing key
+   * rather than the package, so the fleet's one keystore gives one handset one
+   * value in all three apps. Rows stay per (device, product) so the account
+   * page can show which apps a device runs; only the count is fleet-wide.
    */
-  it('registers the device against the product this app sells, and looks it up the same way', async () => {
+  it('records which app registered the device, and looks the device up across all of them', async () => {
     const session = { user: { id: 'user-1' } };
     const supabase = makeMockSupabase({
       session,
@@ -346,11 +345,11 @@ describe('AuthScreen — subscription gating', () => {
 
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
 
-    // The lookup and the insert are separate from('devices') calls, so they are
-    // separate builders.
+    // The lookup is by hardware alone -- narrowing it to this product would hide
+    // the rows that prove the device already holds a slot.
     const [lookup] = supabase.__deviceBuilders;
     expect(lookup.eq).toHaveBeenCalledWith('device_identifier', 'test-machine-id');
-    expect(lookup.eq).toHaveBeenCalledWith('product_id', 'prod-1');
+    expect(lookup.eq).not.toHaveBeenCalledWith('product_id', 'prod-1');
 
     const inserted = supabase.__deviceBuilders.find((b: any) => b.insert.mock.calls.length > 0);
     expect(inserted).toBeDefined();
@@ -359,7 +358,7 @@ describe('AuthScreen — subscription gating', () => {
     );
   });
 
-  it('asks for the limit of this product, not of the whole account', async () => {
+  it('asks for the account-wide limit, with no product argument', async () => {
     const session = { user: { id: 'user-1' } };
     const supabase = makeMockSupabase({
       session,
@@ -382,10 +381,52 @@ describe('AuthScreen — subscription gating', () => {
     );
 
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
-    expect(supabase.rpc).toHaveBeenCalledWith('get_user_device_limits', { p_product_id: 'prod-1' });
+    expect(supabase.rpc).toHaveBeenCalledWith('get_user_device_limits');
   });
 
-  it('names the app in the limit message, because the count is now per app', async () => {
+  /*
+   * The trap this pair exists to catch.
+   *
+   * A phone that is already one of the account's five devices would, on a naive
+   * check, be refused the moment it opened a fourth fleet app: active_devices
+   * comes back 5 of 5 and the new row looks like a sixth device. It is not --
+   * the hardware is already inside that five. So an identifier the account
+   * already knows skips the ceiling entirely, and only genuinely new hardware
+   * is measured against it.
+   */
+  it('registers a further app on a device the account already knows, even at the limit', async () => {
+    const session = { user: { id: 'user-1' } };
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
+      devices: [{ id: 'row-harbor', product_id: 'prod-other' }],
+      deviceLimits: [{ active_devices: 5, max_devices: 5 }]
+    });
+    const onAuthenticated = vi.fn();
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Vessel Keeper"
+        appId="VesselKeeper"
+        accessStorageKey="vesselkeeper_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+      />
+    );
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    // Not even asked: the ceiling is irrelevant to hardware already inside it.
+    expect(supabase.rpc).not.toHaveBeenCalledWith('get_user_device_limits');
+    const inserted = supabase.__deviceBuilders.find((b: any) => b.insert.mock.calls.length > 0);
+    expect(inserted.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ device_identifier: 'test-machine-id', product_id: 'prod-1' })
+    );
+  });
+
+  it('does not name an app in the limit message, because the count is the account’s', async () => {
     const session = { user: { id: 'user-1' } };
     const supabase = makeMockSupabase({
       session,
@@ -407,9 +448,9 @@ describe('AuthScreen — subscription gating', () => {
       />
     );
 
-    expect(
-      await screen.findByText(/You are using 5 of 5 Vessel Keeper device slots/)
-    ).toBeInTheDocument();
+    const msg = await screen.findByText(/You are using 5 of 5 device slots/);
+    expect(msg).toBeInTheDocument();
+    expect(msg.textContent).not.toMatch(/Vessel Keeper device slots/);
   });
 
   it('blocks registration and shows an error when the device limit is reached', async () => {
