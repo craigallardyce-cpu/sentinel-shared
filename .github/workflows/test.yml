@@ -12,6 +12,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The drift checker gates all three apps' CI and had no test of any kind, so
+  # its own defects surfaced only as a count that "did not move as far as
+  # expected" -- three times on 2026-09-07 alone. It is not an npm package and
+  # has no package.json, so it sits outside the matrix below.
+  scripts:
+    name: scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # node:test, so this job installs nothing and cannot drift from the
+      # runtime the checker itself runs on. The glob is required: `node --test
+      # scripts/` treats a bare directory as a module to execute and dies with
+      # MODULE_NOT_FOUND rather than searching it.
+      - name: Test
+        run: node --test "scripts/**/*.test.mjs"
+
   test:
     name: ${{ matrix.package }}
     runs-on: ubuntu-latest

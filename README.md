@@ -29,6 +29,7 @@ Projects/
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
+| `@mariner-sentinel/charts` | Nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. **Note the scope** — this is the one package published as `@mariner-sentinel/*` rather than `@sentinel/*`, which is a real trap: tooling that matched packages by the `@sentinel/` prefix skipped it entirely until 2026-09-08. See `charts/README.md` | see `charts/README.md` |
 
 
 ## `@sentinel/theme`
@@ -273,7 +274,9 @@ three apps keep their own persistence, which is duplication but not a defect.
 
 | Path | What it is |
 |---|---|
-| `scripts/check-fleet-drift.mjs` | Drift checker. Run from `Projects/` for the whole fleet, or from an app for that app only. Also runs in each app's CI on every push. |
+| `scripts/check-fleet-drift.mjs` | Drift checker. Its scope comes from the app directories beside `sentinel-shared`, not from where you run it, so a machine with all three checkouts always gets the full fleet. The per-app scope is CI's, which checks out one app and this repo. Also runs in each app's CI on every push. |
+| `scripts/lib/` | Matching helpers the checker uses, kept separate so they can be unit tested. |
+| `scripts/**/*.test.mjs` | Tests for the checker, on `node:test` — no install, no dependencies. Run them with `node --test "scripts/**/*.test.mjs"`; the quoted glob is required, as `node --test scripts/` tries to execute the directory as a module. |
 | `skills/sentinel-check/SKILL.md` | Canonical source for the `/sentinel-check` Claude Code skill. |
 
 The skill is **not** picked up from this repo automatically — copy it to your user-level
