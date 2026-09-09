@@ -268,6 +268,15 @@ for a client half whose migration lives there.
 The coordinator has the same problem. Your own siblings go stale under you while
 you review, so `git fetch` before you read anything off one, and never quote a
 sibling's file as current without it.
+
+**And your own container usually has no siblings at all**, which is a different
+thing from stale: a coordinating session started on `sentinel-shared` holds that
+one checkout, so `check-fleet-drift.mjs` exits before any rule runs rather than
+reporting a scope. Do not read that as the fleet being clean, and do not clone
+three apps to get around it — say in the PR that the checker was not run here and
+name what did exercise the change (its own tests, and the workers' runs in
+containers that do have the siblings). Claiming a green drift check you did not
+get is the §4 mistake in its most quotable form.
 ### The brief
 
 Self-contained, in this order. Copy the shape; fill in the specifics.
@@ -449,6 +458,21 @@ The first Sonnet worker, 2026-09-05:
 | Worker | Model | Cost | Wall-clock |
 |---|---|---|---|
 | Three pinned copy strings in one file, lint + build | Sonnet 5 | $0.47 | 1m 40s |
+
+Three Sonnet workers in parallel, 2026-09-09 — the same two-line lockfile change
+in each app, spawned together and all three idle inside four minutes:
+
+| Worker | Model | Cost | Wall-clock |
+|---|---|---|---|
+| HarborSentinel lockfile version, lint + test + build + drift | Sonnet 5 | $0.53 | 2m 35s |
+| VesselKeeper lockfile version, lint + test + build + drift | Sonnet 5 | $0.44 | 2m 17s |
+| OceanSentinel lockfile version, three package roots, build + drift | Sonnet 5 | $0.70 | 3m 32s |
+
+$1.67 for the set, and all three diffs came back byte-identical in shape: one
+file, two lines, nothing else moved. That is what a fully pinned brief buys, and
+it is the shape §3's table means by mechanical. OceanSentinel costs half again as
+much as the other two for the same edit, because its three package roots have to
+be installed and its brief has to say which of them is out of scope.
 
 The first Opus worker at real scope, 2026-09-06:
 

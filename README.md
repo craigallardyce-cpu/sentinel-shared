@@ -275,6 +275,7 @@ three apps keep their own persistence, which is duplication but not a defect.
 | Path | What it is |
 |---|---|
 | `scripts/check-fleet-drift.mjs` | Drift checker. Its scope comes from the app directories beside `sentinel-shared`, not from where you run it, so a machine with all three checkouts always gets the full fleet. The per-app scope is CI's, which checks out one app and this repo. Also runs in each app's CI on every push. |
+| `fleet-version.json` | The one fleet version the three apps release on. The drift checker compares each app's root `package.json` against it, which is what lets version alignment run in an app's CI, where only that app and this repo are checked out. Bump it in the same set as the apps' own versions. |
 | `scripts/lib/` | Matching helpers the checker uses, kept separate so they can be unit tested. |
 | `scripts/**/*.test.mjs` | Tests for the checker, on `node:test` — no install, no dependencies. Run them with `node --test "scripts/**/*.test.mjs"`; the quoted glob is required, as `node --test scripts/` tries to execute the directory as a module. |
 | `skills/sentinel-check/SKILL.md` | Canonical source for the `/sentinel-check` Claude Code skill. |
