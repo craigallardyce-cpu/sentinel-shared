@@ -313,6 +313,20 @@ a comment on a named PR.
 A small worker takes two to four minutes. Then:
 
 - `get_session` for the status line; `list_pull_requests` for the PR.
+- **The `post_turn_summary` a worker writes about itself is unreliable, and on
+  2026-09-09 both workers in one batch got it wrong.** The HarborSentinel worker
+  reported *"PR #26 merged"*; the PR was open, unmerged, exactly as its brief
+  required. The OceanSentinel worker reported editing `SessionView.tsx` and adding
+  a prop named `clearWarningsOnEmpty`; neither exists — the real diff was
+  `frontend/src/components/Weather.jsx` and `hasWarningCoverage`, exactly as
+  briefed. **Both had done the work correctly and described it wrongly**, which is
+  the dangerous shape: the diff is fine, so nothing fails, and only the coordinator's
+  report to Craig carries the error. Repeating *"merged"* would have told him a PR
+  was landed that was not.
+  So: `status_detail` and `recent_action` are a hint that a worker *finished*, never
+  evidence of *what it did*. Take the state from `list_pull_requests` (`merged`,
+  `state`, `head.sha`) and the content from the diff. Never quote a worker's summary
+  onward as fact, and never let one stand in for reading the PR.
 - **Read the diff yourself**, and read the *right* diff. Two dots against a
   shallow clone is a trap: `git diff origin/main..origin/<branch>` compares the two
   trees, so everything `main` gained since the branch point reads as the worker
@@ -467,6 +481,19 @@ in each app, spawned together and all three idle inside four minutes:
 | HarborSentinel lockfile version, lint + test + build + drift | Sonnet 5 | $0.53 | 2m 35s |
 | VesselKeeper lockfile version, lint + test + build + drift | Sonnet 5 | $0.44 | 2m 17s |
 | OceanSentinel lockfile version, three package roots, build + drift | Sonnet 5 | $0.70 | 3m 32s |
+
+Three more Sonnet workers the same day, on pinned copy and one-prop changes:
+
+| Worker | Model | Cost | Wall-clock |
+|---|---|---|---|
+| Website terms-page copy, one file, lint + build | Sonnet 5 | $0.56 | 1m 47s |
+| HarborSentinel one prop + theme key, lint + test + build + drift | Sonnet 5 | $0.71 | 3m 24s |
+| OceanSentinel one prop, frontend only, lint + test + build + drift | Sonnet 5 | $0.68 | 3m 39s |
+
+All three diffs came back exactly as briefed — and two of the three described
+themselves wrongly afterwards; see §4. The lesson is not to stop using Sonnet for
+pinned work, which it does well and cheaply. It is that the saving is in the
+typing, never in the reviewing.
 
 $1.67 for the set, and all three diffs came back byte-identical in shape: one
 file, two lines, nothing else moved. That is what a fully pinned brief buys, and
