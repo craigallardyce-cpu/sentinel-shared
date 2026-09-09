@@ -15,8 +15,29 @@ export interface UpdatePanelProps {
  * "EXTRACTING & COMPILING…".
  */
 export function UpdatePanel({ updater, className }: UpdatePanelProps) {
-  const { state, check, install, isElectron } = updater;
+  const { state, check, install, isElectron, canCheck } = updater;
   const busy = state.status === 'checking' || state.status === 'updating';
+
+  /*
+    A phone with no backend has nothing to ask and no auto-updater, so the panel
+    is the installed version and nothing else: no Check button, no status line,
+    no error. It used to offer a check that failed every time and reported
+    "Could not reach the update server." — a fault the customer could neither
+    cause nor fix, for a server that is not meant to exist. Updates on a phone
+    arrive through the store.
+
+    The version stays because it is the one thing here a customer has a use for:
+    it is what they read out when reporting a problem.
+  */
+  if (!canCheck) {
+    return (
+      <div className={className}>
+        <p className="text-sm text-text-primary">
+          Version <span className="font-mono">{state.currentVersion || '—'}</span>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={className}>
