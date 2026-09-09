@@ -36,12 +36,35 @@ export interface AlertsPanelProps {
      * forecast in full — a button that opens a copy of what is on screen is just noise.
      */
     showBulletinButton?: boolean;
+    /**
+     * Whether any warning source covers this position at all.
+     *
+     * The fleet has exactly one warning source, NWS, and it stops at the US
+     * border — six regions, see `isInsideNwsCoverage` in `@sentinel/weather`.
+     * Outside them nothing is queried and `alerts` comes back empty, which is
+     * indistinguishable from a genuinely quiet forecast area.
+     *
+     * That is the whole reason this prop exists. An empty `alerts` array used to
+     * render a green **Clear** badge and the words "No active weather warnings or
+     * advisories posted for this region" — an affirmative all-clear for water
+     * nobody had checked. A boat in the Mediterranean was told its hazards were
+     * clear by a panel that had asked no one.
+     *
+     * Pass `false` where the position is outside coverage and the panel says so
+     * instead. **Defaults to `true`**, so a host that has not been updated keeps
+     * its current behaviour rather than silently claiming no coverage.
+     */
+    hasWarningCoverage?: boolean;
     theme?: {
         alertsCardClass?: string;
         alertsCardAlertsActive?: string;
         alertsCardAlertsClear?: string;
+        /** Card tint where no warning source covers the position; neither alarm nor all-clear. */
+        alertsCardNoCoverage?: string;
         badgeActiveAlerts?: string;
         badgeClearAlerts?: string;
+        /** Badge for the same state. Must not read as reassurance. */
+        badgeNoCoverage?: string;
         textColorMuted?: string;
         textColorPrimary?: string;
         textColorSecondary?: string;
@@ -55,4 +78,4 @@ export interface AlertsPanelProps {
         timelineTheme?: any;
     };
 }
-export default function AlertsPanel({ weatherData, lastSync, tempUnit, showBulletinButton, theme }: AlertsPanelProps): React.JSX.Element | null;
+export default function AlertsPanel({ weatherData, lastSync, tempUnit, showBulletinButton, hasWarningCoverage, theme }: AlertsPanelProps): React.JSX.Element | null;
