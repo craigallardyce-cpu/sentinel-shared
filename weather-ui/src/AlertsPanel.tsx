@@ -43,12 +43,35 @@ export interface AlertsPanelProps {
    * forecast in full — a button that opens a copy of what is on screen is just noise.
    */
   showBulletinButton?: boolean;
+  /**
+   * Whether any warning source covers this position at all.
+   *
+   * The fleet has exactly one warning source, NWS, and it stops at the US
+   * border — six regions, see `isInsideNwsCoverage` in `@sentinel/weather`.
+   * Outside them nothing is queried and `alerts` comes back empty, which is
+   * indistinguishable from a genuinely quiet forecast area.
+   *
+   * That is the whole reason this prop exists. An empty `alerts` array used to
+   * render a green **Clear** badge and the words "No active weather warnings or
+   * advisories posted for this region" — an affirmative all-clear for water
+   * nobody had checked. A boat in the Mediterranean was told its hazards were
+   * clear by a panel that had asked no one.
+   *
+   * Pass `false` where the position is outside coverage and the panel says so
+   * instead. **Defaults to `true`**, so a host that has not been updated keeps
+   * its current behaviour rather than silently claiming no coverage.
+   */
+  hasWarningCoverage?: boolean;
   theme?: {
     alertsCardClass?: string;
     alertsCardAlertsActive?: string;
     alertsCardAlertsClear?: string;
+    /** Card tint where no warning source covers the position; neither alarm nor all-clear. */
+    alertsCardNoCoverage?: string;
     badgeActiveAlerts?: string;
     badgeClearAlerts?: string;
+    /** Badge for the same state. Must not read as reassurance. */
+    badgeNoCoverage?: string;
     textColorMuted?: string;
     textColorPrimary?: string;
     textColorSecondary?: string;
@@ -68,6 +91,7 @@ export default function AlertsPanel({
   lastSync, 
   tempUnit,
   showBulletinButton = true,
+  hasWarningCoverage = true,
   theme
 }: AlertsPanelProps) {
   const [showBulletin, setShowBulletin] = useState(false);
@@ -76,6 +100,13 @@ export default function AlertsPanel({
   if (!weatherData) return null;
 
   const hasAlerts = weatherData.alerts && weatherData.alerts.length > 0;
+  /*
+    Three states, not two. "No warnings" and "no warning source" look identical
+    in the data and must never look identical on screen: only the first is an
+    all-clear. An active warning still shows through if one somehow arrives, so
+    a host that passes the flag wrongly under-claims rather than hides a hazard.
+  */
+  const noCoverage = !hasAlerts && !hasWarningCoverage;
 
   // Ocean Sentinel styles as defaults
   const alertsCardClass = theme?.alertsCardClass || 'p-3 rounded-lg border flex flex-col gap-2 relative group overflow-hidden';
@@ -83,6 +114,8 @@ export default function AlertsPanel({
   const alertsCardAlertsClear = theme?.alertsCardAlertsClear || 'bg-green/5 border-green/20';
   const badgeActiveAlerts = theme?.badgeActiveAlerts || 'bg-red/10 border-red/30 text-red';
   const badgeClearAlerts = theme?.badgeClearAlerts || 'text-green bg-green/10 border-green/20';
+  const alertsCardNoCoverage = theme?.alertsCardNoCoverage || 'bg-warning/5 border-warning/20';
+  const badgeNoCoverage = theme?.badgeNoCoverage || 'text-warning bg-warning/10 border-warning/30';
   const textColorMuted = theme?.textColorMuted || 'text-text-muted';
   const textColorPrimary = theme?.textColorPrimary || 'text-text-primary';
   const textColorSecondary = theme?.textColorSecondary || 'text-text-secondary';
@@ -98,7 +131,7 @@ export default function AlertsPanel({
   return (
     <>
       {/* Marine Alerts Card */}
-      <div className={`${alertsCardClass} ${hasAlerts ? alertsCardAlertsActive : alertsCardAlertsClear}`}>
+      <div className={`${alertsCardClass} ${hasAlerts ? alertsCardAlertsActive : noCoverage ? alertsCardNoCoverage : alertsCardAlertsClear}`}>
         <div className={`flex flex-col gap-1.5 border-b pb-2 ${borderDividerClass}`}>
           <div className="flex items-center justify-between">
             <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>Marine Warnings</span>
@@ -108,6 +141,10 @@ export default function AlertsPanel({
                   <ShieldAlert size={10} className={textColorRed} />
                   <span className="text-[13px] font-black font-mono uppercase">{weatherData.alerts!.length} ACTIVE</span>
                 </div>
+              ) : noCoverage ? (
+                <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeNoCoverage}`}>
+                  No coverage
+                </span>
               ) : (
                 <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeClearAlerts}`}>
                   Clear
@@ -136,6 +173,10 @@ export default function AlertsPanel({
                 <span className={`text-[13px] block ${textColorMuted}`}>+{weatherData.alerts!.length - 2} more warnings active</span>
               )}
             </div>
+          ) : noCoverage ? (
+            <p className={`${textColorMuted} text-[13px] italic text-left`}>
+              No warning service covers this position. This is not an all-clear — warnings may be in force and this app cannot see them. Use NAVTEX or SafetyNET.
+            </p>
           ) : (
             <p className={`${textColorMuted} text-[13px] italic text-left`}>No active weather warnings or advisories posted for this region.</p>
           )}
@@ -340,6 +381,18 @@ export default function AlertsPanel({
 
                     </div>
                   ) : (
+                    noCoverage ? (
+                      <div className="p-10 bg-warning/5 border border-warning/30 rounded-2xl text-center space-y-2 select-none">
+                        <Info className="w-8 h-8 mx-auto text-warning" />
+                        <h4 className="text-xs font-black uppercase tracking-widest text-warning">Outside Warning Coverage</h4>
+                        <p className={`text-[13px] font-mono tracking-wide ${textColorMuted}`}>
+                          Severe-weather warnings come from the US National Weather Service and are only available in US waters. This position is outside them, so no warning service was asked and none can be shown.
+                        </p>
+                        <p className={`text-[13px] font-mono tracking-wide ${textColorMuted}`}>
+                          An empty panel here does not mean the water is clear. NAVTEX and SafetyNET under the GMDSS are the official channel for maritime safety information, and nothing in this app replaces a receiver.
+                        </p>
+                      </div>
+                    ) : (
                     <div className="p-10 bg-green/5 border border-green/10 rounded-2xl text-center space-y-2 select-none">
                       <Waves className="w-8 h-8 mx-auto text-green animate-pulse" />
                       <h4 className="text-xs font-black uppercase tracking-widest text-green">All Regional Hazards Clear</h4>
@@ -347,6 +400,7 @@ export default function AlertsPanel({
                         No active small craft advisories, gale warnings, or storm alerts are currently posted for this area.
                       </p>
                     </div>
+                    )
                   )}
                 </div>
 
