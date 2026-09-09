@@ -7,9 +7,14 @@
  * checkout, which is exactly the class this script exists to catch early.
  *
  * Runs in two scopes, using the same sibling layout in both:
- *   - Locally from Projects/ : sees all three apps, so cross-app checks run.
- *   - In an app's CI         : sees that app + sentinel-shared, so app-scoped
- *                              checks run and cross-app ones are skipped.
+ *   - Locally from Projects/ : sees all three apps, so every check runs.
+ *   - In an app's CI         : sees that app + sentinel-shared, so the one
+ *                              check that genuinely needs the siblings --
+ *                              cross-app dependency alignment -- is skipped.
+ *
+ * Version alignment deliberately sits outside that split. It compares each app
+ * against fleet-version.json in this repo rather than against its siblings, so
+ * it runs per-push in every app's CI, where nothing was checking it before.
  *
  * Usage:  node sentinel-shared/scripts/check-fleet-drift.mjs
  * Exits non-zero if any check fails.
@@ -135,16 +140,60 @@ if (presentApps.length > 1) {
       fail('deps', `${dep} versions differ: ${detail}`);
     }
   }
+}
 
-  // 2. App versions should stay aligned - the fleet releases as one.
-  const versions = new Map();
+// ---------------------------------------------------------------------------
+// 2. Every app's version must match the one fleet version published here.
+//
+//    This used to compare the apps against each other, which put it behind the
+//    `presentApps.length > 1` gate above -- so it never ran in any app's CI.
+//    Each app's drift-check.yml checks out that app and sentinel-shared and
+//    nothing else, so presentApps.length is always 1 there, and the guard
+//    against the fleet drifting apart, which is what most of CLAUDE.md's rules
+//    exist to prevent, was the one check that only ever ran on a machine that
+//    happened to hold all three checkouts. Three PRs raising three apps to
+//    2.11.0 each reported a green drift check while the fleet was genuinely
+//    misaligned mid-merge, and a set that stopped halfway would have gone green
+//    too.
+//
+//    Comparing each app against a value published in this repo needs no
+//    siblings, so it runs per-push at an app count of one. The cost is that a
+//    release now bumps fleet-version.json here as well as each app's root
+//    package.json, and the apps report red in between -- which is the point,
+//    because mid-bump the fleet genuinely is misaligned. CLAUDE.md's release
+//    step 2 says to make the two changes together.
+//
+//    The cross-app dependency check above stays gated: it compares the apps
+//    with each other and there is nothing here to compare them against.
+//    fleet-health.yml in the website repo runs it nightly with all three
+//    checkouts present.
+// ---------------------------------------------------------------------------
+const fleetVersionFile = path.join(SHARED_ROOT, 'fleet-version.json');
+let fleetVersion = null;
+if (!exists(fleetVersionFile)) {
+  warn('version', `sentinel-shared/fleet-version.json is missing, so no app's version can be checked against the fleet's`);
+} else {
+  let declared;
+  let parsed = true;
+  try {
+    declared = readJson(fleetVersionFile).version;
+  } catch {
+    parsed = false;
+    warn('version', 'sentinel-shared/fleet-version.json is not valid JSON');
+  }
+  if (parsed) {
+    if (typeof declared === 'string' && declared) fleetVersion = declared;
+    else warn('version', 'sentinel-shared/fleet-version.json has no usable "version" string');
+  }
+}
+if (fleetVersion) {
   for (const app of presentApps) {
     const v = readJson(path.join(ROOT, app.name, 'package.json')).version;
-    if (!versions.has(v)) versions.set(v, []);
-    versions.get(v).push(app.name);
-  }
-  if (versions.size > 1) {
-    warn('version', `app versions differ: ${[...versions.entries()].map(([v, a]) => `${v} (${a.join(', ')})`).join('  vs  ')}`);
+    if (v !== fleetVersion) {
+      fail('version', `${app.name}: root package.json is ${v}, but the fleet version published in ` +
+        `sentinel-shared/fleet-version.json is ${fleetVersion}. The three apps release as one — bump every ` +
+        `app's root package.json and fleet-version.json together.`);
+    }
   }
 }
 
@@ -225,6 +274,47 @@ for (const app of presentApps) {
         fail('lockfile', `${app.name}: ${rel} records ${entry.name} ${entry.version}, but sentinel-shared has ${onDisk}; re-run npm install --legacy-peer-deps in that package root and commit the lockfile`);
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Each package root's lockfile must also record its own package.json
+//     version. npm writes that version into two places -- the top-level
+//     "version" and packages[""].version -- and nothing reads either at build
+//     or run time, so a version bump that skips `npm install` leaves both stale
+//     and no build, test or check notices. All three apps' root lockfiles
+//     recorded 2.11.0 against a package.json at 2.11.1 for four days.
+//
+//     Harmless in itself. The harm is that every install anyone runs then
+//     rewrites those fields, so `git status` shows a lockfile diff nobody asked
+//     for in all three repos at once -- which is how a real lockfile change
+//     gets waved through next time. It is the second version-alignment gap
+//     found by hand in a week, and both were two-line comparisons nothing was
+//     making.
+//
+//     Compared per package root rather than per app: OceanSentinel's frontend/
+//     (0.0.0) and backend/ (1.0.0) are separate npm projects with their own
+//     versions, and neither is the fleet version.
+// ---------------------------------------------------------------------------
+for (const app of presentApps) {
+  for (const sub of ['', 'frontend', 'backend']) {
+    const pkgFile = path.join(ROOT, app.name, sub, 'package.json');
+    const lockFile = path.join(ROOT, app.name, sub, 'package-lock.json');
+    if (!exists(pkgFile) || !exists(lockFile)) continue;
+    const declared = readJson(pkgFile).version;
+    if (typeof declared !== 'string') continue;
+    let lock;
+    // Section 3 already fails an unparseable lockfile; don't report it twice.
+    try { lock = readJson(lockFile); } catch { continue; }
+    const stale = [
+      ['top-level "version"', lock.version],
+      ['packages[""].version', lock.packages?.['']?.version],
+    ].filter(([, got]) => got !== undefined && got !== declared);
+    if (!stale.length) continue;
+    const prefix = sub ? `${sub}/` : '';
+    fail('lockfile', `${app.name}: ${prefix}package-lock.json records ` +
+      `${stale.map(([where, got]) => `${where} ${got}`).join(' and ')}, but ${prefix}package.json is ` +
+      `${declared}; re-run npm install --legacy-peer-deps in that package root and commit the lockfile`);
   }
 }
 
@@ -1174,7 +1264,7 @@ for (const app of presentApps) {
 }
 
 // ---------------------------------------------------------------------------
-const scope = presentApps.length > 1 ? 'full fleet' : `${presentApps[0].name} only (cross-app checks skipped)`;
+const scope = presentApps.length > 1 ? 'full fleet' : `${presentApps[0].name} only (cross-app dependency alignment skipped)`;
 console.log(`Fleet drift check — scope: ${scope}\n`);
 const fails = results.filter((r) => r.level === 'FAIL');
 const warns = results.filter((r) => r.level === 'WARN');

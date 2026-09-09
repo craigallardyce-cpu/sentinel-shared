@@ -134,6 +134,13 @@ reproduce this layout before anything builds.
   integrity, the installed `sentinel-check` skill, settings drift and theme
   adoption. It also runs in each app's CI on every push, so what it reports
   locally is what will fail there.
+
+  **Cross-app dependency alignment is the one check the per-app scope cannot
+  run**, because it compares the apps with each other and CI has only one of
+  them. `fleet-health.yml` in the website repo runs it nightly with all three
+  checkouts present. Version alignment used to be in that position and no longer
+  is: each app is compared against `fleet-version.json` in this repo, which
+  needs no siblings and so runs per-push everywhere.
 - **Ask whether a change applies to the other two apps.** The single
   highest-value habit. Grep the other apps for the same code path before
   assuming a bug is local; if the same logic lives in two or more apps it
@@ -194,7 +201,11 @@ once, and most of the rules in this file exist because something then broke.
 2. Version bumped in each app's **root** `package.json` (it drives the UI
    version, Android `versionName`/`versionCode`, and electron-builder). Keep all
    three the same. OceanSentinel's `frontend/` and `backend/` versions are not
-   the real one.
+   the real one. **Bump `fleet-version.json` here in the same set**, because the
+   drift checker compares every app against it and all three go red until it
+   moves — which is the guard working, not a fault to route around. Then run
+   `npm install --legacy-peer-deps` in each app and commit the lockfile: npm
+   records the version in the lockfile too, and the checker fails a stale one.
 3. If a shared package changed, bump the pinned `sentinel-shared` SHA in all
    three `.github/workflows/build.yml`, otherwise a release ships the old shared
    code. `test.yml` and `drift-check.yml` deliberately run unpinned so a shared
