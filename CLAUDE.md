@@ -193,9 +193,13 @@ per package at a time.
 
 ## Releasing
 
-The three apps release as one, on one aligned version (v2.10.1 as of September
-2026; the root `package.json` of each app is authoritative). They drifted apart
-once, and most of the rules in this file exist because something then broke.
+The three apps release as one, on one aligned version. `fleet-version.json` in
+this repository carries it, the root `package.json` of each app must match, and
+the drift checker compares them on every push — so that file is the answer to
+"what version is the fleet on", and no prose anywhere should repeat it. This
+paragraph named a version until 2026-09-10 and was two releases behind by then.
+They drifted apart once, and most of the rules in this file exist because
+something then broke.
 
 1. Drift checker green fleet-wide.
 2. Version bumped in each app's **root** `package.json` (it drives the UI
