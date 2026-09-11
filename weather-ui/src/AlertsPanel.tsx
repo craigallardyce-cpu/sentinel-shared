@@ -216,7 +216,11 @@ export default function AlertsPanel({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className={`fixed inset-0 z-[9999] flex flex-col overflow-hidden ${bulletinOverlayBgClass} ${textColorPrimary}`}
+              /* sentinel-titlebar-safe: this is a full-bleed overlay outside the
+                 shell, so nothing else is keeping its header clear of the OS
+                 window-controls cluster. Without it the close button below sits
+                 under that cluster on desktop and only half of it is pressable. */
+              className={`fixed inset-0 z-[9999] flex flex-col overflow-hidden sentinel-titlebar-safe ${bulletinOverlayBgClass} ${textColorPrimary}`}
             >
               {/* Floating Header */}
               <header className={`px-6 py-4 border-b flex items-center justify-between shrink-0 select-none ${borderDividerClassThick}`}>
