@@ -41,6 +41,36 @@
 .sentinel-header {
   -webkit-app-region: drag;
 }
+
+/*
+ * For a full-bleed overlay that puts its own controls at the very top of the
+ * window.
+ *
+ * The shell's header keeps clear of the OS window-controls cluster through
+ * --shell-edge, but anything rendered outside the shell starts at y=0 and its
+ * top-right control lands underneath the cluster. The weather bulletin's close
+ * button did: on Windows it sat under the minimise/maximise/close group and only
+ * half of it could be pressed.
+ *
+ * Clears it by height rather than by width, the same way --shell-edge does. The
+ * cluster's width varies by platform and by whether the window is maximised;
+ * its height is the one dimension the shell already trusts. Zero everywhere the
+ * env() is undefined, so a phone and a browser are untouched.
+ *
+ * A spacer child rather than padding-top, so it composes: this class and a
+ * Tailwind `p-4` on the same element are both one class of specificity, and
+ * whichever the stylesheet order favours would win outright — this file is
+ * imported after Tailwind, so padding-top here would silently delete the
+ * element's own top padding. The spacer adds to whatever the element already
+ * has. Needs a block or flex-column container, which is what a full-bleed
+ * overlay is.
+ */
+.sentinel-titlebar-safe::before {
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  height: env(titlebar-area-height, 0px);
+}
 .sentinel-header button,
 .sentinel-header a,
 .sentinel-header input,
