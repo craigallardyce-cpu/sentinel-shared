@@ -26,6 +26,6 @@ export type { UpdatePanelProps } from './UpdatePanel';
 export { ScopeBadge, ClearOverride } from './ScopeBadge';
 export type { ScopeBadgeProps, ClearOverrideProps, SettingSource } from './ScopeBadge';
 export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
-export type { SettingsShellProps, SettingsSectionProps } from './SettingsShell';
+export type { SettingsShellProps, SettingsSectionProps, SettingsTab } from './SettingsShell';
 export { AppShell, HeaderButton, HeaderGroup } from './AppShell';
 export type { AppShellProps, ShellTab, HeaderButtonProps } from './AppShell';

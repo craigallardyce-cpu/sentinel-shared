@@ -9,7 +9,15 @@ export interface SettingsSectionProps {
     children?: React.ReactNode;
     className?: string;
 }
-/** One settings group: eyebrow title with icon, optional one-line description, then rows. */
+/**
+ * One settings group: eyebrow title with icon, optional one-line description, then rows.
+ *
+ * Scope badges throughout this dialog are drawn only where a value actually
+ * departs from its default. Showing "DEFAULT" beside every untouched field put a
+ * chip on nearly every row, which made a genuinely interesting one — "THIS
+ * DEVICE" on a value that is not shared with the boat — read as more of the same
+ * noise. The dialog's summary line carries the legend for all of them.
+ */
 export declare function SettingsSection({ title, icon, description, children, className }: SettingsSectionProps): React.JSX.Element;
 /**
  * One settings row: label and description on the left, control on the right, and
@@ -25,6 +33,12 @@ export declare function SettingsRow({ label, description, source, action, childr
     children?: React.ReactNode;
     className?: string;
 }): React.JSX.Element;
+export interface SettingsTab {
+    id: string;
+    label: string;
+    icon?: React.ReactNode;
+    content: React.ReactNode;
+}
 export interface SettingsShellProps {
     open: boolean;
     onClose: () => void;
@@ -43,6 +57,19 @@ export interface SettingsShellProps {
     updater?: AppUpdater;
     /** App-specific sections, built from <SettingsSection>/<SettingsRow>. Rendered between Display and Updates. */
     children?: React.ReactNode;
+    /**
+     * App-specific sections as tabs instead of one scroll.
+     *
+     * Additive and opt-in: without it the dialog is exactly the scrolling column
+     * it has always been, so an app that has three sections keeps them stacked.
+     * With it, the shell's own Display, Updates and About become tabs alongside
+     * the app's, and `children` is ignored.
+     *
+     * Worth it past about six sections. HarborSentinel had eight in a single
+     * scroll -- Display, Device sleep, Vessel, Position, Units, Telegram, Updates,
+     * About -- which is a scroll you have to remember your way down.
+     */
+    tabs?: SettingsTab[];
     /** Usually Cancel / Save buttons. */
     footer?: React.ReactNode;
     size?: ModalSize;
@@ -74,4 +101,4 @@ export interface SettingsShellProps {
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, footer, size, about, summary, sources, }: SettingsShellProps): React.JSX.Element;
+export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, footer, size, about, summary, sources, }: SettingsShellProps): React.JSX.Element;

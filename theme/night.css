@@ -55,3 +55,18 @@
   --bg-panel-glass: rgba(19, 5, 5, 0.75);
   --border-color-glass: rgba(255, 56, 56, 0.25);
 }
+
+/*
+ * Wind-band marks, which carry their colour as an SVG presentation attribute.
+ *
+ * The wind scale is a six-band ramp through slate, sky, green, yellow, orange
+ * and red, computed in JavaScript and handed to the renderer — so unlike every
+ * token-driven utility it does not follow this file, and the forecast arrows
+ * stayed a full-spectrum row while the panel around them had gone red. Night
+ * mode exists to stop the screen emitting anything but red, and the band a
+ * forecast arrow falls in is not worth a colour that ruins night vision.
+ */
+.theme-night .wind-band-arrow,
+.night-mode .wind-band-arrow {
+  stroke: var(--color-red) !important;
+}

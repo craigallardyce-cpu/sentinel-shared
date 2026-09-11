@@ -123,7 +123,9 @@ export default function AlertsPanel({
           </div>
         </div>
 
-        <div className={`text-[13px] font-mono leading-tight ${hasAlerts ? textColorRed : textColorMuted}`}>
+        {/* Prose, so sans. Mono belongs to the values and the limits; an alert
+            headline set in it reads slower for no gain. */}
+        <div className={`text-[13px] font-sans leading-tight ${hasAlerts ? textColorRed : textColorMuted}`}>
           {hasAlerts ? (
             <div className="space-y-1">
               {weatherData.alerts!.slice(0, 2).map((alert, i) => (
@@ -137,7 +139,7 @@ export default function AlertsPanel({
               )}
             </div>
           ) : (
-            <p className={`${textColorMuted} text-[13px] italic text-left`}>No active weather warnings or advisories posted for this region.</p>
+            <p className={`${textColorMuted} text-[13px] font-sans text-left`}>No active weather warnings or advisories posted for this region.</p>
           )}
         </div>
 
@@ -146,7 +148,7 @@ export default function AlertsPanel({
             <span className={`text-[13px] font-mono uppercase tracking-widest truncate max-w-[160px] ${textColorMuted}`}>{weatherData.source}</span>
             <span className={`text-[13px] font-mono font-bold mt-0.5 ${
               hasAlerts ? textColorRed : textColorMuted
-            }`}>Sync: {formatSyncDateTime(lastSync)}</span>
+            }`}>Updated {formatSyncDateTime(lastSync)}</span>
           </div>
           {showBulletinButton && (
             <button 
@@ -289,9 +291,16 @@ export default function AlertsPanel({
                                 )}
                               </div>
 
-                              <div className="space-y-4 font-mono text-xs leading-relaxed uppercase">
+                              {/* Was `font-mono … uppercase`. An NWS alert
+                                  description is several paragraphs of plain
+                                  English, and shouting it in a monospace face is
+                                  the hardest-to-read combination on the screen —
+                                  on the one panel someone reads when the weather
+                                  has actually turned. Its labels keep the house
+                                  mono-caps below. */}
+                              <div className="space-y-4 font-sans text-xs leading-relaxed">
                                 <div className="space-y-1.5">
-                                  <span className={`text-[13px] font-black tracking-widest block ${textColorMuted}`}>Detailed Description:</span>
+                                  <span className={`text-[13px] font-mono font-black uppercase tracking-widest block ${textColorMuted}`}>Detailed description</span>
                                   <p className={`p-4 bg-bg-card/40 rounded-xl border border-border-color/10 select-text overflow-y-auto max-h-[160px] custom-scrollbar ${textColorSecondary}`}>
                                     {weatherData.alerts![selectedAlertIndex].description || 'No description provided.'}
                                   </p>
@@ -299,7 +308,7 @@ export default function AlertsPanel({
 
                                 {weatherData.alerts![selectedAlertIndex].instruction && (
                                   <div className="space-y-1.5">
-                                    <span className={`text-[13px] font-black tracking-widest block ${textColorMuted}`}>Precautionary Actions:</span>
+                                    <span className={`text-[13px] font-mono font-black uppercase tracking-widest block ${textColorMuted}`}>Precautionary actions</span>
                                     <div className="p-4 bg-warning/5 border border-warning/20 text-warning rounded-xl">
                                       {weatherData.alerts![selectedAlertIndex].instruction}
                                     </div>
