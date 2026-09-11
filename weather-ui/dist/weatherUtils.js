@@ -48,13 +48,24 @@ export function getWeatherIcon(reasonText, theme) {
     }
     return { Icon: CloudRain, color: theme?.default || 'text-cyan' };
 }
+/**
+ * When the forecast last landed, at the precision anyone reads it to.
+ *
+ * This used to render "Sep 11, 2026 12:41:49" under every forecast panel. The
+ * date is almost always today and the seconds were never the question — the
+ * question is "is this current", which a time answers. The date comes back only
+ * once the reading is old enough for it to matter.
+ */
 export function formatSyncDateTime(timestamp) {
     if (!timestamp)
-        return 'Awaiting Sync';
+        return 'Awaiting sync';
     const date = new Date(timestamp);
-    const dateFormatted = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-    const timeFormatted = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    return `${dateFormatted} ${timeFormatted}`;
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const sameDay = new Date().toDateString() === date.toDateString();
+    if (sameDay)
+        return time;
+    const day = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `${day} ${time}`;
 }
 export function formatTempRangeString(tempRangeStr, targetUnit) {
     if (!tempRangeStr)
