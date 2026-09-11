@@ -123,6 +123,14 @@ export interface SettingsShellProps {
   /** Extra lines for About (licence, support link…). */
   about?: React.ReactNode;
   /**
+   * The dialog's own title. Defaults to "Settings".
+   *
+   * HarborSentinel names it "Device & account", because it also has a phone tab
+   * of watch limits and two things called Settings was the whole of that app's
+   * navigation confusion.
+   */
+  title?: string;
+  /**
    * One line under the title, for what the dialog as a whole is doing — typically
    * how many values are set on this device rather than inherited.
    */
@@ -171,6 +179,7 @@ export function SettingsShell({
   about,
   summary,
   sources,
+  title = 'Settings',
 }: SettingsShellProps) {
   const showDisplay = onNightModeChange || onDayBrightnessChange || onNightBrightnessChange || onKeepAwakeChange;
   const shownVersion = updater?.state.currentVersion || version;
@@ -207,7 +216,7 @@ export function SettingsShell({
       <Modal
         open={open}
         onClose={onClose}
-        title="Settings"
+        title={title}
         description={summary}
         icon={<SettingsIcon size={18} />}
         size={size}
@@ -251,7 +260,7 @@ export function SettingsShell({
     <Modal
       open={open}
       onClose={onClose}
-      title="Settings"
+      title={title}
       description={summary}
       icon={<SettingsIcon size={18} />}
       size={size}

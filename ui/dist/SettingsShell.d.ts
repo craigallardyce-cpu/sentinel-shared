@@ -76,6 +76,14 @@ export interface SettingsShellProps {
     /** Extra lines for About (licence, support link…). */
     about?: React.ReactNode;
     /**
+     * The dialog's own title. Defaults to "Settings".
+     *
+     * HarborSentinel names it "Device & account", because it also has a phone tab
+     * of watch limits and two things called Settings was the whole of that app's
+     * navigation confusion.
+     */
+    title?: string;
+    /**
      * One line under the title, for what the dialog as a whole is doing — typically
      * how many values are set on this device rather than inherited.
      */
@@ -101,4 +109,4 @@ export interface SettingsShellProps {
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, footer, size, about, summary, sources, }: SettingsShellProps): React.JSX.Element;
+export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, footer, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;

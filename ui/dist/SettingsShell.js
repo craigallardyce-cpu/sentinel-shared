@@ -31,7 +31,7 @@ export function SettingsRow({ label, description, source, action, children, clas
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, footer, size = 'lg', about, summary, sources, }) {
+export function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, footer, size = 'lg', about, summary, sources, title = 'Settings', }) {
     const showDisplay = onNightModeChange || onDayBrightnessChange || onNightBrightnessChange || onKeepAwakeChange;
     const shownVersion = updater?.state.currentVersion || version;
     const displaySection = showDisplay ? renderDisplay({
@@ -53,11 +53,11 @@ export function SettingsShell({ open, onClose, appName, appIcon, version, nightM
     const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
     const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id;
     if (tabs) {
-        return (_jsxs(Modal, { open: open, onClose: onClose, title: "Settings", description: summary, icon: _jsx(SettingsIcon, { size: 18 }), size: size, footer: footer, bodyClassName: "space-y-5", children: [_jsx("div", { role: "tablist", "aria-label": "Settings sections", className: "flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-border-color/40", children: allTabs.map((t) => (_jsxs("button", { role: "tab", type: "button", "aria-selected": t.id === activeId, "aria-controls": `settings-panel-${t.id}`, onClick: () => setActiveTab(t.id), className: cn('flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-t-lg text-[13px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 -mb-px', t.id === activeId
+        return (_jsxs(Modal, { open: open, onClose: onClose, title: title, description: summary, icon: _jsx(SettingsIcon, { size: 18 }), size: size, footer: footer, bodyClassName: "space-y-5", children: [_jsx("div", { role: "tablist", "aria-label": "Settings sections", className: "flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-border-color/40", children: allTabs.map((t) => (_jsxs("button", { role: "tab", type: "button", "aria-selected": t.id === activeId, "aria-controls": `settings-panel-${t.id}`, onClick: () => setActiveTab(t.id), className: cn('flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-t-lg text-[13px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 -mb-px', t.id === activeId
                             ? 'border-cyan text-cyan'
                             : 'border-transparent text-text-muted hover:text-text-secondary'), children: [t.icon && _jsx("span", { className: "shrink-0", "aria-hidden": true, children: t.icon }), t.label] }, t.id))) }), allTabs.map((t) => (_jsx("div", { id: `settings-panel-${t.id}`, role: "tabpanel", hidden: t.id !== activeId, children: t.content }, t.id)))] }));
     }
-    return (_jsxs(Modal, { open: open, onClose: onClose, title: "Settings", description: summary, icon: _jsx(SettingsIcon, { size: 18 }), size: size, footer: footer, bodyClassName: "space-y-8", children: [displaySection, children, updatesSection, aboutSection] }));
+    return (_jsxs(Modal, { open: open, onClose: onClose, title: title, description: summary, icon: _jsx(SettingsIcon, { size: 18 }), size: size, footer: footer, bodyClassName: "space-y-8", children: [displaySection, children, updatesSection, aboutSection] }));
 }
 /** The fleet's standard Display group, shared by both layouts. */
 function renderDisplay({ appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources, }) {
