@@ -105,6 +105,17 @@ export interface SettingsShellProps {
   /** App-specific sections, built from <SettingsSection>/<SettingsRow>. Rendered between Display and Updates. */
   children?: React.ReactNode;
   /**
+   * App-specific rows appended to the end of the built-in Display group, after
+   * "Keep the screen awake".
+   *
+   * For settings that are a continuation of one of Display's own rather than a
+   * subject of their own. HarborSentinel's auto-dim is the case this exists for:
+   * it has nothing to dim unless something is holding the screen on, so as its
+   * own group — or, once the dialog gained tabs, its own tab — it read as a
+   * separate topic when it is really the next question after keep-awake.
+   */
+  displayExtra?: React.ReactNode;
+  /**
    * App-specific sections as tabs instead of one scroll.
    *
    * Additive and opt-in: without it the dialog is exactly the scrolling column
@@ -174,6 +185,7 @@ export function SettingsShell({
   updater,
   children,
   tabs,
+  displayExtra,
   footer,
   size = 'lg',
   about,
@@ -187,6 +199,7 @@ export function SettingsShell({
   const displaySection = showDisplay ? renderDisplay({
     appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange,
     nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources,
+    displayExtra,
   }) : null;
 
   const updatesSection = updater ? (
@@ -197,19 +210,61 @@ export function SettingsShell({
 
   const aboutSection = renderAbout({ appName, appIcon, shownVersion, about });
 
-  /* Tabbed mode. The shell's own three join the app's rather than sitting
-     outside them, so every section in the dialog is reachable the same way. */
+  /* Tabbed mode. The shell's own join the app's rather than sitting outside them,
+     so every section in the dialog is reachable the same way.
+
+     Updates and About share a tab, because they answer one question between
+     them: what am I running, and is it current. Apart they were two tabs whose
+     combined content is an app name, a version and a button — and the version
+     appeared in both, since UpdatePanel states it too. Together the About card
+     drops its own copy and UpdatePanel's stands, which is the more useful of the
+     two because it also says whether that version is up to date.
+
+     The scrolling layout leaves them as two adjacent sections, unchanged. There
+     the duplication costs a line; here it cost a click and a tab. */
+  const combinedAbout = updatesSection ? (
+    <div className="space-y-8">
+      {renderAbout({ appName, appIcon, shownVersion: undefined, about })}
+      {updatesSection}
+    </div>
+  ) : aboutSection;
+
   const allTabs: SettingsTab[] = tabs
     ? [
         ...(displaySection ? [{ id: '__display', label: 'Display', icon: <Monitor size={12} />, content: displaySection }] : []),
         ...tabs,
-        ...(updatesSection ? [{ id: '__updates', label: 'Updates', icon: <Download size={12} />, content: updatesSection }] : []),
-        { id: '__about', label: 'About', icon: <Info size={12} />, content: aboutSection },
+        { id: '__about', label: 'About', icon: <Info size={12} />, content: combinedAbout },
       ]
     : [];
 
   const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
   const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id;
+
+  /* Keep the selected tab inside the scroll window.
+   *
+   * The strip scrolls once the tabs outrun the dialog, and nothing was putting
+   * the selected one back in view — so it could sit half out of the left edge,
+   * showing the tail of its own label ("…AY" for Display) while reading as
+   * selected. Adjusting this element's own scrollLeft rather than calling
+   * scrollIntoView, which would also scroll the dialog body and the page behind
+   * it.
+   */
+  const stripRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || !activeId) return;
+    const tab = strip.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeId)}"]`);
+    if (!tab) return;
+
+    /* Measured with getBoundingClientRect rather than offsetLeft: offsetLeft is
+       relative to the nearest positioned ancestor, which is not this strip, so it
+       left the tab a padding's width short of actually being in view. */
+    const t = tab.getBoundingClientRect();
+    const r = strip.getBoundingClientRect();
+    const pad = 8;
+    if (t.left < r.left + pad) strip.scrollLeft -= r.left + pad - t.left;
+    else if (t.right > r.right - pad) strip.scrollLeft += t.right - (r.right - pad);
+  }, [activeId]);
 
   if (tabs) {
     return (
@@ -223,10 +278,11 @@ export function SettingsShell({
         footer={footer}
         bodyClassName="space-y-5"
       >
-        <div role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-border-color/40">
+        <div ref={stripRef} role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-border-color/40">
           {allTabs.map((t) => (
             <button
               key={t.id}
+              data-tab-id={t.id}
               role="tab"
               type="button"
               aria-selected={t.id === activeId}
@@ -281,10 +337,11 @@ export function SettingsShell({
 /** The fleet's standard Display group, shared by both layouts. */
 function renderDisplay({
   appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange,
-  nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources,
+  nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources, displayExtra,
 }: Pick<SettingsShellProps,
   'appName' | 'nightMode' | 'onNightModeChange' | 'dayBrightness' | 'onDayBrightnessChange' |
-  'nightBrightness' | 'onNightBrightnessChange' | 'keepAwake' | 'onKeepAwakeChange' | 'sources'>) {
+  'nightBrightness' | 'onNightBrightnessChange' | 'keepAwake' | 'onKeepAwakeChange' | 'sources' |
+  'displayExtra'>) {
   return (
     <SettingsSection title="Display" icon={<Monitor size={12} />}>
       {onNightModeChange && (
@@ -329,6 +386,8 @@ function renderDisplay({
           <Toggle checked={!!keepAwake} onChange={onKeepAwakeChange} aria-label="Keep the screen awake" />
         </SettingsRow>
       )}
+      {/* Straight after keep-awake, because that is what it depends on. */}
+      {displayExtra}
     </SettingsSection>
   );
 }
