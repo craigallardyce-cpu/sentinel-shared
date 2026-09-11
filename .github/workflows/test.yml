@@ -49,9 +49,13 @@ jobs:
         # stale dist/ in either could ship to all three apps unnoticed. That is
         # the documented recurring failure this workflow exists to catch, and it
         # was not being caught for two of the packages it can happen to.
-        # `theme` has no build and no tests; `weather-ui` has a build but no test
-        # script yet, so `npm test` would fail the job rather than check anything.
-        package: [auth-ui, charts, electron-shell, lan-pairing, marine, settings, ui, vessel, weather]
+        # `theme` has no build and no tests, so it stays out. `weather-ui` was out
+        # for the same reason until 2026-09-09, when it gained a test script -- and
+        # it is the third instance of the failure described above: it has a
+        # committed dist/ that all three apps consume and nothing was checking it
+        # against a fresh build. Adding a test script is the trigger to add the
+        # package here; adding a package with committed dist/ is the reason to.
+        package: [auth-ui, charts, electron-shell, lan-pairing, marine, settings, ui, vessel, weather, weather-ui]
 
     # Each package is its own npm project with its own vitest config, so every
     # command runs from the package directory rather than the repo root.

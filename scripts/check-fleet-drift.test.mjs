@@ -129,7 +129,7 @@ test('scope is reported from the apps present beside sentinel-shared', () => {
   const one = fixture(app(`          repository: craigallardyce-cpu/sentinel-shared
           ref: ${PIN}
 `));
-  assert.match(runChecker(one), /scope: HarborSentinel only \(cross-app checks skipped\)/);
+  assert.match(runChecker(one), /scope: HarborSentinel only \(cross-app dependency alignment skipped\)/);
 
   const two = fixture({
     ...app(`          repository: craigallardyce-cpu/sentinel-shared
@@ -214,4 +214,119 @@ test('a matching version for that package is not reported', () => {
     'HarborSentinel/package-lock.json': lockfileFor('@mariner-sentinel/charts', '1.0.3'),
   });
   assert.doesNotMatch(runChecker(root), /@mariner-sentinel\/charts/);
+});
+
+/*
+  Version alignment used to compare the apps with each other, which put it
+  behind the `presentApps.length > 1` gate and so it never ran in any app's CI,
+  where exactly one app is ever checked out. These cases all use a single app
+  on purpose: an app count of one is the scope that was blind, and a rule that
+  only fires with three checkouts present would pass a test written any other
+  way while still never running where it matters.
+*/
+const fleetVersion = (version) => ({
+  'sentinel-shared/fleet-version.json': JSON.stringify({ version }),
+});
+
+test('an app out of step with the published fleet version fails with one app present', () => {
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.0' }),
+  });
+  const out = runChecker(root);
+  assert.match(out, /HarborSentinel only/);
+  assert.match(out, /root package\.json is 2\.11\.0, but the fleet version published in/);
+});
+
+test('an app matching the published fleet version is not reported', () => {
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+  });
+  assert.doesNotMatch(runChecker(root), /fleet version published/);
+});
+
+test('a missing fleet-version.json warns rather than passing in silence', () => {
+  const root = fixture({
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+  });
+  assert.match(runChecker(root), /fleet-version\.json is missing/);
+});
+
+/*
+  The lockfile's own version fields. npm writes the package's version into two
+  places and nothing reads either, so a bump that skips `npm install` leaves
+  both stale through a green build -- which is what all three apps did between
+  2.11.0 and 2.11.1.
+*/
+const selfLock = (version, { packagesEntry = true } = {}) => JSON.stringify({
+  name: 'harbor-sentinel',
+  version,
+  lockfileVersion: 3,
+  packages: packagesEntry ? { '': { name: 'harbor-sentinel', version } } : {},
+});
+
+test('a lockfile recording a stale version of its own package fails', () => {
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    'HarborSentinel/package-lock.json': selfLock('2.11.0'),
+  });
+  const out = runChecker(root);
+  assert.match(out, /package-lock\.json records top-level "version" 2\.11\.0 and packages\[""\]\.version 2\.11\.0, but package\.json is 2\.11\.1/);
+});
+
+test('only the field that is actually stale is named', () => {
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    'HarborSentinel/package-lock.json': JSON.stringify({
+      name: 'harbor-sentinel', version: '2.11.1', lockfileVersion: 3,
+      packages: { '': { name: 'harbor-sentinel', version: '2.11.0' } },
+    }),
+  });
+  const out = runChecker(root);
+  assert.match(out, /records packages\[""\]\.version 2\.11\.0, but package\.json is 2\.11\.1/);
+  assert.doesNotMatch(out, /top-level "version"/);
+});
+
+test('a lockfile recording its own version correctly is not reported', () => {
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    'HarborSentinel/package-lock.json': selfLock('2.11.1'),
+  });
+  assert.doesNotMatch(runChecker(root), /but package\.json is/);
+});
+
+test("a nested package root is compared with its own package.json, not the fleet's", () => {
+  // OceanSentinel's frontend/ is 0.0.0 and backend/ 1.0.0 by design; neither is
+  // the fleet version, and aligning them to it would be the wrong fix.
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'OceanSentinel/package.json': JSON.stringify({ name: 'oceansentinel', version: '2.11.1' }),
+    'OceanSentinel/package-lock.json': selfLock('2.11.1'),
+    'OceanSentinel/frontend/package.json': JSON.stringify({ name: 'frontend', version: '0.0.0' }),
+    'OceanSentinel/frontend/package-lock.json': JSON.stringify({
+      name: 'frontend', version: '0.0.0', lockfileVersion: 3,
+      packages: { '': { name: 'frontend', version: '0.0.0' } },
+    }),
+  });
+  const out = runChecker(root);
+  assert.doesNotMatch(out, /but package\.json is/);
+  assert.doesNotMatch(out, /frontend\/package-lock\.json records/);
+});
+
+test('a stale nested lockfile is named by its own path', () => {
+  const root = fixture({
+    ...fleetVersion('2.11.1'),
+    'OceanSentinel/package.json': JSON.stringify({ name: 'oceansentinel', version: '2.11.1' }),
+    'OceanSentinel/frontend/package.json': JSON.stringify({ name: 'frontend', version: '0.1.0' }),
+    'OceanSentinel/frontend/package-lock.json': JSON.stringify({
+      name: 'frontend', version: '0.0.0', lockfileVersion: 3,
+      packages: { '': { name: 'frontend', version: '0.0.0' } },
+    }),
+  });
+  assert.match(runChecker(root),
+    /frontend\/package-lock\.json records .*but frontend\/package\.json is 0\.1\.0/);
 });

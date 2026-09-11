@@ -8,7 +8,21 @@ import { StatusPill } from './StatusPill';
  * "EXTRACTING & COMPILING…".
  */
 export function UpdatePanel({ updater, className }) {
-    const { state, check, install, isElectron } = updater;
+    const { state, check, install, isElectron, canCheck } = updater;
     const busy = state.status === 'checking' || state.status === 'updating';
+    /*
+      A phone with no backend has nothing to ask and no auto-updater, so the panel
+      is the installed version and nothing else: no Check button, no status line,
+      no error. It used to offer a check that failed every time and reported
+      "Could not reach the update server." — a fault the customer could neither
+      cause nor fix, for a server that is not meant to exist. Updates on a phone
+      arrive through the store.
+  
+      The version stays because it is the one thing here a customer has a use for:
+      it is what they read out when reporting a problem.
+    */
+    if (!canCheck) {
+        return (_jsx("div", { className: className, children: _jsxs("p", { className: "text-sm text-text-primary", children: ["Version ", _jsx("span", { className: "font-mono", children: state.currentVersion || '—' })] }) }));
+    }
     return (_jsxs("div", { className: className, children: [_jsxs("div", { className: "flex items-center justify-between gap-3", children: [_jsxs("div", { className: "min-w-0", children: [_jsxs("p", { className: "text-sm text-text-primary", children: ["Version ", _jsx("span", { className: "font-mono", children: state.currentVersion || '—' })] }), _jsxs("p", { className: "text-xs text-text-muted mt-0.5", children: [state.status === 'idle' && 'Check for a newer release.', state.status === 'checking' && 'Checking…', state.status === 'uptodate' && 'Up to date.', state.status === 'available' && !state.updateReady && `Version ${state.latestVersion} is available.`, state.status === 'available' && state.updateReady && `Version ${state.latestVersion} is downloaded and ready.`, state.status === 'updating' && (state.updateReady ? 'Restarting…' : 'Downloading update…'), state.status === 'error' && (state.errorMsg || 'Something went wrong.')] })] }), _jsxs("div", { className: "flex items-center gap-2 shrink-0", children: [state.status === 'uptodate' && _jsx(StatusPill, { status: "ok", children: "Current" }), state.status === 'error' && _jsx(StatusPill, { status: "alarm", children: "Error" }), state.status === 'available' ? (_jsx(Button, { variant: "primary", size: "sm", icon: _jsx(ArrowUpCircle, { size: 14 }), onClick: install, disabled: !isElectron && !state.updateReady, children: state.updateReady ? 'Restart and install' : 'Install update' })) : (_jsx(Button, { variant: "secondary", size: "sm", icon: _jsx(RefreshCw, { size: 14, className: busy ? 'animate-spin' : '' }), onClick: check, loading: state.status === 'checking', children: "Check for updates" }))] })] }), state.status === 'updating' && (_jsx("div", { className: "mt-3 h-1.5 w-full rounded-full bg-bg-lowest overflow-hidden", children: _jsx("div", { className: "h-full bg-cyan transition-[width] duration-300", style: { width: `${state.progress || 0}%` } }) })), state.status === 'available' && state.changelog && (_jsx("p", { className: "mt-3 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed", children: state.changelog })), !isElectron && state.status === 'available' && (_jsxs("p", { className: "mt-2 text-xs text-text-muted flex items-center gap-1.5", children: [_jsx(OctagonAlert, { size: 12, "aria-hidden": true }), " Install from the desktop app or your app store."] })), isElectron && state.status === 'uptodate' && (_jsxs("p", { className: "sr-only", children: [_jsx(CheckCircle2, { size: 12, "aria-hidden": true }), " Up to date"] }))] }));
 }

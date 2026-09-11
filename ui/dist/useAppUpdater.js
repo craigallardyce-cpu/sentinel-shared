@@ -1,8 +1,59 @@
 import { useCallback, useEffect, useState } from 'react';
+/** `http://…` or `https://…`, as opposed to a path resolved against the page. */
+const isAbsoluteUrl = (u) => !!u && /^https?:\/\//i.test(u);
+/**
+ * Capacitor's injected global. Present only inside a native WebView, so it
+ * distinguishes a phone from a browser without importing `@capacitor/core` —
+ * which matters: a new runtime import here breaks every consuming app until it
+ * is aliased in that app's Vite config, and this package deliberately has no
+ * dependencies beyond React and lucide.
+ */
+const isNativePlatform = () => {
+    if (typeof window === 'undefined')
+        return false;
+    const cap = window.Capacitor;
+    try {
+        return cap?.isNativePlatform?.() === true;
+    }
+    catch {
+        return false;
+    }
+};
+/**
+ * Can an update check succeed on this device?
+ *
+ * Three cases, and the third is the one this exists for:
+ *
+ *  - **Electron**: the real auto-updater is present. Always yes.
+ *  - **Web, or a phone paired to a backend**: there is a server to ask. Yes,
+ *    provided a `versionUrl` was given — and on a phone it has to be absolute,
+ *    because that is what having a backend configured looks like.
+ *  - **A phone with no backend**: all three apps build `versionUrl` from a
+ *    backend address they do not have, so it comes out as a bare path. Inside a
+ *    Capacitor WebView that resolves against the app's own origin, where
+ *    nothing is listening, and the fetch fails **every time, by construction**.
+ *    The panel used to dress that as "Could not reach the update server." — an
+ *    error a customer might act on, for a check that was never going to work.
+ *    Android updates arrive through the Play Store; there is no update server
+ *    and there is not meant to be.
+ *
+ * Deliberately keyed on the URL rather than on the platform alone, so a phone
+ * running in PC Server mode — which does have a backend, and an absolute URL to
+ * it — keeps a check that genuinely works.
+ */
+export function canCheckHere(opts) {
+    if (opts.isElectron)
+        return true;
+    if (!opts.versionUrl)
+        return false;
+    const native = opts.native ?? isNativePlatform();
+    return !native || isAbsoluteUrl(opts.versionUrl);
+}
 export function useAppUpdater({ appName, fallbackVersion, versionUrl, checkOnMount = true }) {
     const [state, setState] = useState({ status: 'idle', currentVersion: fallbackVersion, latestVersion: fallbackVersion, hasUpdate: false });
     const updater = typeof window !== 'undefined' ? window.appUpdater : undefined;
     const isElectron = !!updater?.isElectron;
+    const canCheck = canCheckHere({ isElectron, versionUrl });
     const fetchVersion = useCallback(async () => {
         if (!versionUrl)
             return;
@@ -28,7 +79,10 @@ export function useAppUpdater({ appName, fallbackVersion, versionUrl, checkOnMou
     useEffect(() => {
         if (!updater?.isElectron) {
             // Display-only: learn the versions without flagging an error when offline.
-            if (versionUrl) {
+            // `canCheck` is false on a phone with no backend, where the URL resolves
+            // against the app's own origin -- so this would fail every time and the
+            // panel shows the version alone instead.
+            if (versionUrl && canCheck) {
                 fetch(versionUrl)
                     .then((r) => (r.ok ? r.json() : null))
                     .then((data) => {
@@ -77,15 +131,20 @@ export function useAppUpdater({ appName, fallbackVersion, versionUrl, checkOnMou
             off();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isElectron, versionUrl]);
+    }, [isElectron, versionUrl, canCheck]);
     const check = useCallback(async () => {
+        // Nothing to ask, so nothing to report. The panel hides its own control in
+        // this state; this guard is what makes a stray call inert rather than
+        // leaving an error on screen.
+        if (!canCheck)
+            return;
         setState((prev) => ({ ...prev, status: 'checking', errorMsg: undefined }));
         if (updater?.isElectron) {
             await updater.check(); // result arrives via onEvent
             return;
         }
         await fetchVersion();
-    }, [updater, fetchVersion]);
+    }, [updater, fetchVersion, canCheck]);
     const install = useCallback(async () => {
         if (!updater?.isElectron) {
             setState((prev) => ({ ...prev, status: 'error', errorMsg: `Updates install from the ${appName} desktop app.` }));
@@ -97,5 +156,5 @@ export function useAppUpdater({ appName, fallbackVersion, versionUrl, checkOnMou
         }
         // On success the app quits and relaunches on the new version.
     }, [updater, appName]);
-    return { state, isElectron, check, install };
+    return { state, isElectron, canCheck, check, install };
 }
