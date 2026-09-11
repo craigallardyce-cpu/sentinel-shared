@@ -105,6 +105,17 @@ export interface SettingsShellProps {
   /** App-specific sections, built from <SettingsSection>/<SettingsRow>. Rendered between Display and Updates. */
   children?: React.ReactNode;
   /**
+   * App-specific rows appended to the end of the built-in Display group, after
+   * "Keep the screen awake".
+   *
+   * For settings that are a continuation of one of Display's own rather than a
+   * subject of their own. HarborSentinel's auto-dim is the case this exists for:
+   * it has nothing to dim unless something is holding the screen on, so as its
+   * own group — or, once the dialog gained tabs, its own tab — it read as a
+   * separate topic when it is really the next question after keep-awake.
+   */
+  displayExtra?: React.ReactNode;
+  /**
    * App-specific sections as tabs instead of one scroll.
    *
    * Additive and opt-in: without it the dialog is exactly the scrolling column
@@ -174,6 +185,7 @@ export function SettingsShell({
   updater,
   children,
   tabs,
+  displayExtra,
   footer,
   size = 'lg',
   about,
@@ -187,6 +199,7 @@ export function SettingsShell({
   const displaySection = showDisplay ? renderDisplay({
     appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange,
     nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources,
+    displayExtra,
   }) : null;
 
   const updatesSection = updater ? (
@@ -281,10 +294,11 @@ export function SettingsShell({
 /** The fleet's standard Display group, shared by both layouts. */
 function renderDisplay({
   appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange,
-  nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources,
+  nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources, displayExtra,
 }: Pick<SettingsShellProps,
   'appName' | 'nightMode' | 'onNightModeChange' | 'dayBrightness' | 'onDayBrightnessChange' |
-  'nightBrightness' | 'onNightBrightnessChange' | 'keepAwake' | 'onKeepAwakeChange' | 'sources'>) {
+  'nightBrightness' | 'onNightBrightnessChange' | 'keepAwake' | 'onKeepAwakeChange' | 'sources' |
+  'displayExtra'>) {
   return (
     <SettingsSection title="Display" icon={<Monitor size={12} />}>
       {onNightModeChange && (
@@ -329,6 +343,8 @@ function renderDisplay({
           <Toggle checked={!!keepAwake} onChange={onKeepAwakeChange} aria-label="Keep the screen awake" />
         </SettingsRow>
       )}
+      {/* Straight after keep-awake, because that is what it depends on. */}
+      {displayExtra}
     </SettingsSection>
   );
 }

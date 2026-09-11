@@ -58,6 +58,17 @@ export interface SettingsShellProps {
     /** App-specific sections, built from <SettingsSection>/<SettingsRow>. Rendered between Display and Updates. */
     children?: React.ReactNode;
     /**
+     * App-specific rows appended to the end of the built-in Display group, after
+     * "Keep the screen awake".
+     *
+     * For settings that are a continuation of one of Display's own rather than a
+     * subject of their own. HarborSentinel's auto-dim is the case this exists for:
+     * it has nothing to dim unless something is holding the screen on, so as its
+     * own group — or, once the dialog gained tabs, its own tab — it read as a
+     * separate topic when it is really the next question after keep-awake.
+     */
+    displayExtra?: React.ReactNode;
+    /**
      * App-specific sections as tabs instead of one scroll.
      *
      * Additive and opt-in: without it the dialog is exactly the scrolling column
@@ -109,4 +120,4 @@ export interface SettingsShellProps {
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, footer, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;
+export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;
