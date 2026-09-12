@@ -81,6 +81,29 @@
   -webkit-app-region: no-drag;
 }
 
+/*
+ * A full-bleed overlay marked `.sentinel-titlebar-safe` renders its own close
+ * button at the very top of the window, in the same strip `.sentinel-shell`
+ * marks draggable. That pseudo-element only covers the shell's own subtree,
+ * so a portal-rendered overlay (createPortal to document.body, outside the
+ * shell entirely) sits in a different part of the tree and inherits no
+ * app-region from it — but the weather bulletin's close button still went
+ * unresponsive on Windows, which is exactly the symptom of a control sitting
+ * in a region the OS claims for dragging. `.sentinel-header` already exempts
+ * its own interactive elements for the same reason; a `.sentinel-titlebar-safe`
+ * overlay's controls need the identical exemption, since nothing else grants
+ * one to a header outside the shell.
+ */
+.sentinel-titlebar-safe button,
+.sentinel-titlebar-safe a,
+.sentinel-titlebar-safe input,
+.sentinel-titlebar-safe select,
+.sentinel-titlebar-safe textarea,
+.sentinel-titlebar-safe label,
+.sentinel-titlebar-safe [role="button"] {
+  -webkit-app-region: no-drag;
+}
+
 .sentinel-shell-content {
   padding-top: calc(var(--shell-edge) + var(--shell-header) + var(--shell-gap) + var(--safe-area-top, 0px));
   padding-bottom: calc(var(--shell-bottom-nav) + 0.5rem + var(--safe-area-bottom, 0px));
