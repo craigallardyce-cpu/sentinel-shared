@@ -15,6 +15,16 @@ export interface SettingsSectionProps {
   description?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
+  /**
+   * Draw the group without its heading row.
+   *
+   * For a section that is the whole of a tab, where the tab strip has already
+   * said its name a few pixels above. "DISPLAY" appeared twice on the Display
+   * tab -- once as the selected tab and once as the heading under it -- and so
+   * did every other tab's name, which is a title bar arguing with itself. The
+   * description still renders, because that says something the tab does not.
+   */
+  hideTitle?: boolean;
 }
 
 /**
@@ -26,16 +36,20 @@ export interface SettingsSectionProps {
  * DEVICE" on a value that is not shared with the boat — read as more of the same
  * noise. The dialog's summary line carries the legend for all of them.
  */
-export function SettingsSection({ title, icon, description, children, className }: SettingsSectionProps) {
+export function SettingsSection({ title, icon, description, children, className, hideTitle = false }: SettingsSectionProps) {
   return (
-    <section className={cn('space-y-3', className)}>
-      <header>
-        <h3 className="flex items-center gap-2 text-[13px] font-mono font-bold uppercase tracking-wider text-cyan">
-          {icon && <span className="shrink-0" aria-hidden>{icon}</span>}
-          {title}
-        </h3>
-        {description && <p className="text-xs text-text-muted mt-1">{description}</p>}
-      </header>
+    <section className={cn('space-y-3', className)} aria-label={hideTitle && typeof title === 'string' ? title : undefined}>
+      {(!hideTitle || description) && (
+        <header>
+          {!hideTitle && (
+            <h3 className="flex items-center gap-2 text-[13px] font-mono font-bold uppercase tracking-wider text-cyan">
+              {icon && <span className="shrink-0" aria-hidden>{icon}</span>}
+              {title}
+            </h3>
+          )}
+          {description && <p className={cn('text-xs text-text-muted', !hideTitle && 'mt-1')}>{description}</p>}
+        </header>
+      )}
       <div className="space-y-3">{children}</div>
     </section>
   );
@@ -196,11 +210,16 @@ export function SettingsShell({
   const showDisplay = onNightModeChange || onDayBrightnessChange || onNightBrightnessChange || onKeepAwakeChange;
   const shownVersion = updater?.state.currentVersion || version;
 
+  /* In tabbed mode the strip names each tab, so the section under it does not
+     repeat the name. In the scrolling layout the heading is the only thing that
+     separates one group from the next, so it stays. */
+  const inTabs = !!tabs;
+
   const displaySection = showDisplay ? renderDisplay({
     appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange,
     nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, sources,
     displayExtra,
-  }) : null;
+  }, inTabs) : null;
 
   const updatesSection = updater ? (
     <SettingsSection title="Updates" icon={<Download size={12} />}>
@@ -224,10 +243,10 @@ export function SettingsShell({
      the duplication costs a line; here it cost a click and a tab. */
   const combinedAbout = updatesSection ? (
     <div className="space-y-8">
-      {renderAbout({ appName, appIcon, shownVersion: undefined, about })}
+      {renderAbout({ appName, appIcon, shownVersion: undefined, about }, inTabs)}
       {updatesSection}
     </div>
-  ) : aboutSection;
+  ) : inTabs ? renderAbout({ appName, appIcon, shownVersion, about }, true) : aboutSection;
 
   const allTabs: SettingsTab[] = tabs
     ? [
@@ -341,9 +360,9 @@ function renderDisplay({
 }: Pick<SettingsShellProps,
   'appName' | 'nightMode' | 'onNightModeChange' | 'dayBrightness' | 'onDayBrightnessChange' |
   'nightBrightness' | 'onNightBrightnessChange' | 'keepAwake' | 'onKeepAwakeChange' | 'sources' |
-  'displayExtra'>) {
+  'displayExtra'>, hideTitle = false) {
   return (
-    <SettingsSection title="Display" icon={<Monitor size={12} />}>
+    <SettingsSection title="Display" icon={<Monitor size={12} />} hideTitle={hideTitle}>
       {onNightModeChange && (
         <SettingsRow label="Night mode" description="Red-shifted palette that preserves night vision." source={sources?.nightMode}>
           <Toggle checked={!!nightMode} onChange={onNightModeChange} aria-label="Night mode" />
@@ -395,9 +414,10 @@ function renderDisplay({
 /** About, shared by both layouts. */
 function renderAbout({
   appName, appIcon, shownVersion, about,
-}: { appName: string; appIcon?: React.ReactNode; shownVersion?: string; about?: React.ReactNode }) {
+}: { appName: string; appIcon?: React.ReactNode; shownVersion?: string; about?: React.ReactNode },
+  hideTitle = false) {
   return (
-    <SettingsSection title="About" icon={<Info size={12} />}>
+    <SettingsSection title="About" icon={<Info size={12} />} hideTitle={hideTitle}>
       <div className="flex items-center gap-3 p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl">
         {appIcon && <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan/10 text-cyan shrink-0">{appIcon}</span>}
         <div className="min-w-0 text-xs">

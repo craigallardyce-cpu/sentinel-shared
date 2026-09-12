@@ -21,6 +21,13 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * Only an override is drawn in the accent colour. Everything inherited is quiet,
  * because inheritance is the ordinary case and the thing worth noticing is the
  * value that departs from it.
+ *
+ * Quiet means quiet. This was a bordered chip in bold uppercase mono, and on a
+ * settings tab where several values are device-set it drew a row of small cyan
+ * boxes that pulled the eye harder than the settings themselves -- a caption
+ * shouting over its own subject. It is a caption now: small, muted, sentence
+ * case, no border and no fill. An override keeps the accent, because that is the
+ * one this exists to point at, but as ink rather than as a box.
  */
 export interface ScopeBadgeProps {
     source: SettingSource;

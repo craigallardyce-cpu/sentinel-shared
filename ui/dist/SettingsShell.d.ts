@@ -8,6 +8,16 @@ export interface SettingsSectionProps {
     description?: React.ReactNode;
     children?: React.ReactNode;
     className?: string;
+    /**
+     * Draw the group without its heading row.
+     *
+     * For a section that is the whole of a tab, where the tab strip has already
+     * said its name a few pixels above. "DISPLAY" appeared twice on the Display
+     * tab -- once as the selected tab and once as the heading under it -- and so
+     * did every other tab's name, which is a title bar arguing with itself. The
+     * description still renders, because that says something the tab does not.
+     */
+    hideTitle?: boolean;
 }
 /**
  * One settings group: eyebrow title with icon, optional one-line description, then rows.
@@ -18,7 +28,7 @@ export interface SettingsSectionProps {
  * DEVICE" on a value that is not shared with the boat — read as more of the same
  * noise. The dialog's summary line carries the legend for all of them.
  */
-export declare function SettingsSection({ title, icon, description, children, className }: SettingsSectionProps): React.JSX.Element;
+export declare function SettingsSection({ title, icon, description, children, className, hideTitle }: SettingsSectionProps): React.JSX.Element;
 /**
  * One settings row: label and description on the left, control on the right, and
  * — when the caller knows it — a chip saying which layer the value came from.
