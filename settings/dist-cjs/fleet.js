@@ -53,7 +53,7 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
           every install).
         */
         label: 'Boat name',
-        description: 'Shared with every Mariner Sentinel app on this account.',
+        description: 'Shared with every MarinerSentinel app on this account.',
         placeholder: 'Your boat',
         legacy: { ocean: ['vessel_boat_name'] },
     }),

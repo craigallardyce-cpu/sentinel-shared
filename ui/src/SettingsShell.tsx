@@ -405,7 +405,7 @@ function renderAbout({
             {appName} {shownVersion && <span className="font-mono font-normal text-text-muted">v{shownVersion}</span>}
           </p>
           <p className="text-text-muted mt-0.5">
-            Part of the Mariner Sentinel fleet ·{' '}
+            Part of the MarinerSentinel fleet ·{' '}
             <a href="https://marinersentinel.com" target="_blank" rel="noreferrer" className="text-cyan hover:underline">
               marinersentinel.com
             </a>

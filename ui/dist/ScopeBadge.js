@@ -10,7 +10,7 @@ const LABEL = {
 };
 const DESCRIPTION = {
     account: 'Set for your account — applies on every device you sign in on.',
-    vessel: 'Set for this boat — shared with the other Mariner Sentinel apps.',
+    vessel: 'Set for this boat — shared with the other MarinerSentinel apps.',
     host: 'Set on the machine running the backend, shared by everything pointed at it.',
     device: 'Set on this device only, overriding anything broader.',
     default: 'Nobody has changed this; it is the value the app ships with.',
