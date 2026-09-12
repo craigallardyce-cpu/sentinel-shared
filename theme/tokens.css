@@ -71,9 +71,9 @@
   --color-warning-glow: var(--color-amber-glow);
 
   /* Status: alarm */
-  --color-red: #ffb4ab;
+  --color-red: #ff3838;
   --color-red-dim: #93000a;
-  --color-red-glow: rgba(255, 180, 171, 0.15);
+  --color-red-glow: rgba(255, 56, 56, 0.15);
 
   /* Corner radius, with the meanings fixed so the choice stops being ad hoc.
      `rounded-md` was used 324 times fleet-wide, `rounded-lg` 206 and `rounded-xl`
