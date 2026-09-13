@@ -48,6 +48,7 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'display.night_mode': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
     };
+    'display.density': import("./types.js").SettingSpec<"compact" | "comfortable">;
     'display.keep_awake': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
     };

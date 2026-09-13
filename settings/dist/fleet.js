@@ -164,6 +164,20 @@ export const FLEET_SETTINGS = createRegistry({
         description: 'Red-shifted palette that preserves night vision.',
         legacy: { 'vessel-keeper': ['vesselkeeper_night_mode'] },
     }),
+    'display.density': defineSetting({
+        scopes: ['device'],
+        /*
+          No default, on the same grounds as `nmea.source`: a table can render at
+          either density, so there is no frame that cannot be drawn without one --
+          only a preference to leave unset until a person expresses it. What each
+          app shows before that is its own call (VesselKeeper defaults the *effective*
+          value to comfortable on a touch device and compact on a mouse-driven one,
+          entirely client-side); the registry does not bake that judgement in.
+        */
+        type: oneOf(['compact', 'comfortable']),
+        label: 'Row density',
+        description: 'How tightly packed rows are in tables with many of them.',
+    }),
     'display.keep_awake': defineSetting({
         scopes: ['device'],
         type: boolType,
