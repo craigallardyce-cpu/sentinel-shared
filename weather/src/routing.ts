@@ -746,8 +746,8 @@ function seaStateWarnings(
       'it meets the boat at, and — where the forecast carries a period — the steepness those two ' +
       'imply, so a short sea costs more than a long swell of the same height. It is a reasonable ' +
       'curve for a cruising boat, not this boat measured in a seaway: neither the coefficient, nor ' +
-      'the angle shape, nor the steepness term came from anything sailed. Treat a rough-weather ' +
-      'ETA as the optimistic end.'
+      'the angle shape, nor the steepness term came from anything sailed. A rough-weather ETA is ' +
+      'the optimistic end.'
   ];
   if (seaLimit !== null) {
     notes.push(
@@ -781,8 +781,7 @@ function motoringWarnings(motoring: MotoringOptions | undefined, legs: RouteLeg[
   if (motoringHours / motoring.enduranceHours > 0.8) {
     notes.push(
       `This route plans ${motoringHours.toFixed(0)} of the ${motoring.enduranceHours.toFixed(0)} ` +
-        'engine hours the boat has fuel for, so it arrives with next to nothing in the tank. Plan ' +
-        'against a reserve you would be content to make harbour on, not against the whole tank.'
+        'engine hours the boat has fuel for, so it arrives with next to nothing in the tank.'
     );
   }
   return notes;
@@ -813,7 +812,8 @@ function currentWarnings(
   const notes = [
     'Currents come from an ocean-scale model. It carries the great streams — the Gulf Stream, the ' +
       'Kuroshio, the Agulhas — and it knows nothing whatever of tidal gates, headland races, ' +
-      'overfalls or the set inside a bay. Near a coast, the tide in your almanac beats this.'
+      'overfalls or the set inside a bay. Near a coast, published tidal predictions are more ' +
+      'accurate than this model.'
   ];
   if (legs.some((l) => l.windAgainstCurrent)) {
     notes.push(
@@ -1000,8 +1000,8 @@ function propulsionReport(
 function powerWarnings(fuel: FuelOptions | undefined, legs: RouteLeg[], ranOutOfFuel: boolean): string[] {
   const notes = [
     'This passage is planned at one throttle setting the whole way. A real skipper throttles up ' +
-      'to make a window and back off when it turns nasty, and neither is modelled here — so read ' +
-      'the timings as what this vessel does if nobody touches the levers.'
+      'to make a window and back off when it turns nasty, and neither is modelled here — the ' +
+      'timings are what this vessel does if nobody touches the levers.'
   ];
   if (!fuel) return notes;
 
@@ -1010,8 +1010,7 @@ function powerWarnings(fuel: FuelOptions | undefined, legs: RouteLeg[], ranOutOf
     notes.push(
       `This vessel runs out of usable fuel before it gets there. It is planned against ` +
         `${Math.round(fuel.usableLitres)} litres — the tank less the reserve you asked to keep — ` +
-        'and no departure time fixes a passage that is simply beyond its range. The answers are ' +
-        'more fuel, a stop on the way, or a shorter leg.'
+        'and no departure time changes a passage that is beyond its range.'
     );
     return notes;
   }
@@ -1105,7 +1104,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
   if (polar.generic) {
     warnings.push(
       `Timings come from a generic polar (${polar.name}), not this boat's measured performance — ` +
-        'treat the ETA as a comparison between departure times, not a promise.'
+        'the ETA is a comparison between departure times, not a promise.'
     );
   }
 
@@ -1599,7 +1598,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         warnings.push(
           step === 0
             ? `The sea at the departure point is already above the ${seaLimit} m limit set, so no ` +
-                'passage could be started. A later departure may find it down.'
+                'passage could be started.'
             : `The route stopped: every position it could sail on from is in seas above the ` +
                 `${seaLimit} m limit set.`
         );
@@ -1613,8 +1612,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       if (forbiddenAtNight && !blockedByLand && !unsailable) {
         warnings.push(
           `The wind has shifted so far that every course open ${where} would mean a sail change in ` +
-            'the dark, which this passage was planned not to do. Allow night manoeuvres, or accept ' +
-            'that the boat holds its tack until first light.'
+            'the dark, which this passage was planned not to do.'
         );
       }
       if (noWind || calm || blockedByLand || unsailable) {
@@ -1627,12 +1625,12 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
         } else if (blockedByLand && !unsailable) {
           warnings.push(
             `Every course ${where} runs into land within one step of the search. ` +
-              'Start further offshore, where a passage plan is the right tool.'
+              'Planning this close to land is pilotage, which this planner does not do.'
           );
         } else if (unsailable && !blockedByLand) {
           warnings.push(
             `The wind is dead against this passage ${where}: every course open to the search is ` +
-              'inside the angle this boat cannot sail. Try a later departure.'
+              'inside the angle this boat cannot sail.'
           );
         } else {
           // Both, which is the boxed-in case: what land leaves open, the wind
@@ -1641,8 +1639,7 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
           warnings.push(
             `There is no way out ${where}: the courses that clear the land are ones this boat ` +
               'cannot sail against the forecast wind, and the courses it could sail run ashore. ' +
-              'Beating out of somewhere this tight is pilotage, which this planner does not do — ' +
-              'start from open water, or wait for a shift.'
+              'Beating out of somewhere this tight is pilotage, which this planner does not do.'
           );
         }
       }

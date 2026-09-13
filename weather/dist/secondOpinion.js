@@ -54,7 +54,7 @@ export function compareSecondOpinion(primary, second, model, modelLabel = model)
     if (!primaryBest)
         return null; // The primary found nothing; nothing to second-guess.
     const secondForPrimaryPick = second.find((o) => o.key === primaryBest.key);
-    // The second model cannot get the recommended departure in at all. That is
+    // The second model cannot get the first-arriving departure in at all. That is
     // the strongest disagreement available and deserves saying plainly.
     if (!secondForPrimaryPick?.reached) {
         return {
@@ -63,8 +63,8 @@ export function compareSecondOpinion(primary, second, model, modelLabel = model)
             primaryBest: primaryBest.key,
             secondBest: secondBest ? secondBest.key : null,
             etaDeltaHours: null,
-            summary: `${modelLabel} does not get this passage in on the recommended departure at all. ` +
-                'The two models disagree about this forecast — treat the plan as provisional and look again nearer the time.'
+            summary: `${modelLabel} does not get this passage in at all on the departure that arrives first here. ` +
+                'The two models disagree about this forecast.'
         };
     }
     const delta = secondForPrimaryPick.etaHours - primaryBest.etaHours;
@@ -97,8 +97,7 @@ export function compareSecondOpinion(primary, second, model, modelLabel = model)
         primaryBest: primaryBest.key,
         secondBest: secondBest ? secondBest.key : null,
         etaDeltaHours: delta,
-        summary: `${modelLabel} would leave on a different departure, and puts this one ${hours(delta)} ` +
-            `${delta > 0 ? 'later' : 'earlier'}. The models disagree about which window is best — ` +
-            'the ranking is not worth leaning on yet.'
+        summary: `${modelLabel} has a different departure arriving first, and puts this one ${hours(delta)} ` +
+            `${delta > 0 ? 'later' : 'earlier'}. The two models disagree about the order of arrivals.`
     };
 }

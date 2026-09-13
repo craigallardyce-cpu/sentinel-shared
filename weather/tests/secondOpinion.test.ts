@@ -26,7 +26,7 @@ describe('compareSecondOpinion', () => {
     expect(o?.summary).toMatch(/less settled/);
   });
 
-  it('flags a different recommended departure', () => {
+  it('flags a different first-arriving departure', () => {
     // Second model: leaving at 0 arrives at 20; leaving at 6 arrives at 34.
     const o = compareSecondOpinion(primary, [out(0, 20), out(6, 28), out(12, 30)], 'ecmwf_ifs025', 'ECMWF');
     expect(o?.agrees).toBe(false);
