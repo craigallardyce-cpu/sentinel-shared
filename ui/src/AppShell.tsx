@@ -208,7 +208,19 @@ export function AppShell({
             <span className="hidden sm:inline font-heading font-semibold tracking-wide text-sm text-cyan truncate">{appName}</span>
           </div>
 
-          <div className="flex-1 min-w-0 flex items-center justify-center overflow-hidden">
+          {/*
+            `flex-auto` (`flex: 1 1 auto`), not `flex-1` (`flex: 1 1 0%`): with a
+            zero flex-basis this band reported no min-content need at all, so the
+            shrink algorithm never saw a real conflict and dumped the entire
+            squeeze onto whatever this band was rendering instead of sharing it
+            with the status band next to it -- which stayed at full width, pills
+            and all, while a narrow header crushed headerCenter's own content to
+            nothing. `flex-auto` still grows to fill slack when there is room
+            (so this still reads as centred), but its basis reflects what its
+            content actually needs, so a real shortage is shared fairly instead
+            of landing on one side.
+          */}
+          <div className="flex-auto min-w-0 flex items-center justify-center overflow-hidden">
             {headerCenter}
           </div>
 
