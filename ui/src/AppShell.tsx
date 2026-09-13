@@ -160,7 +160,7 @@ export function AppShell({
         {background && <div className="absolute inset-0 z-0">{background}</div>}
 
         <header
-          className="sentinel-header fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex justify-between items-center z-50 select-none px-4 sm:px-5"
+          className="sentinel-header fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex items-center gap-2 z-50 select-none px-4 sm:px-5"
           style={{
             top: 'calc(var(--shell-edge) + var(--safe-area-top, 0px))',
             marginLeft: 'var(--safe-area-left, 0px)',
@@ -168,17 +168,28 @@ export function AppShell({
           }}
         >
           {/*
-            Three bands, and only the middle one gives way.
+            Three bands, and two of them give way.
 
             A flex item's default `min-width: auto` refuses to shrink below its
             content, so a header whose status pills grew — a type scale change
             is enough — pushed past the panel instead of yielding: the brand
             truncated to nothing, the pills drew over it, and Settings was
-            clipped off the right edge. The brand and the controls are now both
-            `shrink-0`, and the status band carries `min-w-0` so it is the one
-            that absorbs the squeeze. Whatever else happens, Night and Settings
-            stay reachable, because a control you cannot see is worse than a
-            status you cannot read.
+            clipped off the right edge. The brand and the controls are both
+            `shrink-0`; `headerCenter` and the status band are ordinary flex
+            children with `min-w-0`, so those two share whatever squeeze is
+            left. Whatever else happens, Night and Settings stay reachable,
+            because a control you cannot see is worse than a status you
+            cannot read.
+
+            `headerCenter` used to be taken out of flow entirely (`absolute
+            left-1/2 -translate-x-1/2`) so it would sit dead-centre regardless
+            of how wide the brand or status band were that render — which
+            means it could just as easily sit *on top of* the status band's
+            pills as beside them. It is `flex-1` now: with the brand and
+            controls both `shrink-0`, that fills exactly the space between
+            them, so its own `justify-center` still reads as centred when
+            there is room, and it shrinks together with the status band
+            instead of overlapping it when there is not.
 
             Absorbing the squeeze has to reach the pills themselves, though.
             `min-w-0` here only lets the *band* narrow; what is inside has to
@@ -192,12 +203,14 @@ export function AppShell({
             content this package cannot see — but it is no longer the
             mechanism.
           */}
-          <div className="flex items-center gap-2 mr-2 shrink-0 min-w-0">
+          <div className="flex items-center gap-2 shrink-0 min-w-0">
             {brandIcon && <span className="text-cyan shrink-0" aria-hidden>{brandIcon}</span>}
             <span className="hidden sm:inline font-heading font-semibold tracking-wide text-sm text-cyan truncate">{appName}</span>
           </div>
 
-          {headerCenter && <div className="absolute left-1/2 -translate-x-1/2 flex items-center">{headerCenter}</div>}
+          <div className="flex-1 min-w-0 flex items-center justify-center overflow-hidden">
+            {headerCenter}
+          </div>
 
           <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             {headerStatus && (

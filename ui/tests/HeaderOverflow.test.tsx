@@ -120,6 +120,38 @@ describe('the header status band under a squeeze', () => {
   });
 });
 
+describe('headerCenter', () => {
+  it('is a sibling in the flex row, not pulled out of flow to sit over the status band', () => {
+    const { container } = render(
+      <AppShell
+        appName="VesselKeeper"
+        tabs={[]}
+        activeTab=""
+        onTabChange={vi.fn()}
+        onToggleNightMode={vi.fn()}
+        onOpenSettings={vi.fn()}
+        headerCenter={<span>6575 h</span>}
+        headerStatus={
+          <HeaderGroup>
+            <StatusPill status="ok">Online</StatusPill>
+          </HeaderGroup>
+        }
+      />
+    );
+
+    const label = screen.getByText('6575 h');
+    const band = label.parentElement as HTMLElement;
+
+    // The bug this fixes: `absolute left-1/2 -translate-x-1/2` takes the band
+    // out of the header's flex flow entirely, so it renders wherever the
+    // header is wide enough to put it -- including on top of the status band --
+    // regardless of that band's own width.
+    expect(classes(band).join(' ')).not.toMatch(/absolute/);
+    expect(isPinned(band), 'a shrink-0 centre band cannot give way to the status band').toBe(false);
+    expect(mayNarrow(band), 'the centre band needs its own floor to shrink to').toBe(true);
+  });
+});
+
 describe('StatusPill giving ground', () => {
   it('truncates its label rather than letting it run past the pill', () => {
     render(<StatusPill status="ok">{LONG_LABEL}</StatusPill>);
