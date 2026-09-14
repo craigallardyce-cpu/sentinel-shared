@@ -126,6 +126,27 @@ in-app copy" described a surface that does not exist. An item's wording overstat
 the spread as often as it points at the wrong surface, so grep before counting
 repos — and correct the item's wording in the closing PR either way.
 
+**A documentation catch-up runs §1 backwards, and it is a real initiative.**
+"Update the docs to match the last few days" has no roadmap item and no named
+surface, so the grep inverts: instead of *where does this change live*, ask
+*which claims did the last N days falsify*. What works is to read every merge
+since the docs were last touched, pull the customer-visible ones out, and grep
+the knowledge base and the copy inventory for the claim each one breaks. On
+2026-09-14 that turned a week of app work into fourteen wrong sentences across
+six files, two message-list strings the apps can no longer produce, and four
+website strings — none of which any checker would have found, because nothing
+in the fleet compares prose to code.
+
+**A commit message is a claim about the code, and two of them can disagree.**
+Same run: OceanSentinel's UI-review commit said it had added a compact
+instrument strip for phones and moved the pairing token under Instruments. The
+reconcile commit the next day deleted the strip and removed the token panel
+altogether. Both messages are accurate about their own change, and the later
+one does not mention undoing the earlier. Writing the docs from either message
+alone would have described a screen that does not exist. Read the file, not the
+message — and where a surface is described twice in one week, read it after the
+*last* commit that touched it, not the one that introduced it.
+
 **Check the item's premise, not just its surface.** Three items in the week of
 2026-09-06 had premises that had expired between filing and pickup: the
 downloads page said "fleet is at 2.10.1" when it was at 2.11.0, half of Q27 was
@@ -296,6 +317,20 @@ Self-contained, in this order. Copy the shape; fill in the specifics.
    never apply a migration ("Not applied", with the command Craig runs);
    the verification commands for that repo and what CI runs; commit author
    `Craig Allardyce <support@marinersentinel.com>`.
+
+   **Enumerate the checks from the repo, not from memory.** Read the `check:*`
+   scripts in `package.json` and the steps in the workflow file, and list every
+   one. A worker runs what the brief names and nothing else, and a check the
+   brief omits is a red PR you then have to explain. The website brief on
+   2026-09-14 listed lint, build, `check:site-copy` and `check:pricing-drift`
+   and left out `check:theme-sync` — which was the one that failed. The worker
+   had done its own work correctly and reported green honestly; the brief was
+   short a line.
+
+   Some checks cannot run in a worker's container at all —
+   `check:pricing-drift` needs `DATABASE_URL`, `check:download-rows` needs a
+   repo token. Say so in the brief, so a worker reports "could not run" rather
+   than treating a missing credential as its own failure.
 6. *The pull request*: body sections to include — What, Where it shows,
    Migration status, Verified, a `Fleet:` line naming the companions by repo and
    branch and which merges first, and **Worker notes**: anything missing from
@@ -415,6 +450,14 @@ that pass make it wrong, all found the hard way:
 - **Tags come in pairs.** The same fact is stated in the product file and again in
   `05-troubleshooting.md` — the pairing token, the alarm wording, the share-link
   check. Resolve both copies together or the docs end up contradicting themselves.
+- **A roadmap item can name two strings and ship one.** Q16 asked for two
+  pieces of OceanSentinel copy to be rewritten: the alarm-sound description and
+  the alarm dialog's "Anchor watch" subtitle. The 13 September commit did the
+  first and not the second, and said so in its message only about the first —
+  so the item read as done from the commit log and the pair of `[NEEDS REVIEW]`
+  tags both still said "being rewritten". Check each string an item names,
+  separately, in the code. A part-shipped item is worse than an untouched one,
+  because the next person reads the tick and stops looking.
 - **A string in the source is not necessarily a string a customer can see.**
   VesselKeeper's `handleFetchDocumentContent` still returns a message, is
   re-exported twice, and is called by nothing. It was one step from being filed
@@ -501,6 +544,20 @@ it is the shape §3's table means by mechanical. OceanSentinel costs half again 
 much as the other two for the same edit, because its three package roots have to
 be installed and its brief has to say which of them is out of scope.
 
+The documentation catch-up, 2026-09-14 — one worker, and the coordinator did
+the docs-kb half itself:
+
+| Worker | Model | Cost | Wall-clock |
+|---|---|---|---|
+| Eight pinned copy edits across three website files, lint + build + copy check | Sonnet 5 | $1.00 | 3m 37s |
+
+Twice the other pinned Sonnet workers for eight edits rather than two, which is
+the shape holding. The rest of that run was the coordinator's: four shallow
+clones (docs-kb, the website, OceanSentinel, VesselKeeper, HarborSentinel) to
+get ground truth, and the knowledge base, copy inventory and roadmap written
+here rather than delegated — §7 makes the docs-kb pass the coordinator's, and a
+worker would have needed the whole of the reading in its brief anyway.
+
 The first Opus worker at real scope, 2026-09-06:
 
 | Worker | Model | Cost | Wall-clock |
@@ -560,6 +617,22 @@ something a grep could settle.
   is two fetches and a build at the top of the brief, not sharper reviewing at
   the bottom. The first of the three is also where the standing rule comes from:
   when a worker's notes contradict the brief you wrote it, believe the notes.
+- **A worker's PR went red on a check that had been failing on `main` for two
+  days, and nothing had noticed.** 2026-09-14: the website's `check:theme-sync`
+  compares its vendored `src/design/theme/` against `sentinel-shared/theme`
+  byte for byte, and sentinel-shared had changed `--color-red` on the 12th
+  without the site re-copying it — so the site's alarm red was still the pale
+  Material pink the fleet had abandoned. It surfaced on a copy-only PR because
+  the website's `Checks` workflow last ran on `main` on the 11th, the day
+  before, and that check resolves sentinel-shared **unpinned**. A check that
+  reads a sibling at `main` only tells the truth on the day it runs; between
+  pushes it goes stale silently, and the repo that breaks it is not the repo
+  that reports it. So: a red check on a file the worker never touched is a
+  finding about the fleet before it is a finding about the PR — read the log,
+  then check when that workflow last ran on `main`, because "it passed on main"
+  can mean "it has not been asked since". The fix here was a two-value re-copy,
+  ported onto the worker's branch rather than deferred, per the drive-to-green
+  rule that waiting on another PR to merge is still waiting.
 - A two-dot diff against a shallow clone made a three-line PR look as though it
   had deleted five files. Confirm against GitHub's computed diff before saying
   anything to anyone about what a worker changed.
