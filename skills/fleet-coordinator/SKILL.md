@@ -712,3 +712,16 @@ something a grep could settle.
   OceanSentinel's UI-review commit describes and the reconcile commit the next
   day deleted: §1's "read the file, not the message" applies to writing a tag
   message just as much as to writing docs.
+- **Three green dry runs, then three failed releases, and the dry run could not
+  have caught it.** Same day, once the tag finally went up: all nine platform
+  jobs compiled and packaged, then every artifact upload failed on the account's
+  Actions storage quota, `Create Release` skipped, and nothing published. The dry
+  runs had been reported here as evidence the pipeline was sound — they were not,
+  and could not be: `Upload Build Artifacts` and the `release` job are both
+  guarded to `refs/tags/v`, so a `workflow_dispatch` run skips exactly the half
+  that was broken. CLAUDE.md's release step 4 now carries the rule; what belongs
+  here is the reporting habit. Say what a dry run proves — it compiled — rather
+  than what it suggests, and when a release is the job, the deliverable is a
+  release with installers and the three `latest*.yml` files attached, checked on
+  the release itself. A green workflow is not a published release: the account's
+  billing can fail the step that publishes, and did.

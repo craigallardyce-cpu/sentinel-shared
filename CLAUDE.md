@@ -217,9 +217,25 @@ something then broke.
    at a commit **published** on `origin/main`; one that exists only locally
    produces no build at all, in all three apps at once.
 4. Exercise `build.yml` with `workflow_dispatch` first. Its release job is
-   guarded to tag pushes, so a manual run builds and verifies without publishing.
+   guarded to tag pushes, so a manual run builds and verifies without publishing
+   — which means **it proves compilation and never publication**. `Upload Build
+   Artifacts` and the whole `release` job are both guarded to `refs/tags/v`, so a
+   dry run skips them: every step between a packaged installer and a published
+   release is structurally untestable until the tag exists. On 2026-09-15 three
+   green dry runs were followed by three failed tag builds — all nine platform
+   jobs compiled and packaged, then every artifact upload failed on the account's
+   Actions storage quota, which skipped `Create Release` and published nothing.
+   So a green dry run licenses the tag; it is not evidence the release will land.
+   Leave the `platforms` input at `linux`: it is the cheap smoke test, and the
+   mac and windows legs first run on the tag whatever you choose here.
 5. Tag `vX.Y.Z` and push the tag. Desktop installers publish to GitHub
-   Releases, which each app's auto-updater reads.
+   Releases, which each app's auto-updater reads. Read the release, not the
+   workflow's green tick: `Create Release` is *skipped* rather than failed when a
+   build job fails, and a run whose upload step failed still needs looking at
+   step by step. A release is done when its assets carry the installers **and**
+   `latest.yml`, `latest-mac.yml` and `latest-linux.yml` — those three are what
+   the updater reads, and without them a release exists that no installed app
+   will ever see.
 
 Android bundles and the Play Console upload run on a machine with the Android
 SDK and the signing keystore; the private `sentinel-fleet-play-release` skill
