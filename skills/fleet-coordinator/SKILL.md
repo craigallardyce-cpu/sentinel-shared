@@ -52,6 +52,47 @@ and that is refused without the attach. So a session that attaches nothing can
 still delegate and then cannot read what came back, which is the worse half of
 the loop to lose. Attach first and the question does not arise.
 
+### Choose `access` at the first attach; it is a one-way door
+
+`add_repo` takes an `access` parameter, and it defaults to `"read"`. Read is
+enough for everything §4 and §5 do, because those go through the GitHub API:
+both app PRs on 2026-09-15 were reviewed *and merged* with `merge_pull_request`
+in repos attached read-only. What read does not buy is `git push`, which is how
+a tag is created — and there is no API fallback, because the GitHub tool set has
+no create-tag, create-ref or create-release tool at all. `create_branch` writes
+`refs/heads` and nothing else.
+
+**A second `add_repo` with `access: "push"` does not raise the level.** It
+returns `status: "already_present"` and short-circuits, so the repo stays
+read-only for the rest of the session. That is the whole trap: the cost of
+choosing read is not paid at attach time, it is paid at the end of the run, when
+the work is done and the last step cannot be taken.
+
+So ask at §0, before attaching: **does this run end in a tag, or any other push
+from this session?** A release run does. Attach those repos with
+`access: "push"` from the start. A review-and-merge run does not, and read is
+the right default there.
+
+The failure looks like this, and the last line is a lie:
+
+```
+error: RPC failed; HTTP 403 curl 22 The requested URL returned error: 403
+send-pack: unexpected disconnect while reading sideband packet
+fatal: the remote end hung up unexpectedly
+Everything up-to-date
+```
+
+Check the proxy's `recentRelayFailures` before blaming egress policy — on
+2026-09-15 it was empty, which is what pointed at the repo's own access level
+rather than the network. A 403 is not retried and not routed around: hand the
+push to Craig with the exact commands, per §6.
+
+**And never pipe a push through anything.** That run reported three tags pushed
+that did not exist, because `git push … | tail -3` makes `$?` the exit status of
+`tail`. Run the push bare, read its exit code, then confirm against the remote
+with `git ls-remote --tags` — the same rule as §4's "worker prose is data, not
+evidence", applied to your own commands.
+
 Two things this buys immediately:
 
 - **Fleet state in one call per repo, without cloning.** `get_file_contents`
@@ -656,3 +697,18 @@ something a grep could settle.
   The first report was right and the second was noise, and both went to Craig
   as fact. A run that has not appeared yet looks exactly like one that never
   will; only elapsed time tells them apart.
+- **A release run attached its repos read-only and could not cut the tag.**
+  2026-09-15: the v2.11.2 run did everything — merged both app PRs, got CI green
+  fleet-wide, ran the three `build.yml` dry runs — and then could not push a tag,
+  because §0 had attached the apps with the default `access: "read"` and
+  `add_repo` will not raise the level afterwards. The API half all worked, which
+  is exactly why it went unnoticed until the last step. §0 now asks whether the
+  run ends in a push, before attaching.
+  Two smaller things fell out of the same minutes. The failed pushes were
+  reported to Craig as succeeded, because they were piped through `tail` and the
+  shell returned `tail`'s exit code — caught only by the `ls-remote` afterwards,
+  which is the reason to always do the `ls-remote` afterwards. And the release
+  notes nearly claimed a mobile instrument strip and a moved pairing token that
+  OceanSentinel's UI-review commit describes and the reconcile commit the next
+  day deleted: §1's "read the file, not the message" applies to writing a tag
+  message just as much as to writing docs.
