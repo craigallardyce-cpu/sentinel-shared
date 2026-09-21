@@ -63,6 +63,20 @@ const RECOPY_PATTERNS = [
   { glob: /(^|\/)shared\/weather\//, shared: '@sentinel/weather-ui' },
 ];
 
+// Code that must not reappear in an app, as opposed to a file name. The three
+// app repositories are private, so an anonymous request for their GitHub
+// releases 404s: each backend's /app-version route did exactly that and told
+// users "No releases published on GitHub yet" while v2.11.2 was published.
+// Their CI scripts legitimately call the same endpoint with a token, which is
+// why scripts/ is outside the scan (see section 5b).
+const FORBIDDEN_SOURCE_PATTERNS = [
+  {
+    re: /api\.github\.com\/repos\/craigallardyce-cpu\/[^/]+\/releases/,
+    msg: 'anonymous release check against a private repo; use @sentinel/update-feed',
+  },
+];
+const CODE_FILE = /\.(c|m)?(j|t)sx?$/;
+
 const results = [];
 const record = (level, area, msg) => results.push({ level, area, msg });
 const fail = (area, msg) => record('FAIL', area, msg);
@@ -426,6 +440,42 @@ for (const app of presentApps) {
       const body = readText(f);
       if (body.includes(p.shared)) continue;
       fail('recopy', `${app.name}: ${rel} looks like a local copy of code owned by ${p.shared}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5b. Code that must not come back, whatever file it is in.
+//
+//     Tracked files only, via `git ls-files`, so a build output or a scratch
+//     file on one machine cannot fail a check CI would pass. Outside git (the
+//     checker's own fixture tests) it falls back to walking the tree. Skipped:
+//     node_modules, anything under a dist* directory, and any scripts/
+//     directory, whose release tooling calls the GitHub API with a token.
+// ---------------------------------------------------------------------------
+function trackedSourceFiles(appRoot) {
+  let rels;
+  try {
+    rels = execFileSync('git', ['ls-files', '-z'], { cwd: appRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
+      .split('\0').filter(Boolean);
+  } catch {
+    rels = walk(appRoot).map((f) => path.relative(appRoot, f).replace(/\\/g, '/'));
+  }
+  return rels.filter((rel) => {
+    if (!CODE_FILE.test(rel)) return false;
+    return !rel.split('/').some((seg) => seg === 'node_modules' || seg === 'scripts' || seg.startsWith('dist'));
+  });
+}
+
+for (const app of presentApps) {
+  const appRoot = path.join(ROOT, app.name);
+  for (const rel of trackedSourceFiles(appRoot)) {
+    const full = path.join(appRoot, rel);
+    if (!exists(full)) continue;
+    const lines = readText(full).split('\n');
+    for (const p of FORBIDDEN_SOURCE_PATTERNS) {
+      const i = lines.findIndex((l) => p.re.test(l));
+      if (i !== -1) fail('source', `${app.name}: ${rel}:${i + 1} — ${p.msg}`);
     }
   }
 }

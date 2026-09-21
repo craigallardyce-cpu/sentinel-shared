@@ -381,3 +381,46 @@ test('a stale nested lockfile is named by its own path', () => {
   assert.match(runChecker(root),
     /frontend\/package-lock\.json records .*but frontend\/package\.json is 0\.1\.0/);
 });
+
+/*
+  Section 5b. The three app repositories are private, so an anonymous request
+  for their GitHub releases 404s -- which each backend's /app-version route
+  reported as "No releases published on GitHub yet" while a release existed.
+*/
+const RELEASES_CALL = "const r = await fetch('https://api.github.com/repos/craigallardyce-cpu/HarborSentinel/releases/latest');\n";
+const harbor = (files) => ({
+  'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+  ...Object.fromEntries(Object.entries(files).map(([k, v]) => [`HarborSentinel/${k}`, v])),
+});
+
+test('an anonymous release check in app source fails, naming the file and line', () => {
+  const root = fixture(harbor({ 'server/routes/meta.ts': `// meta\n${RELEASES_CALL}` }));
+  assert.match(runChecker(root),
+    /\[source\] HarborSentinel: server\/routes\/meta\.ts:2 — anonymous release check against a private repo; use @sentinel\/update-feed/);
+});
+
+test('release tooling under scripts/ and build output under dist*/ are not scanned', () => {
+  const root = fixture(harbor({
+    'scripts/supersede-releases.mjs': RELEASES_CALL,
+    'backend/scripts/publish.js': RELEASES_CALL,
+    'dist-server/server.cjs': RELEASES_CALL,
+    'dist/assets/index.js': RELEASES_CALL,
+  }));
+  assert.doesNotMatch(runChecker(root), /anonymous release check/);
+});
+
+test('a release call in documentation is not app source', () => {
+  const root = fixture(harbor({ 'docs/updates.md': RELEASES_CALL }));
+  assert.doesNotMatch(runChecker(root), /anonymous release check/);
+});
+
+test('in a git checkout only tracked files are scanned', () => {
+  const root = fixture(harbor({ 'server/tracked.ts': RELEASES_CALL, 'server/scratch.ts': RELEASES_CALL }));
+  const appDir = path.join(root, 'HarborSentinel');
+  const g = (...args) => execFileSync('git', args, { cwd: appDir, stdio: 'ignore' });
+  g('init', '-q');
+  g('add', 'package.json', 'server/tracked.ts');
+  const out = runChecker(root);
+  assert.match(out, /server\/tracked\.ts:1 — anonymous release check/);
+  assert.doesNotMatch(out, /server\/scratch\.ts/);
+});
