@@ -184,6 +184,57 @@ test('an aliased bare import in that same package passes', () => {
 });
 
 /*
+  The dev server's fs allow list. Theme fonts are served from sentinel-shared by
+  URL, and outside server.fs.allow Vite answers 403 -- in dev only, and silently.
+*/
+const appWithAllow = (dir, config, allow) => ({
+  [`${dir}/package.json`]: JSON.stringify({
+    name: 'x', version: '2.11.1', dependencies: { '@sentinel/theme': 'file:../sentinel-shared/theme' },
+  }),
+  [`${dir}/${config}`]: `import path from 'path';
+export default { server: { fs: { allow: [${allow}] } } };`,
+});
+const themePackage = sharedPackage('theme', '@sentinel/theme', 'export const a = 1;\n');
+
+test('an app whose fs allow list omits sentinel-shared fails', () => {
+  const root = fixture({ ...themePackage, ...appWithAllow('HarborSentinel', 'vite.config.ts', "'.', './shared'") });
+  assert.match(runChecker(root), /HarborSentinel: vite\.config\.ts server\.fs\.allow does not include/);
+});
+
+test('an app with no fs allow list at all fails', () => {
+  const root = fixture({
+    ...themePackage,
+    'VesselKeeper/package.json': JSON.stringify({
+      name: 'x', version: '2.11.1', dependencies: { '@sentinel/theme': 'file:../sentinel-shared/theme' },
+    }),
+    'VesselKeeper/vite.config.ts': "export default { server: { port: 5173 } };",
+  });
+  assert.match(runChecker(root), /VesselKeeper: vite\.config\.ts server\.fs\.allow does not include/);
+});
+
+test('a path.resolve entry reaching the sibling passes', () => {
+  const root = fixture({
+    ...themePackage,
+    ...appWithAllow('HarborSentinel', 'vite.config.ts', "'.', path.resolve(__dirname, '../sentinel-shared')"),
+  });
+  assert.doesNotMatch(runChecker(root), /server\.fs\.allow/);
+});
+
+test('an entry at the wrong depth is caught, not passed on its name', () => {
+  // OceanSentinel's config is in frontend/, so '../sentinel-shared' lands inside OceanSentinel.
+  const wrong = fixture({
+    ...themePackage,
+    ...appWithAllow('OceanSentinel', 'frontend/vite.config.js', "'..', path.resolve(__dirname, '../sentinel-shared')"),
+  });
+  assert.match(runChecker(wrong), /OceanSentinel: frontend\/vite\.config\.js server\.fs\.allow does not include/);
+  const right = fixture({
+    ...themePackage,
+    ...appWithAllow('OceanSentinel', 'frontend/vite.config.js', "'..', path.resolve(__dirname, '../../sentinel-shared')"),
+  });
+  assert.doesNotMatch(runChecker(right), /server\.fs\.allow/);
+});
+
+/*
   The lockfile check had the same name-prefix defect as the alias rule: it only
   considered entries named `@sentinel/…`, so a `@mariner-sentinel/charts` whose
   recorded version had drifted from the one on disk was passed over in silence.

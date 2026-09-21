@@ -128,7 +128,7 @@ reproduce this layout before anything builds.
   node sentinel-shared/scripts/check-fleet-drift.mjs
   ```
   It covers cross-app dependency alignment, version alignment, Vite aliases for
-  every bare import a shared package makes, local re-copies of extracted
+  every bare import a shared package makes, the dev server's `fs.allow` reaching this repo, local re-copies of extracted
   modules, Android parity and `applicationId` vs Electron `appId`, OceanSentinel's
   backend-dep mirroring, stale or unpublished `sentinel-shared` SHA pins, palette
   integrity, the installed `sentinel-check` skill, settings drift and theme
