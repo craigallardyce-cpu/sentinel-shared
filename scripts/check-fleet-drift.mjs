@@ -366,6 +366,29 @@ for (const app of presentApps) {
     // too, and a prefix test silently excluded it from this rule entirely.
     for (const d of Object.keys(pkg.dependencies || {})) if (fleetPackageNames.has(d)) declared.add(d);
   }
+
+  /*
+    The dev server must be allowed to serve files from sentinel-shared.
+
+    The same symlinks put every asset a shared package references by URL --
+    @sentinel/theme's woff2 fonts -- under /@fs/<path to sentinel-shared>, and
+    Vite answers 403 for anything outside server.fs.allow. Nothing fails: the
+    app renders in fallback fonts in dev only, because production bundles the
+    files. All three apps had the gap (2026-09-21). Each entry is resolved the
+    way Vite resolves it, relative to the config's directory, so an entry at
+    the wrong depth -- OceanSentinel's config sits in frontend/ -- is caught
+    rather than passed on the strength of the name.
+  */
+  if (declared.size > 0) {
+    const allowList = viteSrc.match(/\ballow\s*:\s*\[([^\]]*)\]/);
+    const configDir = path.dirname(vitePath);
+    const entries = allowList ? [...allowList[1].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]) : [];
+    const allowsShared = entries.some((e) => path.resolve(configDir, e) === SHARED_ROOT);
+    if (!allowsShared) {
+      fail('vite', `${app.name}: ${app.viteConfig} server.fs.allow does not include the sibling sentinel-shared — the dev server will 403 the shared theme fonts`);
+    }
+  }
+
   for (const shared of declared) {
     for (const imp of sharedImports.get(shared) || []) {
       /*
