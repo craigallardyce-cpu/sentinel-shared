@@ -28,6 +28,7 @@ Projects/
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
+| `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
 | `@mariner-sentinel/charts` | Nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. **Note the scope** — this is the one package published as `@mariner-sentinel/*` rather than `@sentinel/*`, which is a real trap: tooling that matched packages by the `@sentinel/` prefix skipped it entirely until 2026-09-08. See `charts/README.md` | see `charts/README.md` |
 
@@ -232,6 +233,35 @@ a stale local value over what the account already holds.
 
 **Status: consumed by nobody.** It is deliberately unwired, so it can be reviewed
 and built against without any app changing behaviour.
+
+## `@sentinel/update-feed`
+
+The three app repositories are private, so their GitHub Releases cannot be read
+anonymously: electron-updater's `github` provider and every backend's
+`/app-version` route got a 404, and the routes reported that as "No releases
+published on GitHub yet". The website now serves a public feed at
+`https://marinersentinel.com/updates/<app>/`, proxying the latest release with a
+server-side token, and everything reads that instead:
+
+- **electron-updater** points at `updateFeedUrl(app)` with the `generic` provider,
+  configured in each app's electron-builder `publish`. Nothing in this package runs
+  in the Electron main process; `@sentinel/electron-shell` is unchanged.
+- **The `/app-version` route** is `appVersionHandler({ app, getCurrentVersion })`.
+  It reads `release.json` from the feed and answers 200
+  `{ currentVersion, latestVersion, hasUpdate, changelog }`, or 502
+  `{ currentVersion, error }` when the feed cannot be read, so `@sentinel/ui`'s
+  `useAppUpdater` shows its error state on a manual check.
+
+`hasUpdate` is a semver comparison (`compareVersions`, which ignores a leading `v`
+and sorts a prerelease below its release), not the `!==` the routes used, which
+offered a downgrade as an update. `changelog` is a string, one note per line.
+`checkLatestRelease` never throws; any failure, a 404 included, is `ok: false`.
+
+Server-side only: zero runtime dependencies, global `fetch` (Node 18+), and both
+ESM (`dist/`) and CommonJS (`dist-cjs/`) builds, because OceanSentinel's backend is
+bundled to CJS. The drift checker fails any app source file that calls
+`api.github.com/repos/craigallardyce-cpu/<repo>/releases` directly; release tooling
+under `scripts/` is exempt because it calls with a token.
 
 ## Review finding H6: investigated, then parked
 

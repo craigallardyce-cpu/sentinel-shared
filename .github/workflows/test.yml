@@ -55,7 +55,7 @@ jobs:
         # committed dist/ that all three apps consume and nothing was checking it
         # against a fresh build. Adding a test script is the trigger to add the
         # package here; adding a package with committed dist/ is the reason to.
-        package: [auth-ui, charts, electron-shell, lan-pairing, marine, settings, ui, vessel, weather, weather-ui]
+        package: [auth-ui, charts, electron-shell, lan-pairing, marine, settings, ui, update-feed, vessel, weather, weather-ui]
 
     # Each package is its own npm project with its own vitest config, so every
     # command runs from the package directory rather than the repo root.
