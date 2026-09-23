@@ -696,7 +696,17 @@ if (exists(tokensFile)) {
 //    staying silent when it is absent, since not every machine installs every
 //    one. Every skill in the directory is checked, so adding one needs no edit
 //    here.
+//
+//    Compare with line endings normalised. On Windows git checks the canonical
+//    copy out as CRLF while anything that writes the installed copy directly
+//    leaves it LF, so a byte comparison reported two identical skills as
+//    diverged on 2026-09-23 and the only way to clear it was to re-copy a file
+//    that already matched. A skill differing only in line endings is the same
+//    skill.
 // ---------------------------------------------------------------------------
+const sameSkillText = (a, b) =>
+  readText(a).replace(/\r\n/g, '\n') === readText(b).replace(/\r\n/g, '\n');
+
 const skillsDir = path.join(SHARED_ROOT, 'skills');
 const home = process.env.HOME || process.env.USERPROFILE;
 if (home && exists(skillsDir)) {
@@ -704,7 +714,7 @@ if (home && exists(skillsDir)) {
     const canonical = path.join(skillsDir, name, 'SKILL.md');
     if (!exists(canonical)) continue;
     const installed = path.join(home, '.claude/skills', name, 'SKILL.md');
-    if (exists(installed) && readText(installed) !== readText(canonical)) {
+    if (exists(installed) && !sameSkillText(installed, canonical)) {
       warn('skill', `installed ~/.claude/skills/${name}/SKILL.md differs from the canonical copy in sentinel-shared — re-copy it`);
     }
   }
