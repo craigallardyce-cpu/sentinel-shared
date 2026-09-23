@@ -45,7 +45,7 @@ repositories, each with its own history and remote:
 
 | Folder | What it is | Remote (`craigallardyce-cpu/…`) |
 |---|---|---|
-| `sentinel-shared/` | This repo: the `@sentinel/*` packages, the drift checker, the `sentinel-check` skill | `sentinel-shared` (**public**) |
+| `sentinel-shared/` | This repo: the `@sentinel/*` packages, the drift checker, and the fleet skills in `skills/` | `sentinel-shared` (**public**) |
 | `HarborSentinel/` | Vessels at anchor: anchor-watch Electron + Android app | `HarborSentinel` (private) |
 | `OceanSentinel/` | Vessels underway: chartplotter, weather, VHF monitoring and transcription, ship's log. Its Capacitor project is under `frontend/`, not the root | `OceanSentinel` (private) |
 | `VesselKeeper/` | Maintenance and ship's records; one feature set at two device counts (see the tiers note below) | `VesselKeeper` (private) |
@@ -53,7 +53,7 @@ repositories, each with its own history and remote:
 | `docs-kb/` | The customer-facing knowledge base, see below | `docs-kb` (private) |
 | `admin-app/` | Admin and catalog app (Next.js + Electron). Secrets load from a gitignored `.env.local`; its history was re-initialised on first push (2026-08-18) so nothing earlier is on GitHub | `admin-app` (private) |
 | `Watch Schedule/` | Crew watch-rotation planner extracted from OceanSentinel's ship's log. Shares `@sentinel/theme` and `@sentinel/electron-shell` but deliberately has no backend, no Supabase and no Android build, and sits **outside** the fleet version alignment. Read its own `CLAUDE.md` before touching the rotation maths | `WatchSchedule` (private) |
-| `NMEA Data Simulator/` | Replays NMEA 0183 over TCP so the apps can be driven without a boat; the source of every screenshot and end-to-end test. Its `data/` captures are gitignored because both generators are deterministic; see its README to rebuild them | `NMEADataSimulator` (private, no spaces in the remote name) |
+| `NMEA Data Simulator/` | Replays NMEA 0183 over TCP so the apps can be driven without a boat; the source of every screenshot and end-to-end test. Also holds the Playwright screenshot pipeline under `scripts/screenshot-pipeline/` — see the `fleet-screenshots` skill before using it. Its `data/` captures are gitignored because both generators are deterministic; see its README to rebuild them | `NMEADataSimulator` (private, no spaces in the remote name) |
 
 Also under `Projects/` but not source and not under git: `data/` (chart index and
 downloaded ENC charts and tiles), `recordings/`, `uploads/`, `NMEA Server/` (an
