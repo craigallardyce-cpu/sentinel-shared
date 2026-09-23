@@ -225,6 +225,37 @@ website (migrations, copy) → `docs-kb` → `admin-app` if the catalogue change
 | `model` | chosen per worker, below; omitted, it inherits yours, which is the expensive default |
 | `permission_mode` | omit; it inherits. Never `plan` — nobody is there to approve |
 
+### When there is no `create_session`: local workers
+
+A coordinator started from the desktop app's Code tab may have no tool that
+starts a cloud session. The update-feed run (2026-09-21 to 23) did not, and ran
+six workers locally with the `Agent` tool instead. It works, and it changes
+four things the brief has to say, because §3's pre-flight assumes a cloud
+container at `/home/user/<Repo>`:
+
+- **Worktree, not checkout.** `git -C Projects/<Repo> worktree add
+  ../<Repo>-wt-<topic> -b <branch> origin/main`. It sits directly in
+  `Projects/` so `../sentinel-shared` still resolves as a sibling. The main
+  checkouts belong to Craig and to other sessions: a worker never edits them or
+  changes their branch.
+- **A port and a scratchpad per worker**, because parallel workers share
+  `/tmp` and the machine's ports. **And never an app's production port**: 3001
+  (VesselKeeper), 3000 (HarborSentinel), 5001 (OceanSentinel) belong to the
+  installed apps. The brief says: stop everything you start.
+- **The drift checker cannot see a worktree.** It resolves the fleet from the
+  fixed-name directories beside `sentinel-shared`, so a fix made in a worktree
+  still reports as failing locally. Tell the worker so, have it verify its own
+  tree by grep, and treat CI on the PR as the authoritative drift run.
+- **Merge `main` in; do not rebase.** A worker whose `main` moved under it
+  rebased and force-pushed its own branch. The result was correct, but it is the
+  riskier resolution, and §4's rule for the coordinator applies to workers too:
+  say so in the brief.
+
+Cleaning up has one trap. `git worktree remove --force` can leave a shell whose
+`node_modules` holds symlinks into `Projects/sentinel-shared/*`. Delete the
+links first (`find <dir> -type l -delete`), then the directory: a recursive
+delete that follows them destroys the shared packages.
+
 ### Pick the model per worker
 
 The cost of a worker is mostly its fixed start-up (clone, install, reading the
@@ -454,6 +485,14 @@ branch can move between review and merge: HarborSentinel #3 gained a second
 commit from its own worker forty minutes after review, and was merged on the
 stale reading. It happened to be a good commit. Don't rely on that.
 
+**A release set fails CI on purpose until it merges in order.** The app PRs of
+a version bump fail the drift checker's version guard until `fleet-version.json`
+moves, which is the guard working. Merge the `sentinel-shared` PR first, re-run
+the app PRs' checks (`gh run rerun <id>`), then merge each with
+`gh pr merge --match-head-commit <sha>` against the head its green run was on.
+When Craig delegates merging for a run, that flag is how the re-read is kept
+honest rather than remembered.
+
 ## 6. Hand off the human-only steps, exactly
 
 Applying migrations, running the security advisor, building Android, uploading
@@ -468,6 +507,17 @@ node scripts/migrate.mjs --status
 
 and say what the bare run should apply. If a grant, policy, function or view
 changed, the advisor skill runs next; a data-only UPDATE needs no advisor.
+
+**Hand off a secret without ever seeing it.** When the human step is setting a
+credential (`FLEET_RELEASES_TOKEN` on Cloud Run, 2026-09-23), give the console
+path as the primary route and say plainly not to paste the value into chat or
+onto a command line. Craig ran the `gcloud … --update-env-vars` alternative
+and pasted its output here, token included, so it had to be rotated the same
+day. If a value does reach the conversation, say so at once and walk the
+rotation, not a note at the end. Name the service's real project too: the
+website runs in GCP project `marinersentinel-website`, not the project
+`gcloud` defaults to on Craig's machine, whose `oceansentinel` service is a
+different thing.
 
 ## 7. Close it
 
@@ -624,6 +674,21 @@ draws the window down faster than doing the work in one session would; batch by
 repo, not by file, spawn only the repos §1 found, and don't spawn a worker for
 something a grep could settle.
 
+The update-feed run, 2026-09-21 to 23, all local `Agent` workers. Costs in
+dollars are not visible to a local coordinator; tokens and wall-clock are:
+
+| Worker | Model | Tokens | Wall-clock |
+|---|---|---|---|
+| Website feed module, stubbed-fetch verification, then a one-line CI fix | Opus 5 | ~109k | 4m + 4m |
+| New shared package with tests, committed dist/dist-cjs, drift rule | Opus 5 | ~134k | 8m |
+| HarborSentinel route + publish config + pin (one rebase on a moved main) | Sonnet 5 | ~141k | 20m |
+| OceanSentinel route + publish config + pin, three package roots | Sonnet 5 | ~116k | 10m |
+| VesselKeeper, same, plus proving the packaged app resolves the package | Opus 5 | ~118k | 19m |
+
+The two Sonnet workers were not cheaper in tokens than the Opus ones: most of
+a local worker's spend is its install, build and packaging, whatever the model,
+so the rate is the lever and the token count barely moves.
+
 ## What has gone wrong so far
 
 - **A coordinating session spent its first calls discovering it could see one
@@ -725,3 +790,36 @@ something a grep could settle.
   release with installers and the three `latest*.yml` files attached, checked on
   the release itself. A green workflow is not a published release: the account's
   billing can fail the step that publishes, and did.
+- **This run started on a stale copy of this file.** The installed
+  `~/.claude/skills/fleet-coordinator/SKILL.md` was 534 lines against 727 here,
+  missing §0's access section and the rule against piping a push. The session
+  then piped its tag pushes through `grep`, exactly the pattern that rule
+  forbids; the tags were real, confirmed afterwards with `git ls-remote`, but by
+  luck rather than method. The drift checker had been warning `[skill] installed
+  … differs from the canonical copy` all along. Re-copy before a coordinating
+  run whenever that warning is up; it is the one warning that changes how you
+  work, not what you find.
+- **A roadmap premise was false for two weeks and justified a decision.** "The
+  desktop installers come from public GitHub Releases that each app's
+  auto-updater reads" sat in a closed item from 2026-09-07. All three app
+  repositories are private; no installed app had ever updated itself. §1's
+  "check the item's premise" applies to closed items quoted as background, not
+  only to the open item being worked.
+- **Exact-text edits missed silently on CRLF files.** `docs-kb` mixes CRLF and
+  LF files, and so does this file. A multi-line replacement written with `\n`
+  found nothing in `05-troubleshooting.md` while matching in its LF neighbours.
+  Check a file's line endings before a multi-line edit, and write matching ones.
+- **A session left a dev server on VesselKeeper's production port, and the
+  installed app broke hours later.** `PORT=3001 node dist/server/index.js`,
+  started from the main `Projects/VesselKeeper` checkout, was still listening
+  that afternoon. The installed app's backend could not bind, looped
+  "reconnecting", and its window displayed pages from the stray server. It also
+  exposed a real product bug: VesselKeeper had no handling for a busy port.
+  §3's local-worker rules now forbid production ports and require stopping
+  everything started.
+- **A tag build's Linux job failed on an upstream HTTP 500, on a commit whose
+  dry run had passed.** A download server errored mid-packaging.
+  `gh run rerun <id> --failed` re-runs only the failed job, and the other
+  platforms' uploaded artifacts carry over to the release job. Read the log
+  before re-running: a 500 from a download is transient, and a compile error is
+  not.
