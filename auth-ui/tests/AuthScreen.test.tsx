@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { AuthScreen } from '../src/AuthScreen';
 import { memoryStorage } from './memoryStorage';
+import { writeEntitlements } from '../src/entitlements';
 
 // Mutable so a test can run the component as if it were on a phone. Hoisted
 // with the vi.mock factory, which runs at import time — a plain `let` here
@@ -478,6 +479,82 @@ describe('AuthScreen — subscription gating', () => {
 
     expect(await screen.findByText(/Device limit reached/)).toBeInTheDocument();
     expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+});
+
+/*
+  The no-plan screen cannot ask the server why there is no plan: the
+  active_user_* views stop returning an expired trial, exactly as they return
+  nothing for an account that never subscribed. What the device does know is
+  the entitlement cache its last successful verification wrote, and a refused
+  check leaves that cache standing. These tests seed it as that verification
+  would have, then let the server refuse.
+*/
+describe('AuthScreen — lapsed trial notice', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const accessStorageKey = 'vesselkeeper_access';
+
+  const seedCache = (status: 'active' | 'trialing', currentPeriodEnd: number) =>
+    writeEntitlements(storage, accessStorageKey, {
+      features: ['maintenance_log'],
+      tierNames: ['Standalone'],
+      fetchedAt: currentPeriodEnd - 30 * DAY,
+      status,
+      currentPeriodEnd
+    });
+
+  const renderRefused = () => {
+    const supabase = makeMockSupabase({ session: { user: { id: 'user-1' } }, subscriptions: [] });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Vessel Keeper"
+        appId="VesselKeeper"
+        accessStorageKey={accessStorageKey}
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+  };
+
+  it('says when the free trial ended, when the cached grant was a trial that has passed', async () => {
+    const ended = Date.now() - 3 * DAY;
+    seedCache('trialing', ended);
+    renderRefused();
+
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    const date = new Date(ended).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    expect(screen.getByText(`Your Vessel Keeper free trial ended on ${date}.`)).toBeInTheDocument();
+    expect(screen.queryByText('No active Vessel Keeper subscription found.')).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic line when this device holds no cache', async () => {
+    renderRefused();
+
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('No active Vessel Keeper subscription found.')).toBeInTheDocument();
+    expect(screen.queryByText(/free trial ended/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic line for a paid plan that lapsed — only trials get the notice', async () => {
+    seedCache('active', Date.now() - 3 * DAY);
+    renderRefused();
+
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('No active Vessel Keeper subscription found.')).toBeInTheDocument();
+    expect(screen.queryByText(/free trial ended/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic line when the cached trial has not ended but the server refused anyway', async () => {
+    seedCache('trialing', Date.now() + 10 * DAY);
+    renderRefused();
+
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('No active Vessel Keeper subscription found.')).toBeInTheDocument();
+    expect(screen.queryByText(/free trial ended/)).not.toBeInTheDocument();
   });
 });
 
