@@ -642,7 +642,7 @@ export function AuthScreen({
             <div className="mx-auto bg-warning/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-warning/50 shadow-[0_0_15px_var(--color-warning-glow)]">
               <AlertTriangle className="w-8 h-8 text-warning" />
             </div>
-            <h1 className="text-2xl font-bold text-text-primary tracking-wide">Account Active</h1>
+            <h1 className="text-2xl font-bold text-text-primary tracking-wide">No active plan</h1>
             <p className="text-sm text-text-secondary mt-2">No active {appName} subscription found.</p>
           </div>
 
