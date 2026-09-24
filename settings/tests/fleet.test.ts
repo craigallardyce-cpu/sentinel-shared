@@ -198,6 +198,16 @@ describe('the settings that had drifted', () => {
       expect(FLEET_SETTINGS.get(key).scopes, key).toEqual(['host']);
     }
   });
+
+  it('arms the low-speed and AIS CPA alarms only when a limit is set', () => {
+    // No default and no on/off key: an unset limit is an alarm that is off,
+    // exactly as for the high limits beside them.
+    for (const key of ['alarms.sog_min_kt', 'alarms.boat_speed_min_kt', 'alarms.ais_cpa_nm', 'alarms.ais_tcpa_min']) {
+      const definition = FLEET_SETTINGS.get(key);
+      expect(definition.scopes, key).toEqual(['vessel', 'device']);
+      expect(definition.default, key).toBeUndefined();
+    }
+  });
 });
 
 describe('a real device adopting the registry', () => {

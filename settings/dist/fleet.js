@@ -539,6 +539,51 @@ export const FLEET_SETTINGS = createRegistry({
         placeholder: 'knots',
         legacy: { ocean: ['alarm_boat_spd_max'] },
     }),
+    /*
+      The low limits wake a crew when the wind dies, to trim or start the engine.
+      No legacy keys: OceanSentinel never had a low limit to carry across.
+    */
+    'alarms.sog_min_kt': defineSetting({
+        scopes: ['vessel', 'device'],
+        type: numberType({ min: 0, max: 100 }),
+        label: 'Low speed over ground limit',
+        description: 'Alarm below this speed over ground.',
+        placeholder: 'knots',
+    }),
+    'alarms.boat_speed_min_kt': defineSetting({
+        scopes: ['vessel', 'device'],
+        type: numberType({ min: 0, max: 100 }),
+        label: 'Low boat speed limit',
+        description: 'Alarm below this speed through the water.',
+        placeholder: 'knots',
+    }),
+    /*
+      OceanSentinel's AIS collision alarm: a target sounds the alarm when its
+      closest point of approach is inside the CPA limit AND that approach is due
+      within the TCPA limit -- both at once, never either alone, so a ship that
+      will pass close in two hours, or one that is near now but opening, stays
+      visual. Like the telemetry limits above there is no separate on/off: the
+      alarm is armed when both limits are set, and off when either is cleared.
+  
+      Not HarborSentinel's `alarms.ais_proximity.*`, which is a range ring around
+      a boat at anchor, evaluated on the host. This one is about relative motion
+      underway, so it takes the vessel-then-device scoping of the other
+      chartplotter alarms.
+    */
+    'alarms.ais_cpa_nm': defineSetting({
+        scopes: ['vessel', 'device'],
+        type: numberType({ min: 0.01, max: 10 }),
+        label: 'AIS alarm, CPA limit',
+        description: 'Alarm when a target will pass closer than this.',
+        placeholder: 'nautical miles',
+    }),
+    'alarms.ais_tcpa_min': defineSetting({
+        scopes: ['vessel', 'device'],
+        type: numberType({ min: 1, max: 120 }),
+        label: 'AIS alarm, TCPA limit',
+        description: 'Only for a closest approach due within this many minutes.',
+        placeholder: 'minutes',
+    }),
     'alarms.heading_min_deg': defineSetting({
         scopes: ['vessel', 'device'],
         type: numberType({ min: 0, max: 360 }),

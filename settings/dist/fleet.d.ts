@@ -100,6 +100,10 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'alarms.depth_limit_ft': import("./types.js").SettingSpec<number>;
     'alarms.sog_max_kt': import("./types.js").SettingSpec<number>;
     'alarms.boat_speed_max_kt': import("./types.js").SettingSpec<number>;
+    'alarms.sog_min_kt': import("./types.js").SettingSpec<number>;
+    'alarms.boat_speed_min_kt': import("./types.js").SettingSpec<number>;
+    'alarms.ais_cpa_nm': import("./types.js").SettingSpec<number>;
+    'alarms.ais_tcpa_min': import("./types.js").SettingSpec<number>;
     'alarms.heading_min_deg': import("./types.js").SettingSpec<number>;
     'alarms.heading_max_deg': import("./types.js").SettingSpec<number>;
     'alarms.cog_min_deg': import("./types.js").SettingSpec<number>;
