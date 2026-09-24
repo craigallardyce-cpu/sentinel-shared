@@ -276,7 +276,7 @@ describe('AuthScreen — subscription gating', () => {
       />
     );
 
-    expect(await screen.findByText('Account Active')).toBeInTheDocument();
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
     expect(screen.getByText('No active Vessel Keeper subscription found.')).toBeInTheDocument();
   });
 
