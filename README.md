@@ -25,7 +25,7 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
-| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state and a `dense` size), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState` | all three |
+| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state, a `dense` size, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, and `openExternal(url)` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
@@ -72,7 +72,7 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 
 | Primitive | Replaces |
 |---|---|
-| `Button` (`primary` / `secondary` / `danger` / `ghost`, `sm` / `md`, `icon`, `loading`) | bespoke Tailwind buttons; ALL-CAPS labels — use sentence case |
+| `Button` — variants below; `dense` / `sm` / `md`, `icon`, `loading`, `block`, `active`, `layout`, `touchFloor` | bespoke Tailwind buttons; ALL-CAPS labels — use sentence case |
 | `Input`, `Select`, `Textarea` (`label`, `hint`, `error`, `required`) | 20+ hand-assembled input class strings; toast-as-validation |
 | `Toggle` | copy-pasted iOS switches |
 | `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
@@ -84,6 +84,61 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |
 | `<SettingsShell>` + `SettingsSection`/`SettingsRow` — Display (night, brightness, keep-awake) → app sections → Updates → About | three differently-organised settings modals; no About surface existed |
 | `<AppShell>` + `HeaderButton`/`HeaderGroup` — glass header, left dock ≥ lg, bottom bar < lg, safe-area aware, night-mode + brightness applied on `<html>` so portals follow | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
+
+### `Button` variants and layout
+
+| Variant | For |
+|---|---|
+| `primary` | the one main action on a surface |
+| `secondary` (default) | any other action |
+| `accent` | a notable action that is not *the* action |
+| `success` | a completion: mark done, apply |
+| `alarm` | acknowledging or silencing an alarm (not `danger`) |
+| `danger` | a destructive action, drawn to be resistible |
+| `ghost` | a quiet action that fills on hover |
+| `link` | an action that reads as text: cyan, no fill at rest or on hover, no padding, no height, no font weight of its own; underlines on hover; focus ring kept. Takes only the type size and icon gap from `size` |
+
+`active` draws any variant lit and sets `aria-pressed`, for a control that is *on*.
+
+**`cn` concatenates; it does not merge Tailwind.** Two classes setting the same
+property resolve by their order in the stylesheet, not in the `class`
+attribute, so a caller's `justify-between` cannot reliably beat a
+`justify-center` the Button emitted. The Button's answer is to hand properties
+over by not emitting them, never by hoping the caller's class wins:
+
+- **`layout="bare"`** drops the shape entirely — display, alignment,
+  justification, height, padding, gap, radius, font size, font weight and
+  wrapping — and ignores `size`, so `className` decides all of them. The variant
+  keeps its colours, border, hover, focus ring and disabled state. A row with a
+  label left and a count right:
+  `<Button layout="bare" className="w-full flex justify-between items-center px-3 py-2 rounded-lg">`.
+- **`touchFloor`** (default `true`) keeps the 44px Android minimum where the
+  caller owns the shape: `min-h-11` under `bare`, and for `link` an invisible
+  44px-tall `::before` hit area that moves nothing. `layout="default"` ignores
+  it (`size` sets the height there, and `dense` is under the floor on purpose).
+  Pass `touchFloor={false}` for a control a mouse drives or one whose geometry
+  is fixed by its surroundings; a `link` positioned `absolute`/`fixed` needs it
+  too, because the hit area relies on the link being `relative`.
+- **Colours stay with the variant.** `bare` hands over layout, not paint: a
+  caller's `bg-*` still collides with the variant's. Choose the variant whose
+  colours you want, and use `className` only for properties the Button does not
+  set (a `hover:text-*` on a `link`, a `shadow-lg` on a resting `secondary`).
+
+There is no night-mode prop. Night follows the theme tokens, as it does for
+every other component; a surface that wants a different night treatment from
+the one the tokens give is asking for a theme change, not a Button option.
+
+### `openExternal(url)`
+
+Opens a website in the system browser from Electron, Capacitor and the browser
+build with one call, `window.open(url, '_blank', 'noopener,noreferrer')`. It
+refuses anything but an absolute `http:`/`https:` URL, because every app's
+Electron `setWindowOpenHandler` passes what it is given to `shell.openExternal`.
+It returns `false` when it refused the URL or `window.open` threw, and `true`
+otherwise — it cannot report whether a window appeared, since `noopener` makes
+`window.open` return `null` even on success and Electron's handler denies the
+window it has just sent to the browser. `isWebUrl(url)` is the same check on
+its own.
 
 On desktop the header **is** the title bar. Each app's `main.cjs` spreads
 `hiddenTitleBarOptions()` from `@sentinel/electron-shell` into its `BrowserWindow`,
@@ -346,6 +401,7 @@ three apps keep their own persistence, which is duplication but not a defect.
 | `scripts/check-fleet-drift.mjs` | Drift checker. Its scope comes from the app directories beside `sentinel-shared`, not from where you run it, so a machine with all three checkouts always gets the full fleet. The per-app scope is CI's, which checks out one app and this repo. Also runs in each app's CI on every push. |
 | `fleet-version.json` | The one fleet version the three apps release on. The drift checker compares each app's root `package.json` against it, which is what lets version alignment run in an app's CI, where only that app and this repo are checked out. Bump it in the same set as the apps' own versions. |
 | `fleet-dependencies.json` | The range every app must declare for each package in the checker's `ALIGNED_DEPS` (React, Capacitor, Supabase and the rest), so dependency alignment runs in an app's CI too, where one app is checked out. Generated, not hand-edited: `node sentinel-shared/scripts/check-fleet-drift.mjs --write-fleet-dependencies` from a full-fleet checkout, which refuses while the apps disagree. |
+| `scripts/smoke-launch-linux.sh` | Launches a built Linux AppImage under Xvfb and passes when a window opens and the app stays up; kills the app's whole process tree afterwards. Called from the ubuntu leg of each app's `build.yml`, so a release is gated on the artifact actually starting. The header holds the exact step and its apt packages (`xvfb`, `xdotool`). Its tests skip where those are not installed. |
 | `scripts/lib/` | Matching helpers the checker uses, kept separate so they can be unit tested. |
 | `scripts/**/*.test.mjs` | Tests for the checker, on `node:test` — no install, no dependencies. Run them with `node --test "scripts/**/*.test.mjs"`; the quoted glob is required, as `node --test scripts/` tries to execute the directory as a module. |
 | `skills/sentinel-check/SKILL.md` | Canonical source for the `/sentinel-check` Claude Code skill. |

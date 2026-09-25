@@ -9,7 +9,7 @@ import type { ButtonVariant } from '../src/Button';
  * no correct target, and a variant that silently renders as another one would
  * put those 11 straight back where they started.
  */
-const ALL: ButtonVariant[] = ['primary', 'secondary', 'accent', 'success', 'alarm', 'danger', 'ghost'];
+const ALL: ButtonVariant[] = ['primary', 'secondary', 'accent', 'success', 'alarm', 'danger', 'ghost', 'link'];
 
 describe('Button', () => {
   it('renders every declared variant, each with its own classes', () => {
