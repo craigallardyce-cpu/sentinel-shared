@@ -12,6 +12,8 @@ import {
   backendPageUrl,
   portInUseMessage,
   createBackendWindowGuard,
+  BACKEND_ID_PATH,
+  isBackendIdProbe,
   _resetBackendListenRegistry
 } from '../src/backendPort.js';
 
@@ -326,5 +328,295 @@ describe('createBackendWindowGuard', () => {
     win.isDestroyed.mockReturnValue(true);
     fake.listen();
     expect(loadApp).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The ownership check: 'listening' is reported only once what answers at
+// http://localhost:<port> is this very process's server. Real servers on
+// ephemeral ports throughout; FAST keeps the bounded retries quick.
+
+const FAST = { attempts: 3, intervalMs: 20, timeoutMs: 300 };
+
+function bind(server, port, host) {
+  opened.push(server);
+  return new Promise((resolve) => {
+    const onError = (err) => resolve(err.code || 'error');
+    server.once('error', onError);
+    const done = () => { server.off('error', onError); resolve(null); };
+    if (host === undefined) server.listen(port, done);
+    else server.listen(port, host, done);
+  });
+}
+
+function foreignHttp() {
+  return http.createServer((req, res) => res.end('SOME OTHER PROGRAM'));
+}
+
+// A port nobody holds right now.
+async function freePort() {
+  const port = await listenBlocker();
+  const blocker = opened.pop();
+  await new Promise((r) => blocker.close(() => r()));
+  return port;
+}
+
+function get(host, port, path, method = 'GET') {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ hostname: host, port, path, method, agent: false }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => (body += c));
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// A foreign program bound to `foreignHost` on an ephemeral P, then ours on
+// `ourHost` (a wildcard) on the same P, tracked. Skips, saying why, when this OS
+// refuses ours the port -- then the loopback hole cannot occur here at all.
+async function coBind(foreign, foreignHost, ourHost, ctx) {
+  const blocked = await bind(foreign, 0, foreignHost);
+  if (blocked) ctx.skip(`cannot bind ${foreignHost} on this machine (${blocked})`);
+  const port = foreign.address().port;
+  const ours = http.createServer((req, res) => res.end('OUR APP'));
+  opened.push(ours);
+  const verdict = new Promise((resolve) => {
+    const off = onBackendListenState(port, (view) => {
+      if (view.state === 'port-in-use' || view.state === 'listening' || view.state === 'failed') {
+        queueMicrotask(() => off());
+        resolve(view);
+      }
+    });
+  });
+  if (ourHost === undefined) ours.listen(port);
+  else ours.listen(port, ourHost);
+  trackBackendListen(ours, { port, host: ourHost, verify: FAST });
+  const view = await verdict;
+  if (view.code === 'EADDRINUSE' || view.code === 'EACCES') {
+    ctx.skip(
+      `this OS refuses ${ourHost || 'the default host'}:${port} while another program holds ` +
+      `${foreignHost}:${port} (${view.code}), so the loopback hole cannot occur here`
+    );
+  }
+  return { port, ours };
+}
+
+describe('the ownership check with real servers', () => {
+  it('reports listening, via verifying, when our server alone holds the port on 0.0.0.0', async () => {
+    const port = await freePort();
+    const server = http.createServer((req, res) => res.end('OUR APP'));
+    const seen = [];
+    const off = onBackendListenState(port, (view) => seen.push(view.state));
+    const listening = nextState(port, 'listening');
+    await bind(server, port, '0.0.0.0');
+    trackBackendListen(server, { port, host: '0.0.0.0', verify: FAST });
+    await listening;
+    off();
+    expect(seen).toContain('verifying');
+    expect(getBackendListenState(port)).toEqual({ port, state: 'listening', code: null });
+  });
+
+  it('reports listening on the default host (::, as OceanSentinel binds)', async () => {
+    const port = await freePort();
+    const server = http.createServer((req, res) => res.end('OUR APP'));
+    const listening = nextState(port, 'listening');
+    await bind(server, port, undefined);
+    trackBackendListen(server, { port, verify: FAST });
+    await listening;
+    expect(getBackendListenState(port).state).toBe('listening');
+  });
+
+  it('gives port-in-use when another program on 127.0.0.1:P answers, though ours bound 0.0.0.0:P', async (ctx) => {
+    const { port, ours } = await coBind(foreignHttp(), '127.0.0.1', '0.0.0.0', ctx);
+    expect(getBackendListenState(port)).toEqual({ port, state: 'port-in-use', code: 'ELOCALHOSTFOREIGN' });
+    expect(ours.listening).toBe(true); // LAN clients keep working; only the window is withheld
+    expect(console.error.mock.calls.flat().join(' ')).toMatch(/another program answers on localhost/);
+  });
+
+  it('gives port-in-use when another program on [::1]:P answers, though ours bound 0.0.0.0:P', async (ctx) => {
+    const { port } = await coBind(foreignHttp(), '::1', '0.0.0.0', ctx);
+    expect(getBackendListenState(port)).toEqual({ port, state: 'port-in-use', code: 'ELOCALHOSTFOREIGN' });
+  });
+
+  it('gives port-in-use when another program on 127.0.0.1:P answers, though ours bound the default host', async (ctx) => {
+    const { port } = await coBind(foreignHttp(), '127.0.0.1', undefined, ctx);
+    expect(getBackendListenState(port)).toEqual({ port, state: 'port-in-use', code: 'ELOCALHOSTFOREIGN' });
+  });
+
+  it('treats a non-HTTP reply on localhost as another program', async (ctx) => {
+    // Reads what it is sent (so its sockets can close), and replies in something else.
+    const garbage = net.createServer((s) => {
+      s.resume();
+      s.end('SSH-2.0-not-http\r\n\r\n');
+    });
+    const { port } = await coBind(garbage, '127.0.0.1', '0.0.0.0', ctx);
+    expect(getBackendListenState(port)).toEqual({ port, state: 'port-in-use', code: 'ELOCALHOSTFOREIGN' });
+  });
+
+  it('keeps the window on the port-in-use page, and Try again re-checks without listen()', async (ctx) => {
+    const foreign = foreignHttp();
+    const { port, ours } = await coBind(foreign, '127.0.0.1', '0.0.0.0', ctx);
+    const win = fakeWindow();
+    const ipcMain = fakeIpcMain();
+    const loadApp = vi.fn(() => Promise.resolve());
+    const guard = createBackendWindowGuard({ appName: 'HarborSentinel', port, ipcMain, getMainWindow: () => win, loadApp });
+    try {
+      guard.show();
+      expect(guard.content()).toBe('port-in-use');
+      expect(loadApp).not.toHaveBeenCalled();
+
+      // Still there: Try again checks again and lands on port-in-use again.
+      const listenSpy = vi.spyOn(ours, 'listen');
+      ipcMain.emit('backend:retry');
+      expect(getBackendListenState(port).state).toBe('verifying');
+      expect(guard.content()).toBe('starting');
+      await nextState(port, 'port-in-use');
+      expect(guard.content()).toBe('port-in-use');
+      expect(loadApp).not.toHaveBeenCalled();
+
+      // The other program goes away; Try again now loads our app.
+      await new Promise((r) => foreign.close(() => r()));
+      ipcMain.emit('backend:retry');
+      await nextState(port, 'listening');
+      expect(guard.content()).toBe('app');
+      expect(loadApp).toHaveBeenCalledOnce();
+      expect(listenSpy).not.toHaveBeenCalled();
+    } finally {
+      guard.dispose();
+    }
+  });
+
+  it('fails after bounded retries when localhost never answers, and Try again recovers', async () => {
+    const port = await freePort();
+    const server = http.createServer((req, res) => res.end('OUR APP'));
+    await bind(server, port, '127.0.0.1');
+    // Swallow the probe ahead of our route: the connection hangs, as it would
+    // with a program that accepts and never replies.
+    let hang = true;
+    const untracked = server.emit;
+    trackBackendListen(server, { port, host: '127.0.0.1', verify: FAST });
+    const withRoute = server.emit;
+    expect(withRoute).not.toBe(untracked);
+    server.emit = function (event, ...args) {
+      if (hang && event === 'request' && args[0].url === BACKEND_ID_PATH) return true;
+      return withRoute.call(this, event, ...args);
+    };
+    const failed = await nextState(port, 'failed');
+    expect(failed.code).toBe('ELOCALHOSTUNVERIFIED');
+    expect(console.error.mock.calls.flat().join(' ')).toMatch(/after 3 attempts/);
+
+    hang = false;
+    expect(retryBackendListen(port)).toBe(true);
+    await nextState(port, 'listening');
+  });
+
+  it('skips the check with verify: false, and for a server that is not an http.Server', async () => {
+    const port = await freePort();
+    const plain = net.createServer();
+    await bind(plain, port, '127.0.0.1');
+    trackBackendListen(plain, { port, host: '127.0.0.1' });
+    expect(getBackendListenState(port).state).toBe('listening');
+
+    const port2 = await freePort();
+    const server = http.createServer();
+    await bind(server, port2, '127.0.0.1');
+    const emit = server.emit;
+    trackBackendListen(server, { port: port2, host: '127.0.0.1', verify: false });
+    expect(getBackendListenState(port2).state).toBe('listening');
+    expect(server.emit).toBe(emit);
+  });
+});
+
+describe('the ownership route', () => {
+  it('answers only itself, ahead of the app, and leaves every other request to the app', async () => {
+    const port = await freePort();
+    const server = http.createServer();
+    // Express-style handlers, one attached before tracking and one after: each
+    // must see every request except the probe, and never the probe. The first
+    // answers; a second response would throw ERR_HTTP_HEADERS_SENT.
+    const seen = [];
+    const express = (tag) => (req, res) => {
+      seen.push(`${tag} ${req.method} ${req.url}`);
+      if (tag !== 'before') return;
+      res.setHeader('Content-Type', 'text/plain');
+      res.end(`app ${req.url}`);
+    };
+    server.on('request', express('before'));
+    const listening = nextState(port, 'listening');
+    await bind(server, port, '127.0.0.1');
+    trackBackendListen(server, { port, host: '127.0.0.1', verify: FAST });
+    server.on('request', express('after'));
+    await listening;
+    const errors = [];
+    server.on('clientError', (err) => errors.push(err));
+    expect(seen).toEqual([]); // the verification probe itself never reached the app
+
+    const id = await get('127.0.0.1', port, BACKEND_ID_PATH);
+    expect(id.status).toBe(200);
+    expect(id.body).toMatch(/^[0-9a-f]{48}$/);
+    const again = await get('127.0.0.1', port, `${BACKEND_ID_PATH}?x=1`);
+    expect(again.body).toBe(id.body); // one token per process
+
+    expect(await get('127.0.0.1', port, '/api/health')).toEqual({ status: 200, body: 'app /api/health' });
+    expect(await get('127.0.0.1', port, BACKEND_ID_PATH, 'POST')).toEqual({ status: 200, body: `app ${BACKEND_ID_PATH}` });
+    expect(await get('127.0.0.1', port, `${BACKEND_ID_PATH}x`)).toEqual({ status: 200, body: `app ${BACKEND_ID_PATH}x` });
+
+    expect(seen).toEqual([
+      'before GET /api/health', 'after GET /api/health',
+      `before POST ${BACKEND_ID_PATH}`, `after POST ${BACKEND_ID_PATH}`,
+      `before GET ${BACKEND_ID_PATH}x`, `after GET ${BACKEND_ID_PATH}x`
+    ]);
+    expect(errors).toEqual([]);
+  });
+
+  it('never let the verification probe reach the app', async () => {
+    const port = await freePort();
+    const server = http.createServer();
+    const app = vi.fn((req, res) => res.end('app'));
+    server.on('request', app);
+    const listening = nextState(port, 'listening');
+    await bind(server, port, '0.0.0.0');
+    trackBackendListen(server, { port, host: '0.0.0.0', verify: FAST });
+    await listening;
+    expect(app).not.toHaveBeenCalled();
+  });
+
+  it('passes the path to the app when the request comes from off this machine', () => {
+    const server = http.createServer();
+    const app = vi.fn();
+    server.on('request', app);
+    trackBackendListen(server, { port: 5870, verify: FAST });
+    const res = { writeHead: vi.fn(), end: vi.fn() };
+    const lan = { method: 'GET', url: BACKEND_ID_PATH, socket: { remoteAddress: '192.168.1.20' } };
+    server.emit('request', lan, res);
+    expect(app).toHaveBeenCalledWith(lan, res);
+    expect(res.end).not.toHaveBeenCalled();
+
+    const local = { method: 'GET', url: BACKEND_ID_PATH, socket: { remoteAddress: '::ffff:127.0.0.1' } };
+    server.emit('request', local, res);
+    expect(app).toHaveBeenCalledOnce();
+    expect(res.end).toHaveBeenCalledOnce();
+  });
+
+  it('recognises loopback GETs of the reserved path only', () => {
+    const req = (remoteAddress, method = 'GET', url = BACKEND_ID_PATH) => ({ method, url, socket: { remoteAddress } });
+    expect(isBackendIdProbe(req('127.0.0.1'))).toBe(true);
+    expect(isBackendIdProbe(req('::1'))).toBe(true);
+    expect(isBackendIdProbe(req('::ffff:127.0.0.1'))).toBe(true);
+    expect(isBackendIdProbe(req('10.0.0.5'))).toBe(false);
+    expect(isBackendIdProbe(req('127.0.0.1', 'HEAD'))).toBe(false);
+    expect(isBackendIdProbe(req('127.0.0.1', 'GET', '/'))).toBe(false);
+    expect(BACKEND_ID_PATH).toBe('/__sentinel/backend-id');
+  });
+
+  it('installs the route once however often the server is tracked', () => {
+    const server = http.createServer();
+    trackBackendListen(server, { port: 5871, verify: FAST });
+    const first = server.emit;
+    trackBackendListen(server, { port: 5871, verify: FAST });
+    expect(server.emit).toBe(first);
   });
 });

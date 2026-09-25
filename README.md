@@ -263,6 +263,45 @@ bundled to CJS. The drift checker fails any app source file that calls
 `api.github.com/repos/craigallardyce-cpu/<repo>/releases` directly; release tooling
 under `scripts/` is exempt because it calls with a token.
 
+## `@sentinel/electron-shell`: the busy-port guard
+
+HarborSentinel (3000) and OceanSentinel (5001) run their backend inside
+Electron's main process and point the window at `http://localhost:<port>`.
+`src/backendPort.js` makes sure that window only ever shows **our** server. The
+server calls `trackBackendListen(server, { port, host })` right after `listen()`;
+`main.cjs` calls `createBackendWindowGuard({ appName, port, ipcMain,
+getMainWindow, loadApp })`, then `show()` once per window. The window shows a
+local "Starting…" page, then the app, or a port-in-use page with **Try again**.
+There is no fallback port: the port is part of the origin that holds sign-in and
+settings. VesselKeeper forks its backend and keeps its own guard in `main.cjs`.
+
+Our server emitting `'listening'` does not prove the window will reach it. On
+Windows (and elsewhere in some configurations) a program bound only to
+`127.0.0.1:<port>` or `[::1]:<port>` does not stop us binding `0.0.0.0` or `::`
+on the same port, and then that program, not ours, answers the window's
+`localhost`. So the guard also checks who answers:
+
+- The tracked `http.Server` answers `GET /__sentinel/backend-id` with a random
+  per-process token. It wraps `server.emit('request')` to do so, so that one
+  request is answered before Express sees it and is never passed on. Every other
+  request reaches the app unchanged. Only loopback clients get the token; from
+  the LAN the path falls through to the app like any unknown path.
+- On `'listening'`, a probe GETs that path at every address `localhost` can mean
+  to the window: `127.0.0.1` and `::1` (Chromium resolves `localhost` to loopback
+  itself, in both families), plus whatever `dns.lookup('localhost')` returns.
+  Chromium may connect to any of them that accepts, so every one that answers
+  must return our token. An address that refuses the connection is fine.
+- Our token everywhere: the state is `'listening'` and the app loads. Anything
+  else answering gives `'port-in-use'` (code `ELOCALHOSTFOREIGN`) and the log line
+  *"another program answers on localhost"*. Our server stays up for LAN clients,
+  and Try again re-runs the check. A timeout or a dropped connection is retried a
+  few times and gives `'failed'` (`ELOCALHOSTUNVERIFIED`) within about five
+  seconds.
+
+The apps need no code of their own for this. A server that is not an
+`http.Server` cannot answer the token, so it is reported `'listening'`
+unverified, as before.
+
 ## Review finding H6: investigated, then parked
 
 H6 proposed standardising the fleet on one database adapter — VesselKeeper's, which
