@@ -4,7 +4,7 @@ import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut } from 'lucide-re
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
 import type { Entitlements } from './entitlements';
-import { refreshEntitlements, clearEntitlements, fetchEntitlements, writeEntitlements } from './entitlements';
+import { refreshEntitlements, clearEntitlements, fetchEntitlements, writeEntitlements, readLapsedTrialEnd } from './entitlements';
 
 /**
  * Structural (not imported) subset of Supabase's SupabaseClient — avoids a
@@ -183,6 +183,9 @@ export function AuthScreen({
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [hasNoSubscription, setHasNoSubscription] = useState(false);
+  // Epoch ms when this device's last-known trial for the product ended, if it
+  // has; drives the no-plan screen's subtitle and nothing else.
+  const [lapsedTrialEndMs, setLapsedTrialEndMs] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
@@ -265,6 +268,7 @@ export function AuthScreen({
         clearOfflineGrant(storage, accessStorageKey);
         clearEntitlements(storage, accessStorageKey);
         setHasNoSubscription(false);
+        setLapsedTrialEndMs(null);
         setChecking(false);
       }
     });
@@ -513,6 +517,11 @@ export function AuthScreen({
         }
         onAuthenticated();
       } else {
+        // Why there is no plan, if this device knows: the entitlement cache from
+        // the last successful verification is still standing here, because
+        // nothing on the refused path writes or clears it. Read it now, at the
+        // refusal, so a later sign-out clearing the cache cannot race the screen.
+        setLapsedTrialEndMs(readLapsedTrialEnd(storage, accessStorageKey));
         setHasNoSubscription(true);
         setChecking(false);
       }
@@ -591,6 +600,7 @@ export function AuthScreen({
     storage.removeItem(accessStorageKey);
     clearEntitlements(storage, accessStorageKey);
     setHasNoSubscription(false);
+    setLapsedTrialEndMs(null);
     setError('');
     setLoading(false);
   };
@@ -643,7 +653,11 @@ export function AuthScreen({
               <AlertTriangle className="w-8 h-8 text-warning" />
             </div>
             <h1 className="text-2xl font-bold text-text-primary tracking-wide">No active plan</h1>
-            <p className="text-sm text-text-secondary mt-2">No active {appName} subscription found.</p>
+            <p className="text-sm text-text-secondary mt-2">
+              {lapsedTrialEndMs !== null
+                ? `Your ${appName} free trial ended on ${new Date(lapsedTrialEndMs).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}.`
+                : `No active ${appName} subscription found.`}
+            </p>
           </div>
 
           <div className="bg-bg-panel/60 p-4 rounded-xl border border-border-color/50 text-xs text-text-secondary leading-relaxed space-y-3">

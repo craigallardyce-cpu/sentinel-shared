@@ -62,6 +62,22 @@ export declare function readEntitlements(storage: StorageLike, accessStorageKey:
 export declare function writeEntitlements(storage: StorageLike, accessStorageKey: string, entitlements: Entitlements): void;
 export declare function clearEntitlements(storage: StorageLike, accessStorageKey: string): void;
 /**
+ * When this device last held a trial for this product that has since ended:
+ * the trial's end as epoch ms, or null.
+ *
+ * For the "No active plan" screen only, which otherwise cannot tell a lapsed
+ * trial from an account that never subscribed -- the `active_user_*` views
+ * simply stop returning an expired grant. The answer comes from the cache the
+ * last successful verification wrote, so it costs no query, and it is display
+ * only: access has already been refused by the server before this is read, so
+ * the device clock deciding "in the past" here can never extend anything.
+ *
+ * Only a cached status of 'trialing' counts. A paid plan that lapsed ('active')
+ * and a trial whose cached end is still in the future (the server refused for
+ * some other reason) both answer null.
+ */
+export declare function readLapsedTrialEnd(storage: StorageLike, accessStorageKey: string, now?: number): number | null;
+/**
  * Whether the cached entitlements grant a feature.
  *
  * Fails open when there is no cache: a device that verified before this
