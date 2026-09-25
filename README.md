@@ -25,7 +25,7 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
-| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state, a `dense` size, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, and `openExternal(url)` | all three |
+| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state, a `dense` size, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `openExternal(url)` and `openUserGuide(section)` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
@@ -139,6 +139,21 @@ otherwise — it cannot report whether a window appeared, since `noopener` makes
 `window.open` return `null` even on success and Electron's handler denies the
 window it has just sent to the browser. `isWebUrl(url)` is the same check on
 its own.
+
+### `openUserGuide(section)`
+
+Opens the one user guide, on the website at `USER_GUIDE_URL`
+(`marinersentinel.com/user-guide.html`), at a section: `openUserGuide('hs-alarms')`.
+The apps link to it and never bundle a copy. `USER_GUIDE_APP_SECTION` gives each
+app's own chapter (`harbor`, `ocean`, `keeper`), which is where a general "User
+guide" control lands; a screen that has its own section passes that instead.
+`USER_GUIDE_ANCHORS` is the full list of sections an app may name, and
+`UserGuideSection` types it, so a typo does not compile; `userGuideUrl(section)`
+builds the address without opening it. The anchors are the guide's own heading
+`id`s in `docs-kb/mariner-sentinel-user-guide.html`. The website's
+`check:guide-anchors` imports `dist/userGuideSections.js` (import-free so Node can
+load it) and fails when the guide it serves is missing one, so a renamed heading
+breaks the website build instead of every in-app link.
 
 On desktop the header **is** the title bar. Each app's `main.cjs` spreads
 `hiddenTitleBarOptions()` from `@sentinel/electron-shell` into its `BrowserWindow`,
