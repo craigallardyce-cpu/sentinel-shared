@@ -199,6 +199,24 @@ somebody typed it. Verify it before costing the work, and close it as
 already-done or wrongly-premised where that is the honest answer; that is a
 result, not a wasted run.
 
+**A backlog pass is mostly premise checks, so do them all before spawning
+anything.** "Work down the roadmap" on 2026-09-24 started from about thirty open
+code items. Checking each against `main` and the live schema took a few
+minutes, and four were then closed without a worker: two already fixed, two
+wrongly premised. The rest sorted into briefs that could run now, items waiting
+on a decision from Craig, and Craig-only work. Put that split in front of Craig
+in the first report, decisions as short questions. His one-line answers ("one
+vessel per account") were enough to brief the next wave.
+
+**A schema premise is settled against the live database, not `migrations/`.**
+From a local coordinator the Supabase MCP connector may refuse (`Unauthorized`)
+until it is authenticated. The website checkout's gitignored `.env` holds
+`DATABASE_URL`, so a read-only `information_schema` or `pg_constraint` query run
+with `node` and `pg` from that folder answers in one call. Load the value into
+the process without printing it, and run only `SELECT`s. That query closed the
+`trips.vessel_slug` and migration-002 items, and it is how the duplicate-owner
+count behind migration 059 was established before the constraint was written.
+
 ## 2. Order the work
 
 The sequence is almost always:
@@ -211,6 +229,15 @@ website (migrations, copy) → `docs-kb` → `admin-app` if the catalogue change
   makes two branches editing the same package unmergeable.
 - A migration merges before, or with, the client half that needs it; the seed
   and docs follow. Nothing is "done" until Craig has applied the migration.
+- **An app PR that calls a new shared export bumps its `build.yml` pin in the
+  same PR.** The pin is otherwise a release-time chore, but it cannot wait when
+  code that ships starts depending on the new export. On 2026-09-25 both
+  busy-port PRs made `main.cjs` call `createBackendWindowGuard` while
+  `build.yml` still pinned a `sentinel-shared` commit without it. CI was green,
+  because `test.yml` runs unpinned; the first tag after merge would have
+  shipped apps that crash on launch. The OceanSentinel worker spotted it. Put
+  the pin bump in the brief whenever an app adopts a shared API, and pin to a
+  commit already on `origin/main`, which means the shared PR merges first.
 
 ## 3. Spawn workers
 
@@ -250,11 +277,41 @@ container at `/home/user/<Repo>`:
   rebased and force-pushed its own branch. The result was correct, but it is the
   riskier resolution, and §4's rule for the coordinator applies to workers too:
   say so in the brief.
+- **An app worker builds against the `sentinel-shared` main checkout, not a
+  branch.** The `file:` dependencies resolve to `Projects/sentinel-shared`,
+  which sits on `main`, so an app worker cannot use a shared change that has
+  not merged yet. Merge the shared PR, fast-forward the main checkout, *then*
+  spawn the app workers. On 2026-09-24 the alarms and busy-port app workers
+  were held until their shared PRs merged for exactly this reason. Do not point
+  a worker at a second shared worktree to get round it: the `../sentinel-shared`
+  path is fixed.
+- **Say where to run servers from.** The HarborSentinel busy-port worker ran
+  its built server with the working directory in `sentinel-shared`, and the
+  server wrote `data/harbor_sentinel.db`, chart folders and a `.vite/` cache
+  there, untracked. Tell the worker to run everything from its own worktree,
+  and run `git status` on `sentinel-shared` after each worker finishes.
 
 Cleaning up has one trap. `git worktree remove --force` can leave a shell whose
 `node_modules` holds symlinks into `Projects/sentinel-shared/*`. Delete the
-links first (`find <dir> -type l -delete`), then the directory: a recursive
-delete that follows them destroys the shared packages.
+links first, then the directory: a recursive delete that follows them destroys
+the shared packages.
+
+**On Windows those links are directory junctions, and `find -type l` does not
+see them.** npm creates junctions for `file:` dependencies on Windows, and Git
+Bash's `find` reports them as ordinary directories, so the documented command
+deletes nothing and gives no warning. What worked on 2026-09-24/25, from
+PowerShell:
+
+```powershell
+$p = "C:\Users\craig\Projects\<Repo>-wt-<topic>"
+do { $links = @(Get-ChildItem $p -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue)
+     foreach ($l in $links) { [System.IO.Directory]::Delete($l.FullName, $false) } } while ($links.Count -gt 0)
+git -C "C:\Users\craig\Projects\<Repo>" worktree remove --force $p
+```
+
+`Directory.Delete(path, false)` on a junction removes the link and leaves its
+target alone. Count the files in one shared package before and after as a check;
+nine worktrees were removed this way and `sentinel-shared` came through intact.
 
 ### Pick the model per worker
 
@@ -493,6 +550,14 @@ the app PRs' checks (`gh run rerun <id>`), then merge each with
 When Craig delegates merging for a run, that flag is how the re-read is kept
 honest rather than remembered.
 
+**Two PRs into one repo, merged back to back, have never been tested
+together.** Each PR's green run tested its own merge with the `main` of that
+moment, so the second merge lands a combination no CI run has seen. On
+2026-09-25 OceanSentinel #56 and #57 touched disjoint files and it was fine,
+but that was luck of the file split, not a check. Read `main`'s own CI run on
+the final merge commit before reporting the set as landed:
+`gh run list -R craigallardyce-cpu/<Repo> -b main -L 2`.
+
 ## 6. Hand off the human-only steps, exactly
 
 Applying migrations, running the security advisor, building Android, uploading
@@ -689,6 +754,27 @@ The two Sonnet workers were not cheaper in tokens than the Opus ones: most of
 a local worker's spend is its install, build and packaging, whatever the model,
 so the rate is the lever and the token count barely moves.
 
+The roadmap work-down, 2026-09-24 to 25: nine local `Agent` workers, plus the
+settings keys and the docs-kb close-out done by the coordinator itself:
+
+| Worker | Model | Tokens | Wall-clock |
+|---|---|---|---|
+| Website migration 059 from a pinned body | Sonnet 5 | ~92k | 7.5m |
+| OceanSentinel: four roadmap fixes, two new test files | Opus 5 | ~116k | 17m |
+| VesselKeeper: four roadmap fixes, sync-layer pruning | Opus 5 | ~122k | 18m |
+| `@sentinel/electron-shell` busy-port module, Electron smoke test | Opus 5 | ~141k | 12m |
+| `@sentinel/auth-ui` lapsed-trial line, clean-checkout dist check | Opus 5 | ~101k | 13.5m |
+| HarborSentinel busy-port adoption plus pin bump | Sonnet 5 | ~130k | 23m |
+| OceanSentinel busy-port, vessel upsert, pin bump | Opus 5 | ~156k | 22m |
+| OceanSentinel low-speed and AIS alarms, driven with the simulator | Opus 5 | ~238k | 27m |
+
+The alarms worker cost the most and found the most. Driving the UI with the
+NMEA simulator caught a crash that lint, tests and the build all missed (`new
+Map()` resolving to an imported icon named `Map`). It also found a dev-only
+StrictMode bug that hid every SOG alarm, which could otherwise have been read
+as its own failure. Where the change is behaviour a customer sees, the brief
+should ask for a simulator run and say which ports to use.
+
 ## What has gone wrong so far
 
 - **A coordinating session spent its first calls discovering it could see one
@@ -823,3 +909,20 @@ so the rate is the lever and the token count barely moves.
   platforms' uploaded artifacts carry over to the release job. Read the log
   before re-running: a 500 from a download is transient, and a compile error is
   not.
+- **A brief named the right-looking helper, and it was the wrong one.**
+  2026-09-24: the OceanSentinel brief said to compare the site passcode with
+  `secretsMatch`, because it was constant-time and already existed. It also
+  folds case, since share secrets are looked up with `LOWER(...)`, so following
+  the brief would have made every passcode case-insensitive. The worker read the
+  helper, wrote a `passcodesMatch` beside it and explained why in the PR. That is
+  the job a brief's "make reasonable calls and record them" line exists for. When
+  a brief names a helper, name the property you need from it, here "constant-time
+  and exact", not just its name. And when a worker departs from the brief, read
+  the reason before reading the diff.
+- **The permission classifier can stop a local coordinator mid-close-out.** On
+  2026-09-25 it refused the command that created the docs-kb worktree, straight
+  after an `rm -rf` of worker debris in `sentinel-shared`. The block covered the
+  outcome, not just that command, so it was not routed around. The run stopped,
+  said what was blocked and why, and continued once Craig allowed it. Look at
+  debris before deleting it, say in the report what was deleted, and expect a
+  destructive command to make the next action need Craig's say-so.
