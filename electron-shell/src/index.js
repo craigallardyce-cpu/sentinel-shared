@@ -293,6 +293,20 @@ function setupTitleBarOverlay({ ipcMain, getMainWindow }) {
   });
 }
 
+// Busy-port handling for an in-process backend; see backendPort.js. Destructured
+// into plain names so the export list below stays shorthand-only, which is what
+// Node's CJS named-export detection needs when an ESM server imports this.
+const {
+  trackBackendListen,
+  getBackendListenState,
+  onBackendListenState,
+  retryBackendListen,
+  backendWindowContent,
+  backendPageUrl,
+  portInUseMessage,
+  createBackendWindowGuard
+} = require('./backendPort.js');
+
 module.exports = {
   applyLinuxGpuCompatibility,
   claimSingleInstanceLock,
@@ -302,5 +316,13 @@ module.exports = {
   createAppTray,
   setupAutoUpdater,
   hiddenTitleBarOptions,
-  setupTitleBarOverlay
+  setupTitleBarOverlay,
+  trackBackendListen,
+  getBackendListenState,
+  onBackendListenState,
+  retryBackendListen,
+  backendWindowContent,
+  backendPageUrl,
+  portInUseMessage,
+  createBackendWindowGuard
 };
