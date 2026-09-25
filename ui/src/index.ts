@@ -30,3 +30,5 @@ export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
 export type { SettingsShellProps, SettingsSectionProps, SettingsTab } from './SettingsShell';
 export { AppShell, HeaderButton, HeaderGroup } from './AppShell';
 export type { AppShellProps, ShellTab, HeaderButtonProps } from './AppShell';
+export { USER_GUIDE_URL, USER_GUIDE_ANCHORS, USER_GUIDE_APP_SECTION, userGuideUrl, openUserGuide } from './userGuide';
+export type { UserGuideSection, UserGuideApp } from './userGuide';
