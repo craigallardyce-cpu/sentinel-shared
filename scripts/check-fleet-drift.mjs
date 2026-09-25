@@ -8,15 +8,17 @@
  *
  * Runs in two scopes, using the same sibling layout in both:
  *   - Locally from Projects/ : sees all three apps, so every check runs.
- *   - In an app's CI         : sees that app + sentinel-shared, so the one
- *                              check that genuinely needs the siblings --
- *                              cross-app dependency alignment -- is skipped.
+ *   - In an app's CI         : sees that app + sentinel-shared.
  *
- * Version alignment deliberately sits outside that split. It compares each app
- * against fleet-version.json in this repo rather than against its siblings, so
- * it runs per-push in every app's CI, where nothing was checking it before.
+ * Version and dependency alignment deliberately sit outside that split. They
+ * compare each app against fleet-version.json and fleet-dependencies.json in
+ * this repo rather than against its siblings, so they run per-push in every
+ * app's CI, where nothing was checking them before. Only the full-fleet extras
+ * (the apps compared with each other, stale published entries) need siblings.
  *
  * Usage:  node sentinel-shared/scripts/check-fleet-drift.mjs
+ *         node sentinel-shared/scripts/check-fleet-drift.mjs --write-fleet-dependencies
+ *           (regenerate fleet-dependencies.json; needs all three apps present)
  * Exits non-zero if any check fails.
  */
 import fs from 'node:fs';
@@ -25,6 +27,7 @@ import { execFileSync } from 'node:child_process';
 import { builtinModules } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findCheckoutRef } from './lib/yaml-scan.mjs';
+import { declarationsIn, rangesByDep, compareWithPublished, unknownEntries, canonicalFrom } from './lib/aligned-deps.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(SHARED_ROOT, '..');
@@ -123,34 +126,114 @@ if (presentApps.length === 0) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Cross-app dependency alignment. A split here reintroduces duplicate-instance
-//    bugs (two Reacts) or means one app quietly behaves differently.
+// 1. Dependency alignment. A split here reintroduces duplicate-instance bugs
+//    (two Reacts) or means one app quietly behaves differently.
+//
+//    This used to compare the apps with each other only, behind a
+//    `presentApps.length > 1` gate, so it never ran in any app's CI -- the same
+//    blind spot version alignment had until fleet-version.json. It now compares
+//    every declaration of an ALIGNED_DEPS package against the range published
+//    in fleet-dependencies.json here, which needs no siblings and so runs at an
+//    app count of one. With all three apps present it also flags entries the
+//    file publishes that no app declares any more. The file is generated, never
+//    hand-maintained: `--write-fleet-dependencies` regenerates it from a
+//    full-fleet checkout, and refuses while the apps disagree.
 // ---------------------------------------------------------------------------
-if (presentApps.length > 1) {
-  const seen = new Map(); // dep -> Map(range -> [app])
-  for (const app of presentApps) {
-    // Collect from every package.json that declares deps, since OceanSentinel
-    // splits its frontend deps into a nested package.
-    const pkgFiles = [path.join(ROOT, app.name, 'package.json')];
-    for (const sub of ['frontend', 'backend']) {
-      const p = path.join(ROOT, app.name, sub, 'package.json');
-      if (exists(p)) pkgFiles.push(p);
+const FLEET_DEPS_FILE = path.join(SHARED_ROOT, 'fleet-dependencies.json');
+const REGEN_CMD = 'node sentinel-shared/scripts/check-fleet-drift.mjs --write-fleet-dependencies';
+
+const alignedDecls = [];
+for (const app of presentApps) {
+  // Every package.json that declares deps, since OceanSentinel splits its
+  // deps across the root, frontend/ and backend/.
+  for (const sub of ['', 'frontend', 'backend']) {
+    const rel = sub ? `${sub}/package.json` : 'package.json';
+    const p = path.join(ROOT, app.name, rel);
+    if (!exists(p)) continue;
+    alignedDecls.push(...declarationsIn(readJson(p), { app: app.name, file: rel, alignedDeps: ALIGNED_DEPS }));
+  }
+}
+const isFullFleet = presentApps.length === APPS.length;
+
+if (process.argv.includes('--write-fleet-dependencies')) {
+  if (!isFullFleet) {
+    console.error(`Refusing to write fleet-dependencies.json: only ${presentApps.map((a) => a.name).join(', ')} ` +
+      `found beside ${SHARED_ROOT}. The canonical set is what all ${APPS.length} apps agree on, so it needs all of them.`);
+    process.exit(1);
+  }
+  const { dependencies, conflicts } = canonicalFrom(alignedDecls, ALIGNED_DEPS);
+  if (conflicts.length) {
+    console.error('Refusing to write fleet-dependencies.json: the apps disagree, and publishing either side would ' +
+      'decide the split without anyone choosing. Align them first:');
+    for (const [dep, byRange] of conflicts) {
+      const detail = [...byRange.entries()]
+        .map(([r, ds]) => `${r} (${[...new Set(ds.map((d) => `${d.app}/${d.file}`))].join(', ')})`).join('  vs  ');
+      console.error(`  ${dep}: ${detail}`);
     }
-    for (const f of pkgFiles) {
-      const pkg = readJson(f);
-      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-      for (const dep of ALIGNED_DEPS) {
-        if (!deps[dep]) continue;
-        if (!seen.has(dep)) seen.set(dep, new Map());
-        const byRange = seen.get(dep);
-        if (!byRange.has(deps[dep])) byRange.set(deps[dep], []);
-        byRange.get(deps[dep]).push(app.name);
+    process.exit(1);
+  }
+  const body = {
+    $comment: `Generated by \`${REGEN_CMD}\` from a full-fleet checkout. The range each ALIGNED_DEPS ` +
+      `package must be declared at in every app; the drift checker fails an app that differs. Do not hand-edit.`,
+    dependencies,
+  };
+  fs.writeFileSync(FLEET_DEPS_FILE, `${JSON.stringify(body, null, 2)}\n`);
+  console.log(`Wrote ${FLEET_DEPS_FILE}: ${Object.keys(dependencies).length} package(s).`);
+  process.exit(0);
+}
+
+let fleetDeps = null;
+if (!exists(FLEET_DEPS_FILE)) {
+  // FAIL rather than WARN, unlike fleet-version.json: the checker and this file
+  // ship in the same commit, so a missing file means it was deleted, and a
+  // missing file would otherwise turn the per-app rule off in silence.
+  fail('deps', `sentinel-shared/fleet-dependencies.json is missing, so no app's dependencies can be checked ` +
+    `against the fleet's. Regenerate it from a full-fleet checkout: ${REGEN_CMD}`);
+} else {
+  try {
+    const d = readJson(FLEET_DEPS_FILE).dependencies;
+    if (d && typeof d === 'object' && !Array.isArray(d)) fleetDeps = d;
+    else fail('deps', 'sentinel-shared/fleet-dependencies.json has no "dependencies" object');
+  } catch {
+    fail('deps', 'sentinel-shared/fleet-dependencies.json is not valid JSON');
+  }
+}
+
+if (fleetDeps) {
+  for (const d of compareWithPublished(alignedDecls, fleetDeps)) {
+    const where = `${d.app}: ${d.file} ${d.field} declares ${d.dep} ${d.range}`;
+    if (d.kind === 'mismatch') {
+      fail('deps', `${where}, but sentinel-shared/fleet-dependencies.json publishes ${d.published}. ` +
+        `Either set it back to ${d.published} in this app, or, if the fleet is deliberately moving, make the ` +
+        `same change in every app and regenerate the file from a full-fleet checkout: ${REGEN_CMD}`);
+    } else {
+      fail('deps', `${where}, but sentinel-shared/fleet-dependencies.json publishes no range for it. ` +
+        `Regenerate the file from a full-fleet checkout so the fleet's range is on record: ${REGEN_CMD}`);
+    }
+  }
+  for (const dep of unknownEntries(fleetDeps, ALIGNED_DEPS)) {
+    fail('deps', `sentinel-shared/fleet-dependencies.json publishes ${dep}, which is not in the checker's ` +
+      `ALIGNED_DEPS, so nothing enforces it. Add it to ALIGNED_DEPS or regenerate the file: ${REGEN_CMD}`);
+  }
+  if (isFullFleet) {
+    const declared = new Set(alignedDecls.map((d) => d.dep));
+    for (const dep of Object.keys(fleetDeps)) {
+      if (ALIGNED_DEPS.includes(dep) && !declared.has(dep)) {
+        fail('deps', `sentinel-shared/fleet-dependencies.json publishes ${dep} ${fleetDeps[dep]}, but no app ` +
+          `declares it any more. Regenerate the file: ${REGEN_CMD}`);
       }
     }
   }
-  for (const [dep, byRange] of seen) {
+}
+
+// The apps compared with each other, which names both sides of a split in one
+// line. Redundant with the published comparison when the file is current, but
+// it is the clearer report when the fleet itself is split.
+if (presentApps.length > 1) {
+  for (const [dep, byRange] of rangesByDep(alignedDecls)) {
     if (byRange.size > 1) {
-      const detail = [...byRange.entries()].map(([r, apps]) => `${r} (${[...new Set(apps)].join(', ')})`).join('  vs  ');
+      const detail = [...byRange.entries()]
+        .map(([r, ds]) => `${r} (${[...new Set(ds.map((d) => d.app))].join(', ')})`).join('  vs  ');
       fail('deps', `${dep} versions differ: ${detail}`);
     }
   }
@@ -177,10 +260,8 @@ if (presentApps.length > 1) {
 //    because mid-bump the fleet genuinely is misaligned. CLAUDE.md's release
 //    step 2 says to make the two changes together.
 //
-//    The cross-app dependency check above stays gated: it compares the apps
-//    with each other and there is nothing here to compare them against.
-//    fleet-health.yml in the website repo runs it nightly with all three
-//    checkouts present.
+//    Section 1 now does the same for dependency alignment, against
+//    fleet-dependencies.json.
 // ---------------------------------------------------------------------------
 const fleetVersionFile = path.join(SHARED_ROOT, 'fleet-version.json');
 let fleetVersion = null;
@@ -1347,7 +1428,7 @@ for (const app of presentApps) {
 }
 
 // ---------------------------------------------------------------------------
-const scope = presentApps.length > 1 ? 'full fleet' : `${presentApps[0].name} only (cross-app dependency alignment skipped)`;
+const scope = presentApps.length > 1 ? 'full fleet' : `${presentApps[0].name} only (compared against the published fleet files; app-to-app comparison skipped)`;
 console.log(`Fleet drift check — scope: ${scope}\n`);
 const fails = results.filter((r) => r.level === 'FAIL');
 const warns = results.filter((r) => r.level === 'WARN');

@@ -129,7 +129,7 @@ test('scope is reported from the apps present beside sentinel-shared', () => {
   const one = fixture(app(`          repository: craigallardyce-cpu/sentinel-shared
           ref: ${PIN}
 `));
-  assert.match(runChecker(one), /scope: HarborSentinel only \(cross-app dependency alignment skipped\)/);
+  assert.match(runChecker(one), /scope: HarborSentinel only \(compared against the published fleet files; app-to-app comparison skipped\)/);
 
   const two = fixture({
     ...app(`          repository: craigallardyce-cpu/sentinel-shared
@@ -423,4 +423,159 @@ test('in a git checkout only tracked files are scanned', () => {
   const out = runChecker(root);
   assert.match(out, /server\/tracked\.ts:1 — anonymous release check/);
   assert.doesNotMatch(out, /server\/scratch\.ts/);
+});
+
+/*
+  Dependency alignment. It compared the apps with each other only, so like
+  version alignment it never ran in an app's CI, where one app is checked out.
+  It now compares each app against fleet-dependencies.json. The single-app cases
+  are the ones that matter: that is the scope that was blind.
+*/
+function runWith(root, args = []) {
+  try {
+    const out = execFileSync('node', [path.join(root, 'sentinel-shared', 'scripts', 'check-fleet-drift.mjs'), ...args], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { status: 0, out };
+  } catch (e) {
+    return { status: e.status, out: `${e.stdout ?? ''}${e.stderr ?? ''}` };
+  }
+}
+
+const FLEET_DEPS = { react: '^19.0.1', 'react-dom': '^19.0.1', '@capacitor/core': '^8.4.1' };
+const fleetDeps = (dependencies) => ({
+  'sentinel-shared/fleet-dependencies.json': JSON.stringify({ dependencies }),
+});
+const appWith = (name, file, deps, devDeps) => ({
+  [`${name}/${file}`]: JSON.stringify({
+    name: name.toLowerCase(), version: '2.11.1', dependencies: deps, ...(devDeps ? { devDependencies: devDeps } : {}),
+  }),
+});
+const fullFleet = (overrides = {}) => ({
+  ...appWith('HarborSentinel', 'package.json', FLEET_DEPS),
+  ...appWith('VesselKeeper', 'package.json', FLEET_DEPS),
+  'OceanSentinel/package.json': JSON.stringify({ name: 'ocean-sentinel', version: '2.11.1' }),
+  ...appWith('OceanSentinel', 'frontend/package.json', FLEET_DEPS),
+  ...overrides,
+});
+
+test('with one app present, a range differing from the published one fails and says how to fix it', () => {
+  const root = fixture({
+    ...fleetDeps(FLEET_DEPS),
+    ...appWith('HarborSentinel', 'package.json', { ...FLEET_DEPS, react: '^19.0.2' }),
+  });
+  const out = runChecker(root);
+  assert.match(out, /HarborSentinel only/);
+  assert.match(out, /FAIL {2}\[deps\] HarborSentinel: package\.json dependencies declares react \^19\.0\.2, but sentinel-shared\/fleet-dependencies\.json publishes \^19\.0\.1/);
+  assert.match(out, /set it back to \^19\.0\.1 in this app/);
+  assert.match(out, /--write-fleet-dependencies/);
+  assert.doesNotMatch(out, /react-dom/, 'only the package that differs is named');
+});
+
+test('with one app present, matching ranges are not reported, and an unused published package is fine', () => {
+  const root = fixture({
+    ...fleetDeps({ ...FLEET_DEPS, motion: '^12.23.24' }),
+    ...appWith('HarborSentinel', 'package.json', FLEET_DEPS),
+  });
+  assert.doesNotMatch(runChecker(root), /\[deps\]/);
+});
+
+test('a nested package root and devDependencies are each compared', () => {
+  const root = fixture({
+    ...fleetDeps(FLEET_DEPS),
+    'OceanSentinel/package.json': JSON.stringify({ name: 'ocean-sentinel', version: '2.11.1' }),
+    ...appWith('OceanSentinel', 'frontend/package.json', FLEET_DEPS, { '@capacitor/core': '^8.5.0' }),
+  });
+  assert.match(runChecker(root),
+    /OceanSentinel: frontend\/package\.json devDependencies declares @capacitor\/core \^8\.5\.0, but .* publishes \^8\.4\.1/);
+});
+
+test('an aligned package with no published range fails', () => {
+  const root = fixture({
+    ...fleetDeps({ react: '^19.0.1' }),
+    ...appWith('HarborSentinel', 'package.json', { react: '^19.0.1', tailwindcss: '^4.3.0' }),
+  });
+  assert.match(runChecker(root), /declares tailwindcss \^4\.3\.0, but sentinel-shared\/fleet-dependencies\.json publishes no range for it/);
+});
+
+test('a missing fleet-dependencies.json fails rather than turning the rule off', () => {
+  const root = fixture(appWith('HarborSentinel', 'package.json', FLEET_DEPS));
+  assert.match(runChecker(root), /FAIL {2}\[deps\] sentinel-shared\/fleet-dependencies\.json is missing/);
+});
+
+test('a published package outside ALIGNED_DEPS fails in any scope', () => {
+  const root = fixture({
+    ...fleetDeps({ ...FLEET_DEPS, 'left-pad': '^1.0.0' }),
+    ...appWith('HarborSentinel', 'package.json', FLEET_DEPS),
+  });
+  assert.match(runChecker(root), /publishes left-pad, which is not in the checker's ALIGNED_DEPS/);
+});
+
+test('with the full fleet, a current file and agreeing apps report nothing', () => {
+  const root = fixture({ ...fleetDeps(FLEET_DEPS), ...fullFleet() });
+  const out = runChecker(root);
+  assert.match(out, /scope: full fleet/);
+  assert.doesNotMatch(out, /\[deps\]/);
+});
+
+test('with the full fleet, a published entry no app declares is flagged as stale', () => {
+  const root = fixture({ ...fleetDeps({ ...FLEET_DEPS, motion: '^12.23.24' }), ...fullFleet() });
+  assert.match(runChecker(root), /publishes motion \^12\.23\.24, but no app declares it any more/);
+});
+
+test('with the full fleet, a file the apps have all moved past is flagged in every app', () => {
+  const moved = { ...FLEET_DEPS, react: '^19.1.0' };
+  const root = fixture({
+    ...fleetDeps(FLEET_DEPS),
+    ...fullFleet({
+      ...appWith('HarborSentinel', 'package.json', moved),
+      ...appWith('VesselKeeper', 'package.json', moved),
+      ...appWith('OceanSentinel', 'frontend/package.json', moved),
+    }),
+  });
+  const out = runChecker(root);
+  for (const app of ['HarborSentinel', 'VesselKeeper', 'OceanSentinel']) {
+    assert.match(out, new RegExp(`${app}: .*declares react \\^19\\.1\\.0, but .* publishes \\^19\\.0\\.1`));
+  }
+  assert.doesNotMatch(out, /react versions differ/, 'the apps agree with each other');
+});
+
+test('with the full fleet, apps split from each other are still named side by side', () => {
+  const root = fixture({
+    ...fleetDeps(FLEET_DEPS),
+    ...fullFleet(appWith('VesselKeeper', 'package.json', { ...FLEET_DEPS, react: '^18.3.1' })),
+  });
+  assert.match(runChecker(root), /react versions differ: \^19\.0\.1 \(OceanSentinel, HarborSentinel\) {2}vs {2}\^18\.3\.1 \(VesselKeeper\)/);
+});
+
+test('--write-fleet-dependencies regenerates the file from an agreeing fleet', () => {
+  const root = fixture({ ...fleetDeps({ react: '^18.0.0' }), ...fullFleet() });
+  const { status } = runWith(root, ['--write-fleet-dependencies']);
+  assert.equal(status, 0);
+  const written = JSON.parse(fs.readFileSync(path.join(root, 'sentinel-shared', 'fleet-dependencies.json'), 'utf8'));
+  assert.deepEqual(written.dependencies, FLEET_DEPS);
+  assert.deepEqual(Object.keys(written.dependencies), ['react', 'react-dom', '@capacitor/core'],
+    'written in ALIGNED_DEPS order, so a regeneration diffs only what changed');
+  assert.doesNotMatch(runChecker(root), /\[deps\]/);
+});
+
+test('--write-fleet-dependencies refuses while the apps disagree, and leaves the file alone', () => {
+  const root = fixture({
+    ...fleetDeps(FLEET_DEPS),
+    ...fullFleet(appWith('VesselKeeper', 'package.json', { ...FLEET_DEPS, react: '^18.3.1' })),
+  });
+  const { status, out } = runWith(root, ['--write-fleet-dependencies']);
+  assert.equal(status, 1);
+  assert.match(out, /the apps disagree/);
+  assert.match(out, /react: \^19\.0\.1 \(OceanSentinel\/frontend\/package\.json, HarborSentinel\/package\.json\) {2}vs {2}\^18\.3\.1 \(VesselKeeper\/package\.json\)/);
+  const kept = JSON.parse(fs.readFileSync(path.join(root, 'sentinel-shared', 'fleet-dependencies.json'), 'utf8'));
+  assert.deepEqual(kept.dependencies, FLEET_DEPS);
+});
+
+test('--write-fleet-dependencies refuses without the full fleet', () => {
+  const root = fixture(appWith('HarborSentinel', 'package.json', FLEET_DEPS));
+  const { status, out } = runWith(root, ['--write-fleet-dependencies']);
+  assert.equal(status, 1);
+  assert.match(out, /needs all of them/);
+  assert.equal(fs.existsSync(path.join(root, 'sentinel-shared', 'fleet-dependencies.json')), false);
 });

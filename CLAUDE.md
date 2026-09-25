@@ -136,12 +136,15 @@ reproduce this layout before anything builds.
   adoption. It also runs in each app's CI on every push, so what it reports
   locally is what will fail there.
 
-  **Cross-app dependency alignment is the one check the per-app scope cannot
-  run**, because it compares the apps with each other and CI has only one of
-  them. `fleet-health.yml` in the website repo runs it nightly with all three
-  checkouts present. Version alignment used to be in that position and no longer
-  is: each app is compared against `fleet-version.json` in this repo, which
-  needs no siblings and so runs per-push everywhere.
+  **Version and dependency alignment run per-push without the siblings**: each
+  app is compared against `fleet-version.json` and `fleet-dependencies.json` in
+  this repo. The latter is generated, not hand-edited — after deliberately
+  moving an aligned dependency in all three apps, regenerate it from a
+  full-fleet checkout with `node sentinel-shared/scripts/check-fleet-drift.mjs
+  --write-fleet-dependencies` and land it in the same set. Only the full-fleet
+  extras (apps compared with each other, published entries no app uses) still
+  need all three checkouts, which `fleet-health.yml` in the website repo has
+  nightly.
 - **Ask whether a change applies to the other two apps.** The single
   highest-value habit. Grep the other apps for the same code path before
   assuming a bug is local; if the same logic lives in two or more apps it
