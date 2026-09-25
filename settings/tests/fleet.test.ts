@@ -356,7 +356,7 @@ describe("OceanSentinel's settings burndown", () => {
     expect(fix.type.parse('{"lat":91,"lon":0}')).toBeUndefined();
   });
 
-  it("scopes the advisory's limits like the alarms, with no figure chosen for the crew", () => {
+  it("scopes the advisory's limits like the alarms, with no registry default", () => {
     for (const key of ['advisory.wind_limit_kt', 'advisory.gust_limit_kt', 'advisory.sea_limit_m']) {
       const definition = FLEET_SETTINGS.get(key);
       expect(definition.scopes, key).toEqual(['vessel', 'device']);

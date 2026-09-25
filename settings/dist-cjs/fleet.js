@@ -794,11 +794,14 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
       about this boat and this crew, so a second screen should inherit it, while a
       write offshore has no connection to reach the vessel layer with.
   
-      No defaults. OceanSentinel carried 30 kt, 40 kt gusting and a 4 m sea as
-      literals in two files; a figure the app chose for what is dangerous is
-      exactly the recommendation its "facts, not advice" decision took out. Unset
-      means the advisory has not been told what trouble is, and says so. The sea
-      is stored in metres whatever the display shows, like the depth alarm's feet.
+      No registry default. OceanSentinel still judges an unset limit against its
+      own crew-limit figures (30 kt, 40 kt gusting, a 4 m sea -- `DEFAULT_CREW_LIMITS`
+      in its passageEpisodes.js, which the passage planner's severity bands are
+      built on), and its screens say when they are doing that rather than showing
+      the figure as though somebody had typed it. Whether those figures should go
+      altogether is a product decision about the planner, not a storage one, and
+      is left open here rather than decided by a declaration. The sea is stored in
+      metres whatever the display shows, like the depth alarm's feet.
   
       No legacy keys: the old value is one JSON object holding all three, which a
       rename cannot split. OceanSentinel carries it across itself.
