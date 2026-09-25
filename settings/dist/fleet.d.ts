@@ -24,12 +24,15 @@
  * Where the apps disagreed about a value, the comment still says so — the record
  * of the disagreement is worth keeping even now that nothing inherits its answer.
  *
- * **Scope so far.** This declares the settings both apps share, plus the ones the
- * NMEA work touches. OceanSentinel's own groups — the VHF tuning, the log book,
- * the twenty-odd `alarm_*` thresholds — are declared when Ocean adopts the
- * registry, because several of them are not settings at all (`vessel_logs`,
- * `vessel_passages` and `vessel_custom_routes` are cached records living in the
- * same flat namespace) and deciding which is which is that step's work.
+ * **Scope.** This declares the settings the apps share, the ones the NMEA work
+ * touches, and OceanSentinel's own groups: the VHF tuning, the log book, the
+ * alarm thresholds, and (since the settings burndown of 2026-09-25) the entered
+ * position, the underway advisory's limits and watch, and the last three chart
+ * and console preferences. What Ocean still keeps in flat keys is not a setting
+ * and says so where it is stored with a `settings-data-exempt` marker: the ship's
+ * log, the owner's routes and marks, sync bookkeeping, and the router's
+ * description of the hull (boat facts and polar), which its own CLAUDE.md keeps
+ * on the device on purpose.
  */
 export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'vessel.name': import("./types.js").SettingSpec<string>;
@@ -88,6 +91,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
             text: string;
         }[]);
     };
+    'logbook.instruments_range_hours': import("./types.js").SettingSpec<number> & {
+        default: number | ((platform: import("./types.js").PlatformContext) => number);
+    };
     'ai.model': import("./types.js").SettingSpec<string>;
     'alarms.sound_enabled': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
@@ -127,5 +133,19 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'chart.vector_minutes': import("./types.js").SettingSpec<number> & {
         default: number | ((platform: import("./types.js").PlatformContext) => number);
     };
+    'chart.show_filed_route': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'chart.routes_locked': import("./types.js").SettingSpec<boolean> & {
+        default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
+    };
+    'position.entered_fix': import("./types.js").SettingSpec<{
+        lat: number;
+        lon: number;
+    }>;
+    'advisory.wind_limit_kt': import("./types.js").SettingSpec<number>;
+    'advisory.gust_limit_kt': import("./types.js").SettingSpec<number>;
+    'advisory.sea_limit_m': import("./types.js").SettingSpec<number>;
+    'advisory.watch_hours': import("./types.js").SettingSpec<number>;
 }>;
 export type FleetSettings = typeof FLEET_SETTINGS;

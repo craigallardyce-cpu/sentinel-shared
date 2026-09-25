@@ -25,12 +25,15 @@
  * Where the apps disagreed about a value, the comment still says so — the record
  * of the disagreement is worth keeping even now that nothing inherits its answer.
  *
- * **Scope so far.** This declares the settings both apps share, plus the ones the
- * NMEA work touches. OceanSentinel's own groups — the VHF tuning, the log book,
- * the twenty-odd `alarm_*` thresholds — are declared when Ocean adopts the
- * registry, because several of them are not settings at all (`vessel_logs`,
- * `vessel_passages` and `vessel_custom_routes` are cached records living in the
- * same flat namespace) and deciding which is which is that step's work.
+ * **Scope.** This declares the settings the apps share, the ones the NMEA work
+ * touches, and OceanSentinel's own groups: the VHF tuning, the log book, the
+ * alarm thresholds, and (since the settings burndown of 2026-09-25) the entered
+ * position, the underway advisory's limits and watch, and the last three chart
+ * and console preferences. What Ocean still keeps in flat keys is not a setting
+ * and says so where it is stored with a `settings-data-exempt` marker: the ship's
+ * log, the owner's routes and marks, sync bookkeeping, and the router's
+ * description of the hull (boat facts and polar), which its own CLAUDE.md keeps
+ * on the device on purpose.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FLEET_SETTINGS = void 0;
@@ -439,6 +442,24 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         label: 'Quick-tap entries',
         legacy: { ocean: ['log_quick_tap_presets'] },
     }),
+    'logbook.instruments_range_hours': (0, registry_js_1.defineSetting)({
+        /*
+          How many hours back the ship's-log instruments console charts. A property
+          of the screen it is read on, like the chart group's vector length, so
+          device-scoped.
+    
+          It keeps a default for the same reason `chart.vector_minutes` does: the
+          console cannot be drawn with no time window at all, and 12 is what
+          OceanSentinel's InstrumentsPanel has always opened on. The bounds are that
+          panel's own choices, 1h to 48h.
+        */
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.intType)({ min: 1, max: 48 }),
+        default: 12,
+        label: 'Instruments window',
+        placeholder: 'hours',
+        legacy: { ocean: ['vessel_console_range_hours'] },
+    }),
     // ---------------------------------------------------------------------------
     // Everything else OceanSentinel keeps.
     // ---------------------------------------------------------------------------
@@ -701,5 +722,124 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         label: 'Vector length',
         placeholder: 'minutes',
         legacy: { ocean: ['vessel_vector_time'] },
+    }),
+    'chart.show_filed_route': (0, registry_js_1.defineSetting)({
+        /*
+          Whether this chart draws the passage that was filed. What the screen shows,
+          not a fact about the passage, so device-scoped with the rest of the group:
+          the nav station can keep the plan up while a phone in the cockpit hides it.
+          OceanSentinel wrote '1'/'0', which boolType reads.
+        */
+        scopes: ['device'],
+        type: valueTypes_js_1.boolType,
+        default: false,
+        label: 'Show the filed passage',
+        legacy: { ocean: ['vessel_show_filed_route'] },
+    }),
+    'chart.routes_locked': (0, registry_js_1.defineSetting)({
+        /*
+          Whether routes on this chart can be dragged. A guard against a stray touch
+          moving a waypoint, which is a property of the screen being touched --
+          unlocking the desk PC to edit a route should not unlock the phone in a
+          wet cockpit. Locked is what OceanSentinel has always opened on
+          (`getItem(...) !== 'false'`), and a toggle must declare one.
+        */
+        scopes: ['device'],
+        type: valueTypes_js_1.boolType,
+        default: true,
+        label: 'Lock routes',
+        legacy: { ocean: ['vessel_routes_locked'] },
+    }),
+    // ---------------------------------------------------------------------------
+    // Position the navigator typed, for a device whose instruments are silent.
+    // ---------------------------------------------------------------------------
+    'position.entered_fix': (0, registry_js_1.defineSetting)({
+        /*
+          One setting where OceanSentinel had two pairs of keys.
+    
+          `vessel_manual_fix_lat/lon` is the fix typed into the underway advisory,
+          which the advisory watch also falls back on; `vessel_manual_lat/lon` was
+          the settings dialog's copy, which had no input and was only ever written
+          back with its seed -- `41.488 / -71.312`, a specific real boat, reaching
+          every install that pressed Save. Both meant "where the boat is, according
+          to a person", so they are one value, and the seed is not carried across.
+    
+          Device, not vessel. It exists for a device with no instrument feed, and a
+          live fix always beats it; a typed position is stale from the moment it is
+          entered, and syncing it would put yesterday's position on another screen
+          as if it were information. No default, obviously: a guessed position is
+          the one thing a chartplotter must never show.
+    
+          One value rather than two numbers, so a half-typed pair can never resolve
+          as a position.
+        */
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.shapeType)('fix', {
+            lat: (0, valueTypes_js_1.numberType)({ min: -90, max: 90 }),
+            lon: (0, valueTypes_js_1.numberType)({ min: -180, max: 180 }),
+        }),
+        label: 'Entered position',
+        description: 'Used only while no instrument is giving this device a position.',
+        placeholder: 'latitude, longitude',
+    }),
+    // ---------------------------------------------------------------------------
+    // The underway advisory: OceanSentinel re-checking a filed passage against the
+    // latest forecast from where the boat actually is.
+    // ---------------------------------------------------------------------------
+    /*
+      The crew's limits, which is what "above your limits" is measured against.
+  
+      Scoped like the alarm thresholds -- `vessel` then `device`, written at
+      `device` -- and for the same reasons: what counts as too much wind is a fact
+      about this boat and this crew, so a second screen should inherit it, while a
+      write offshore has no connection to reach the vessel layer with.
+  
+      No defaults. OceanSentinel carried 30 kt, 40 kt gusting and a 4 m sea as
+      literals in two files; a figure the app chose for what is dangerous is
+      exactly the recommendation its "facts, not advice" decision took out. Unset
+      means the advisory has not been told what trouble is, and says so. The sea
+      is stored in metres whatever the display shows, like the depth alarm's feet.
+  
+      No legacy keys: the old value is one JSON object holding all three, which a
+      rename cannot split. OceanSentinel carries it across itself.
+    */
+    'advisory.wind_limit_kt': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 1, max: 100 }),
+        label: 'Advisory wind limit',
+        description: 'Sustained wind above this counts against the passage.',
+        placeholder: 'knots',
+    }),
+    'advisory.gust_limit_kt': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 1, max: 150 }),
+        label: 'Advisory gust limit',
+        placeholder: 'knots',
+    }),
+    'advisory.sea_limit_m': (0, registry_js_1.defineSetting)({
+        scopes: ['vessel', 'device'],
+        type: (0, valueTypes_js_1.numberType)({ min: 0.1, max: 30 }),
+        label: 'Advisory sea limit',
+        description: 'Significant wave height. Always metres, whatever the display shows.',
+        placeholder: 'metres',
+    }),
+    'advisory.watch_hours': (0, registry_js_1.defineSetting)({
+        /*
+          How often the advisory re-checks by itself; 0 is "only when I ask".
+    
+          Device, not vessel. Every check is two forecast-grid downloads, and on a
+          satellite link that is somebody's money: arming the watch on the nav
+          station must not quietly arm it on every phone on the boat as well.
+    
+          No default, and none needed: unset reads as off, which is what the watch
+          has always been until somebody chose otherwise. OceanSentinel offers 0, 3,
+          6 and 12 and ignores anything else it finds; the bounds here are looser so
+          a future cadence is not a shared-package change.
+        */
+        scopes: ['device'],
+        type: (0, valueTypes_js_1.intType)({ min: 0, max: 24 }),
+        label: 'Check the passage by itself',
+        placeholder: 'hours',
+        legacy: { ocean: ['vessel_advisory_watch_hours'] },
     }),
 });

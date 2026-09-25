@@ -138,6 +138,41 @@ describe('migrating OceanSentinel', () => {
     expect(second.migrated).toEqual({});
   });
 
+  it('runs again on an install that only carries the v2 marker', async () => {
+    /*
+      The reason the marker moved. OceanSentinel's burndown gave legacy keys to
+      settings that had none; an install already marked v2 would otherwise skip
+      every one of them.
+    */
+    expect(DEFAULT_MARKER_KEY).toBe('sentinel.migrated.legacy.v3');
+    const { store, settings } = build({
+      'sentinel.migrated.legacy.v2': '2026-09-01T00:00:00.000Z',
+      vessel_advisory_watch_hours: '6',
+      vessel_routes_locked: 'false',
+      vessel_show_filed_route: '1',
+      vessel_console_range_hours: '24',
+    });
+
+    const result = await migrateLegacyKeys({
+      registry: FLEET_SETTINGS,
+      settings,
+      app: 'ocean',
+      storage: store,
+      writableScopes: ['vessel', 'device'],
+    });
+
+    expect(result.alreadyDone).toBe(false);
+    expect(result.migrated).toMatchObject({
+      'advisory.watch_hours': 'device',
+      'chart.routes_locked': 'device',
+      'chart.show_filed_route': 'device',
+      'logbook.instruments_range_hours': 'device',
+    });
+    expect(store.getItem('sentinel.advisory.watch_hours')).toBe('6');
+    expect(settings.get('chart.routes_locked')).toBe(false);
+    expect(settings.get('logbook.instruments_range_hours')).toBe(24);
+  });
+
   it('never overwrites a value the account already holds', async () => {
     // The cloud is the authority. A device that has been offline for a month
     // must not push its stale copy over what somebody set elsewhere.
