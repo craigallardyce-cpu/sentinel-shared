@@ -46,6 +46,10 @@ const VARIANT = {
     alarm: 'bg-red text-bg-app hover:brightness-110 active:brightness-95 shadow-[0_0_12px_var(--color-red-glow)]',
     danger: 'bg-red-dim text-red border border-red/40 hover:bg-red/15',
     ghost: 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-card-hover',
+    // Text that acts: OceanSentinel's "Recentre" and "Install app", HarborSentinel's
+    // "Manage plan". No fill at rest or on hover -- `ghost` fills on hover, which
+    // is what kept these hand-rolled -- and no padding or height (see LINK_SIZE).
+    link: 'bg-transparent text-cyan cursor-pointer hover:underline underline-offset-2',
 };
 /**
  * All three apps ship an Android build, where 44px is the working minimum for
@@ -62,6 +66,38 @@ const SIZE = {
     md: 'h-11 px-4 text-sm gap-2 rounded-lg',
 };
 /**
+ * `link` takes only the type size and icon gap from `size`: padding and a
+ * 44px height are what would relayout a status bar the link sits in. Its
+ * touch target comes from LINK_TOUCH instead. No font weight either, so it
+ * inherits the text around it and a caller's `font-bold` has nothing to fight.
+ */
+const LINK_SIZE = {
+    dense: 'text-[12px] gap-1',
+    sm: 'text-[13px] gap-1.5',
+    md: 'text-sm gap-2',
+};
+/**
+ * A link's 44px touch target, drawn as an invisible `::before` centred on the
+ * text, so the hit area grows and the layout does not. The `relative` it needs
+ * is the one layout class a link emits: a caller who positions a link with
+ * `absolute` or `fixed` should pass `touchFloor={false}` and give the parent
+ * the height instead.
+ */
+const LINK_TOUCH = "relative before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 before:content-['']";
+/**
+ * What `layout` controls. `cn` concatenates rather than merging Tailwind, and
+ * two classes setting the same property resolve by their order in the
+ * stylesheet, not in the attribute -- so a caller's `justify-between` cannot
+ * reliably beat a `justify-center` emitted here. The only safe hand-over is for
+ * the Button not to emit the class at all, which is what `bare` does. Nothing
+ * in VARIANT, FOCUS or STATE may set a property listed in DEFAULT_LAYOUT or
+ * SIZE; the tests hold every variant to that.
+ */
+const DEFAULT_LAYOUT = 'inline-flex items-center justify-center font-medium whitespace-nowrap';
+const LINK_LAYOUT = 'inline-flex items-center whitespace-nowrap rounded-sm';
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app';
+const STATE = 'select-none transition-[background-color,border-color,color,filter,transform] duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 active:scale-[0.98]';
+/**
  * The lit state, matching @sentinel/theme's `.glass-btn-active`, which the
  * header and dock already use — so a toggled Button and a toggled dock item
  * read as the same thing.
@@ -74,10 +110,13 @@ const ACTIVE = 'bg-cyan-dim border border-cyan text-cyan shadow-[0_0_12px_var(--
  *
  * `primary` is the one main action on a surface; `accent` a notable secondary
  * one; `success` a completion; `alarm` acknowledging an alarm; `danger` a
- * destructive action; everything else `secondary` or `ghost`.
+ * destructive action; `link` an action that reads as text; everything else
+ * `secondary` or `ghost`. `layout="bare"` hands the shape to `className`.
  */
-export const Button = React.forwardRef(function Button({ variant = 'secondary', size = 'md', icon, loading = false, block = false, active, className, children, disabled, type = 'button', ...rest }, ref) {
-    return (_jsxs("button", { ref: ref, type: type, disabled: disabled || loading, "aria-pressed": active === undefined ? undefined : active, className: cn('inline-flex items-center justify-center font-medium select-none whitespace-nowrap transition-[background-color,border-color,filter,transform] duration-150', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app', 'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 active:scale-[0.98]', VARIANT[variant], SIZE[size], 
+export const Button = React.forwardRef(function Button({ variant = 'secondary', size = 'md', layout = 'default', touchFloor = true, icon, loading = false, block = false, active, className, children, disabled, type = 'button', ...rest }, ref) {
+    const isLink = variant === 'link';
+    const bare = layout === 'bare';
+    return (_jsxs("button", { ref: ref, type: type, disabled: disabled || loading, "aria-pressed": active === undefined ? undefined : active, className: cn(!bare && (isLink ? LINK_LAYOUT : DEFAULT_LAYOUT), !bare && (isLink ? LINK_SIZE[size] : SIZE[size]), touchFloor && isLink && LINK_TOUCH, touchFloor && bare && !isLink && 'min-h-11', FOCUS, STATE, VARIANT[variant], 
         // After the variant, so a lit control wins over its resting colours.
         active && ACTIVE, block && 'w-full', className), ...rest, children: [loading ? _jsx(Loader2, { className: "animate-spin", size: size === 'sm' ? 14 : 16, "aria-hidden": true }) : icon, children] }));
 });

@@ -2,8 +2,13 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from './cn';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'success' | 'alarm' | 'danger' | 'ghost';
+export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'success' | 'alarm' | 'danger' | 'ghost' | 'link';
 export type ButtonSize = 'dense' | 'sm' | 'md';
+/**
+ * `default` is the fleet button's own shape. `bare` hands layout to the
+ * caller's `className` -- see LAYOUT below for exactly what that means.
+ */
+export type ButtonLayout = 'default' | 'bare';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -23,6 +28,25 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
    * `secondary` and `ghost` that were being hand-rolled for want of it.
    */
   active?: boolean;
+  /**
+   * `bare` drops everything about the button's shape -- display, alignment,
+   * justification, height, padding, gap, radius, font size, font weight and
+   * wrapping -- so the caller's `className` decides them. The variant keeps
+   * its colours, border, hover, focus ring and disabled state. `size` is
+   * ignored. For a row with a label left and a count right:
+   * `layout="bare" className="w-full flex justify-between items-center px-3 py-2"`.
+   */
+  layout?: ButtonLayout;
+  /**
+   * The 44px Android touch minimum, where the caller has taken over the shape.
+   * Defaults to on. It applies to `layout="bare"` (as `min-h-11`) and to the
+   * `link` variant (as an invisible 44px-tall hit area that does not move
+   * anything). `layout="default"` ignores it: there `size` sets the height,
+   * and `dense` is under the floor on purpose. Pass `false` only for a control
+   * a mouse drives, or one that already has a 44px-tall parent that is itself
+   * the target.
+   */
+  touchFloor?: boolean;
 }
 
 /*
@@ -69,6 +93,10 @@ const VARIANT: Record<ButtonVariant, string> = {
   alarm: 'bg-red text-bg-app hover:brightness-110 active:brightness-95 shadow-[0_0_12px_var(--color-red-glow)]',
   danger: 'bg-red-dim text-red border border-red/40 hover:bg-red/15',
   ghost: 'bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-card-hover',
+  // Text that acts: OceanSentinel's "Recentre" and "Install app", HarborSentinel's
+  // "Manage plan". No fill at rest or on hover -- `ghost` fills on hover, which
+  // is what kept these hand-rolled -- and no padding or height (see LINK_SIZE).
+  link: 'bg-transparent text-cyan cursor-pointer hover:underline underline-offset-2',
 };
 
 /**
@@ -87,6 +115,41 @@ const SIZE: Record<ButtonSize, string> = {
 };
 
 /**
+ * `link` takes only the type size and icon gap from `size`: padding and a
+ * 44px height are what would relayout a status bar the link sits in. Its
+ * touch target comes from LINK_TOUCH instead. No font weight either, so it
+ * inherits the text around it and a caller's `font-bold` has nothing to fight.
+ */
+const LINK_SIZE: Record<ButtonSize, string> = {
+  dense: 'text-[12px] gap-1',
+  sm: 'text-[13px] gap-1.5',
+  md: 'text-sm gap-2',
+};
+
+/**
+ * A link's 44px touch target, drawn as an invisible `::before` centred on the
+ * text, so the hit area grows and the layout does not. The `relative` it needs
+ * is the one layout class a link emits: a caller who positions a link with
+ * `absolute` or `fixed` should pass `touchFloor={false}` and give the parent
+ * the height instead.
+ */
+const LINK_TOUCH = "relative before:absolute before:inset-x-0 before:top-1/2 before:h-11 before:-translate-y-1/2 before:content-['']";
+
+/**
+ * What `layout` controls. `cn` concatenates rather than merging Tailwind, and
+ * two classes setting the same property resolve by their order in the
+ * stylesheet, not in the attribute -- so a caller's `justify-between` cannot
+ * reliably beat a `justify-center` emitted here. The only safe hand-over is for
+ * the Button not to emit the class at all, which is what `bare` does. Nothing
+ * in VARIANT, FOCUS or STATE may set a property listed in DEFAULT_LAYOUT or
+ * SIZE; the tests hold every variant to that.
+ */
+const DEFAULT_LAYOUT = 'inline-flex items-center justify-center font-medium whitespace-nowrap';
+const LINK_LAYOUT = 'inline-flex items-center whitespace-nowrap rounded-sm';
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app';
+const STATE = 'select-none transition-[background-color,border-color,color,filter,transform] duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 active:scale-[0.98]';
+
+/**
  * The lit state, matching @sentinel/theme's `.glass-btn-active`, which the
  * header and dock already use — so a toggled Button and a toggled dock item
  * read as the same thing.
@@ -100,12 +163,29 @@ const ACTIVE = 'bg-cyan-dim border border-cyan text-cyan shadow-[0_0_12px_var(--
  *
  * `primary` is the one main action on a surface; `accent` a notable secondary
  * one; `success` a completion; `alarm` acknowledging an alarm; `danger` a
- * destructive action; everything else `secondary` or `ghost`.
+ * destructive action; `link` an action that reads as text; everything else
+ * `secondary` or `ghost`. `layout="bare"` hands the shape to `className`.
  */
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'secondary', size = 'md', icon, loading = false, block = false, active, className, children, disabled, type = 'button', ...rest },
+  {
+    variant = 'secondary',
+    size = 'md',
+    layout = 'default',
+    touchFloor = true,
+    icon,
+    loading = false,
+    block = false,
+    active,
+    className,
+    children,
+    disabled,
+    type = 'button',
+    ...rest
+  },
   ref
 ) {
+  const isLink = variant === 'link';
+  const bare = layout === 'bare';
   return (
     <button
       ref={ref}
@@ -113,11 +193,13 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
       disabled={disabled || loading}
       aria-pressed={active === undefined ? undefined : active}
       className={cn(
-        'inline-flex items-center justify-center font-medium select-none whitespace-nowrap transition-[background-color,border-color,filter,transform] duration-150',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app',
-        'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 active:scale-[0.98]',
+        !bare && (isLink ? LINK_LAYOUT : DEFAULT_LAYOUT),
+        !bare && (isLink ? LINK_SIZE[size] : SIZE[size]),
+        touchFloor && isLink && LINK_TOUCH,
+        touchFloor && bare && !isLink && 'min-h-11',
+        FOCUS,
+        STATE,
         VARIANT[variant],
-        SIZE[size],
         // After the variant, so a lit control wins over its resting colours.
         active && ACTIVE,
         block && 'w-full',
