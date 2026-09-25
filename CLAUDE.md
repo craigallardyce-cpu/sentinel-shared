@@ -232,6 +232,10 @@ something then broke.
    So a green dry run licenses the tag; it is not evidence the release will land.
    Leave the `platforms` input at `linux`: it is the cheap smoke test, and the
    mac and windows legs first run on the tag whatever you choose here.
+   Since 2.12.0 the Linux leg also launches the built AppImage headless and
+   fails unless a window appears (`sentinel-shared/scripts/smoke-launch-linux.sh`),
+   so a green Linux dry run now proves the app starts there, not just that it
+   packaged. It proves nothing about Windows or macOS; step 6 covers those.
 5. Tag `vX.Y.Z` and push the tag. Desktop installers publish to GitHub
    Releases, which each app's auto-updater reads. Read the release, not the
    workflow's green tick: `Create Release` is *skipped* rather than failed when a
@@ -240,11 +244,20 @@ something then broke.
    `latest.yml`, `latest-mac.yml` and `latest-linux.yml` — those three are what
    the updater reads, and without them a release exists that no installed app
    will ever see.
+6. Launch the published Windows and macOS installers by hand, once each: install
+   over the previous version, confirm the window opens, sign-in completes and
+   About shows the new version. Nothing automated does this for those two
+   platforms, and a build that packages is not a build that starts: the
+   Supabase-configuration failure survived four releases because nobody launched
+   an installer.
 
 Android bundles and the Play Console upload run on a machine with the Android
 SDK and the signing keystore; the private `sentinel-fleet-play-release` skill
 carries that procedure. The Play package names predate the `com.marinersentinel.*`
-rename and are immutable; the drift checker enforces the `applicationId`.
+rename and are immutable; the drift checker enforces the `applicationId`. Since 2.12.0 each app's release Gradle build refuses to run unless the web
+app bundled into Android was built from the current `package.json` version and
+commit, so run `npm run build && npx cap sync android` from a clean, committed
+tree immediately before the release build.
 
 ## The database
 
