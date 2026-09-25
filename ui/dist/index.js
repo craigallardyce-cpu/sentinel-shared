@@ -1,5 +1,6 @@
 export { cn } from './cn';
 export { Button } from './Button';
+export { openExternal, isWebUrl } from './openExternal';
 export { Input, Textarea, Select } from './Field';
 export { Toggle } from './Toggle';
 export { Modal, ConfirmDialog, MODAL_Z } from './Modal';
