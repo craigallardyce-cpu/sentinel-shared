@@ -56,6 +56,9 @@ describe('the fleet registry', () => {
       'chart.auto_select',
       'chart.mode',
       'chart.orientation',
+      // Toggles, so forced by rule (2026-09-25, OceanSentinel's burndown).
+      'chart.routes_locked',
+      'chart.show_filed_route',
       'chart.show_vectors',
       'chart.vector_minutes',
       'display.auto_dim',
@@ -64,6 +67,9 @@ describe('the fleet registry', () => {
       'display.keep_awake',
       'display.night_brightness',
       'display.night_mode',
+      // A chart of the last N hours cannot be drawn with no N -- the same
+      // argument as chart.vector_minutes, and 12 is what the console always used.
+      'logbook.instruments_range_hours',
       'logbook.quick_tap_presets',
       'units.metric',
       'vhf.monitor_audio',
@@ -335,6 +341,42 @@ describe('legacy values that a device store cannot reach on its own', () => {
       stores: [createDeviceStore(memoryStorage({ vessel_use_metric: '0' }), { app: 'ocean', registry: FLEET_SETTINGS })],
     });
     expect(chose.resolve('units.metric')).toEqual({ value: false, source: 'device' });
+  });
+});
+
+describe("OceanSentinel's settings burndown", () => {
+  it('holds the entered position as one value, on the device, with no guess', () => {
+    const fix = FLEET_SETTINGS.get('position.entered_fix');
+    expect(fix.scopes).toEqual(['device']);
+    // 41.488 / -71.312 was a specific real boat, written back by every Save.
+    expect(fix.default).toBeUndefined();
+    expect(fix.type.parse('{"lat":41.5,"lon":-71.3}')).toEqual({ lat: 41.5, lon: -71.3 });
+    // Half a position is no position.
+    expect(fix.type.parse('{"lat":41.5}')).toBeUndefined();
+    expect(fix.type.parse('{"lat":91,"lon":0}')).toBeUndefined();
+  });
+
+  it("scopes the advisory's limits like the alarms, with no registry default", () => {
+    for (const key of ['advisory.wind_limit_kt', 'advisory.gust_limit_kt', 'advisory.sea_limit_m']) {
+      const definition = FLEET_SETTINGS.get(key);
+      expect(definition.scopes, key).toEqual(['vessel', 'device']);
+      expect(definition.default, key).toBeUndefined();
+    }
+  });
+
+  it('keeps the advisory watch on the device that pays for its downloads', () => {
+    const watch = FLEET_SETTINGS.get('advisory.watch_hours');
+    expect(watch.scopes).toEqual(['device']);
+    expect(watch.default).toBeUndefined();
+    expect(watch.legacy?.ocean).toEqual(['vessel_advisory_watch_hours']);
+  });
+
+  it('reads the chart toggles in the encodings OceanSentinel wrote', () => {
+    expect(FLEET_SETTINGS.get('chart.show_filed_route').type.parse('1')).toBe(true);
+    expect(FLEET_SETTINGS.get('chart.show_filed_route').type.parse('0')).toBe(false);
+    expect(FLEET_SETTINGS.get('chart.routes_locked').type.parse('false')).toBe(false);
+    expect(FLEET_SETTINGS.get('chart.routes_locked').default).toBe(true);
+    expect(FLEET_SETTINGS.get('logbook.instruments_range_hours').type.parse('24')).toBe(24);
   });
 });
 

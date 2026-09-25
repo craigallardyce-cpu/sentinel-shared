@@ -61,8 +61,13 @@ export interface MigrateLegacyResult {
  *
  * Bumping the marker re-runs the whole thing, which is safe: a setting a layer
  * already holds is skipped.
+ *
+ * v3 is the same migration over more declarations. OceanSentinel's settings
+ * burndown (2026-09-25) gave legacy keys to settings that had none, and an
+ * install already carrying the v2 marker would skip every one of them. So a
+ * release that adds a `legacy` entry bumps this.
  */
-export const DEFAULT_MARKER_KEY = 'sentinel.migrated.legacy.v2';
+export const DEFAULT_MARKER_KEY = 'sentinel.migrated.legacy.v3';
 
 /**
  * **Call this only after every cloud layer has finished `load()`.**
