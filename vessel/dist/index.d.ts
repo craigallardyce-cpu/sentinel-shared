@@ -113,6 +113,14 @@ export declare function saveVesselProfile(supabase: SupabaseLike, patch: VesselP
  * the record and the propulsion is derived from it — which is why
  * `propulsionFor` has to cope with whatever is already in that column rather
  * than only with the values `VESSEL_TYPES` offers.
+ *
+ * The apps write it at different granularity, and that is accepted (Craig,
+ * 2026-09-25). OceanSentinel writes rigs and hull types from `VESSEL_TYPES`;
+ * VesselKeeper offers only Sail or Power, shows any finer value verbatim, and
+ * never overwrites one unless the owner picks a new type. So a reader must
+ * treat the column as free text of any granularity, which `propulsionFor`
+ * does. If the fleet ever needs rig and propulsion as separate facts, that is
+ * a split into two columns, not a narrowing of this one.
  */
 export type Propulsion = 'sail' | 'power';
 export interface VesselTypeOption {
