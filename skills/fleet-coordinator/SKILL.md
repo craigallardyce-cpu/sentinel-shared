@@ -775,6 +775,23 @@ StrictMode bug that hid every SOG alarm, which could otherwise have been read
 as its own failure. Where the change is behaviour a customer sees, the brief
 should ask for a simulator run and say which ports to use.
 
+The in-app user guide run, 2026-09-25: cloud workers (`create_session`), with
+the shared package, the docs-kb note and the version bumps written by the
+coordinator itself:
+
+| Worker | Model | Cost |
+|---|---|---|
+| HarborSentinel Guide button, pure mapping + tests, 320/360px check | Opus 5 | $4.79 |
+| OceanSentinel Guide button, three package roots, 360px check | Opus 5 | $3.99 |
+| VesselKeeper Guide button, 360px check through the dev bypass | Opus 5 | $3.84 |
+| Website guide re-sync + `check:guide-anchors` script and CI step | Sonnet 5 | $1.14 |
+| HarborSentinel follow-up: one rule and its tests, fully pinned | Sonnet 5 | $0.78 |
+| OceanSentinel follow-up: links in two modals, driven at 360px | Sonnet 5 | $3.08 |
+
+The last one shows where the Sonnet saving goes: the edit was pinned to the
+character, but driving two modals in a browser (one needing a filed passage)
+costs the same browser time whatever the model.
+
 ## What has gone wrong so far
 
 - **A coordinating session spent its first calls discovering it could see one
@@ -926,3 +943,30 @@ should ask for a simulator run and say which ports to use.
   said what was blocked and why, and continued once Craig allowed it. Look at
   debris before deleting it, say in the report what was deleted, and expect a
   destructive command to make the next action need Craig's say-so.
+
+- **The 2.12.1 release, 2026-09-26, hit four things at once.** None was in the
+  code.
+  - *A session whose repos were attached at start could push branches but not
+    tags.* Every branch push in the run worked; `git push origin v2.12.1` got
+    the §0 403 and printed "Everything up-to-date". Branch pushes working says
+    nothing about tag pushes. Hand Craig the commands, per §6.
+  - *Craig runs Windows `cmd`, where `~` is not home.* The first handed-off
+    command died on `cd ~/Projects/...`, and the `&&` chain made that a no-op
+    rather than a half-run. Write hand-off commands as
+    `cd /d C:\Users\craig\Projects\<Repo> && ...`.
+  - *An exhausted Actions budget fails "Create Release" with no steps and no
+    log.* All nine platform builds and uploads were green. Then the release
+    job died in two seconds, its log download 404s and its check-run output is
+    empty. The artifacts are kept one day, so a wait for the budget to reset
+    turns "Re-run failed jobs" into "Re-run all jobs": a full rebuild, macOS
+    minutes included. Check the budget before tagging, not after.
+  - *An unattended release was refused.* A self-scheduled check-in to merge the
+    set, dry-run, tag and publish was denied by the auto-mode classifier.
+    "Merge when green" check-ins for single PRs, and read-only report
+    check-ins, were allowed. Keep a release interactive: merge, then dry run,
+    then tag, each on Craig's word.
+- **A full SHA was reconstructed from a short one.** `expectedHeadSha` was
+  given a guessed 40-character value, and GitHub refused the merge with "Head
+  branch was modified", which reads like the branch moved. The guard caught it.
+  Read full SHAs from `git rev-parse` or the API, never by extending a short
+  one.
