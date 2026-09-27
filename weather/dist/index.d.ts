@@ -1,5 +1,5 @@
 export { isInsideNwsCoverage, formatPosition, getOpenMeteoForecast, clearForecastCache } from './openMeteo.js';
-export type { MarineForecast, ForecastPeriod, ForecastOptions } from './openMeteo.js';
+export type { MarineForecast, ForecastPeriod, ForecastOptions, AlertsStatus } from './openMeteo.js';
 export { boatSpeed, foldTwa, bestVmg, parsePolarFile, GENERIC_POLARS } from './polars.js';
 export type { PolarDiagram, VmgResult } from './polars.js';
 export { routeIsochrone, distanceNm, bearingDeg, destinationPoint, angleBetween, seaStateFactor } from './routing.js';

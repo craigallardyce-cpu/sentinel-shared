@@ -4,7 +4,7 @@ export {
   getOpenMeteoForecast,
   clearForecastCache
 } from './openMeteo.js';
-export type { MarineForecast, ForecastPeriod, ForecastOptions } from './openMeteo.js';
+export type { MarineForecast, ForecastPeriod, ForecastOptions, AlertsStatus } from './openMeteo.js';
 
 export {
   boatSpeed,
