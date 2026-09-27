@@ -101,8 +101,28 @@ reproduce this layout before anything builds.
   — that is the author's call, not an agent's. Anything an agent wrote, and
   anything touching more than one repository, goes through a PR.
 
-  Before merging any PR, re-read its head SHA and confirm CI ran on that commit:
-  a branch can move between review and merge, and one did (HarborSentinel #3).
+  Before merging any PR, re-read its head SHA and confirm the checks ran on that
+  commit: a branch can move between review and merge, and one did
+  (HarborSentinel #3). For a private repo that means a `verify-clean` run on
+  that SHA (next bullet); for this repository, CI.
+- **Checks run locally, not in GitHub Actions** (decided 2026-09-27). September
+  spent the account's whole Actions allowance by the 26th, about 2,950 billed
+  minutes: roughly 60% on release builds (macOS bills ×10, Windows ×2) and a
+  quarter on `test.yml` running on every PR and again on every merge. So in the
+  private repos `test.yml` runs only on `workflow_dispatch`, and every check it
+  made lives in the repo's `npm run verify`, which `test.yml` also calls, so the
+  two cannot drift. Run it against a clean checkout, never a working tree:
+  ```bash
+  node sentinel-shared/scripts/verify-clean.mjs <Repo> [--ref <branch-or-sha>] [--shared-ref <ref>]
+  ```
+  It `git archive`s the repo and this repository side by side into a scratch
+  directory, installs (`npm run verify:install`, else `npm ci`), runs
+  `npm run verify`, and prints both SHAs and a PASS/FAIL line to paste under a
+  PR's **Verified**. A PR in a private repo is not reviewable without that output
+  for its head, and the reviewer re-runs it before merging rather than trusting
+  the author's. This repository is public, its minutes are free, and its CI
+  stays as it is. The Website's nightly `fleet-health.yml` also stays (about a
+  minute a day, and the only full-fleet check that runs by itself).
 - **A change that spans repositories is run by a coordinator session**, which
   decomposes it, spawns one worker session per repo, reviews the diffs and
   closes the roadmap item: `skills/fleet-coordinator/SKILL.md`. Worker sessions
@@ -148,8 +168,8 @@ reproduce this layout before anything builds.
   modules, Android parity and `applicationId` vs Electron `appId`, OceanSentinel's
   backend-dep mirroring, stale or unpublished `sentinel-shared` SHA pins, palette
   integrity, the installed `sentinel-check` skill, settings drift and theme
-  adoption. It also runs in each app's CI on every push, so what it reports
-  locally is what will fail there.
+  adoption. It is part of each app's `npm run verify`, run at the same per-app
+  scope CI gave it, so what `verify-clean` reports is what CI would have.
 
   **Version and dependency alignment run per-push without the siblings**: each
   app is compared against `fleet-version.json` and `fleet-dependencies.json` in
@@ -223,6 +243,14 @@ per package at a time.
 
 ## Releasing
 
+**One release a week** (decided 2026-09-27), batching whatever has merged;
+anything more often is Craig's explicit call. A tag build of all three apps is
+the most expensive thing this fleet does in Actions, and September tagged ten
+times. **macOS builds only when Craig asks for one** (same date): tag builds
+produce Windows and Linux, and a macOS build is a separate `build.yml`
+dispatch with `platforms: macos` on the tag, which adds the `.dmg` and
+`latest-mac.yml` to the existing release.
+
 The three apps release as one, on one aligned version. `fleet-version.json` in
 this repository carries it, the root `package.json` of each app must match, and
 the drift checker compares them on every push — so that file is the answer to
@@ -242,8 +270,9 @@ something then broke.
    records the version in the lockfile too, and the checker fails a stale one.
 3. If a shared package changed, bump the pinned `sentinel-shared` SHA in all
    three `.github/workflows/build.yml`, otherwise a release ships the old shared
-   code. `test.yml` and `drift-check.yml` deliberately run unpinned so a shared
-   change that breaks an app fails on the push that caused it. A pin must point
+   code. The per-push check that a shared change does not break an app is now
+   `verify-clean <App> --shared-ref <shared branch>` for each consuming app,
+   run on the sentinel-shared PR before it merges. A pin must point
    at a commit **published** on `origin/main`; one that exists only locally
    produces no build at all, in all three apps at once.
 4. Exercise `build.yml` with `workflow_dispatch` first. Its release job is
@@ -257,7 +286,7 @@ something then broke.
    Actions storage quota, which skipped `Create Release` and published nothing.
    So a green dry run licenses the tag; it is not evidence the release will land.
    Leave the `platforms` input at `linux`: it is the cheap smoke test, and the
-   mac and windows legs first run on the tag whatever you choose here.
+   Windows leg first runs on the tag.
    Since 2.12.0 the Linux leg also launches the built AppImage headless and
    fails unless a window appears (`sentinel-shared/scripts/smoke-launch-linux.sh`),
    so a green Linux dry run now proves the app starts there, not just that it
@@ -267,10 +296,12 @@ something then broke.
    workflow's green tick: `Create Release` is *skipped* rather than failed when a
    build job fails, and a run whose upload step failed still needs looking at
    step by step. A release is done when its assets carry the installers **and**
-   `latest.yml`, `latest-mac.yml` and `latest-linux.yml` — those three are what
-   the updater reads, and without them a release exists that no installed app
-   will ever see.
-6. Launch the published Windows and macOS installers by hand, once each: install
+   `latest.yml` and `latest-linux.yml`, plus `latest-mac.yml` when a macOS build
+   was asked for — those are what the updater reads, and without them a release
+   exists that no installed app will ever see. (macOS cannot update itself yet
+   either way: the builds are unsigned `.dmg` only; see the docs-kb roadmap.)
+6. Launch the published Windows installer by hand, and the macOS one when it was
+   built, once each: install
    over the previous version, confirm the window opens, sign-in completes and
    About shows the new version. Nothing automated does this for those two
    platforms, and a build that packages is not a build that starts: the

@@ -447,6 +447,11 @@ Self-contained, in this order. Copy the shape; fill in the specifics.
    the verification commands for that repo and what CI runs; commit author
    `Craig Allardyce <support@marinersentinel.com>`.
 
+   **In a private repo the checks are `npm run verify`, run through
+   `sentinel-shared/scripts/verify-clean.mjs`** (CLAUDE.md, "Checks run locally,
+   not in GitHub Actions"). The brief asks for its summary block, both SHAs and
+   the PASS/FAIL lines, under the PR's Verified; a PR without it is not ready.
+
    **Enumerate the checks from the repo, not from memory.** Read the `check:*`
    scripts in `package.json` and the steps in the workflow file, and list every
    one. A worker runs what the brief names and nothing else, and a check the
@@ -532,7 +537,14 @@ A small worker takes two to four minutes. Then:
   spelunking with `git stash` and `git checkout <ref> -- .` in a tree that holds an
   in-progress merge, which destroyed one and needed the merge redone.
 - Read CI on the PR's head, not just its conclusion; if a step is red, read
-  the log before deciding whose problem it is.
+  the log before deciding whose problem it is. **In a private repo there is no
+  CI on the PR** (2026-09-27): re-run `verify-clean <Repo> --ref <head-sha>`
+  yourself and quote your own result, not the worker's. For a sentinel-shared
+  PR, also run `verify-clean <App> --shared-ref <branch>` for each app that
+  consumes the changed package; that is the check the apps' unpinned
+  `test.yml` used to make on every shared push. On 2026-09-27, with Actions
+  exhausted, the coordinator ran each PR's checks by hand, and one worker's
+  "failing" guide-anchors check turned out to be its own stale sibling.
 - Read the Worker notes; they are the raw material for the next brief and for
   this file.
 
