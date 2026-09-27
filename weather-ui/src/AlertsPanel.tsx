@@ -62,15 +62,37 @@ export interface AlertsPanelProps {
    * its current behaviour rather than silently claiming no coverage.
    */
   hasWarningCoverage?: boolean;
+  /**
+   * Whether the warning check actually got an answer this refresh.
+   *
+   * `hasWarningCoverage` above covers the position being outside NWS. This
+   * covers the other way an empty `alerts` array happens inside it: the query
+   * ran and failed. `fetchNwsAlerts` in `@sentinel/weather` returned `[]` for a
+   * network error, a timeout, a non-OK status and an unparseable body alike, so
+   * a check that never got an answer arrived here as a quiet feed and rendered
+   * the green **Clear** badge. The apps already fixed their own warning strips;
+   * this is the same false all-clear one layer down.
+   *
+   * Pass `false` where the check failed (the package reports it as
+   * `alertsStatus === 'unavailable'`) and the panel says so instead.
+   * **Defaults to `true`**, so a host that has not been updated renders exactly
+   * as it does today.
+   */
+  alertsChecked?: boolean;
   theme?: {
     alertsCardClass?: string;
     alertsCardAlertsActive?: string;
     alertsCardAlertsClear?: string;
-    /** Card tint where no warning source covers the position; neither alarm nor all-clear. */
+    /**
+     * Card tint for both non-answers — no warning source covers the position, and
+     * the check failed. Neither is an alarm and neither is an all-clear, and they
+     * are the same shade deliberately: one key rather than two so that an app
+     * cannot theme one of them green.
+     */
     alertsCardNoCoverage?: string;
     badgeActiveAlerts?: string;
     badgeClearAlerts?: string;
-    /** Badge for the same state. Must not read as reassurance. */
+    /** Badge for both of those states. Must not read as reassurance. */
     badgeNoCoverage?: string;
     textColorMuted?: string;
     textColorPrimary?: string;
@@ -92,6 +114,7 @@ export default function AlertsPanel({
   tempUnit,
   showBulletinButton = true,
   hasWarningCoverage = true,
+  alertsChecked = true,
   theme
 }: AlertsPanelProps) {
   const [showBulletin, setShowBulletin] = useState(false);
@@ -101,12 +124,21 @@ export default function AlertsPanel({
 
   const hasAlerts = weatherData.alerts && weatherData.alerts.length > 0;
   /*
-    Three states, not two. "No warnings" and "no warning source" look identical
-    in the data and must never look identical on screen: only the first is an
-    all-clear. An active warning still shows through if one somehow arrives, so
-    a host that passes the flag wrongly under-claims rather than hides a hazard.
+    Four states, not two. "No warnings", "no warning source" and "the check
+    failed" are one empty array in the data and must never be one thing on
+    screen: only the first is an all-clear. An active warning still shows
+    through ahead of all of them, so a host that passes either flag wrongly
+    under-claims rather than hides a hazard.
+
+    A failed check outranks absent coverage on purpose. Both are non-answers, so
+    the order only decides which sentence a reader gets when a host passes both
+    flags false; the failed check is the more specific thing to have happened,
+    and the coverage copy would assert something this panel does not know.
   */
-  const noCoverage = !hasAlerts && !hasWarningCoverage;
+  const alertsUnchecked = !hasAlerts && !alertsChecked;
+  const noCoverage = !hasAlerts && !alertsUnchecked && !hasWarningCoverage;
+  /* The two non-answers share the card tint and the muted badge; only the copy differs. */
+  const noAnswer = alertsUnchecked || noCoverage;
 
   // Ocean Sentinel styles as defaults
   const alertsCardClass = theme?.alertsCardClass || 'p-3 rounded-lg border flex flex-col gap-2 relative group overflow-hidden';
@@ -131,7 +163,7 @@ export default function AlertsPanel({
   return (
     <>
       {/* Marine Alerts Card */}
-      <div className={`${alertsCardClass} ${hasAlerts ? alertsCardAlertsActive : noCoverage ? alertsCardNoCoverage : alertsCardAlertsClear}`}>
+      <div className={`${alertsCardClass} ${hasAlerts ? alertsCardAlertsActive : noAnswer ? alertsCardNoCoverage : alertsCardAlertsClear}`}>
         <div className={`flex flex-col gap-1.5 border-b pb-2 ${borderDividerClass}`}>
           <div className="flex items-center justify-between">
             <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>Marine Warnings</span>
@@ -141,6 +173,10 @@ export default function AlertsPanel({
                   <ShieldAlert size={10} className={textColorRed} />
                   <span className="text-[13px] font-black font-mono uppercase">{weatherData.alerts!.length} ACTIVE</span>
                 </div>
+              ) : alertsUnchecked ? (
+                <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeNoCoverage}`}>
+                  Not checked
+                </span>
               ) : noCoverage ? (
                 <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeNoCoverage}`}>
                   No coverage
@@ -175,6 +211,13 @@ export default function AlertsPanel({
                 <span className={`text-[13px] block ${textColorMuted}`}>+{weatherData.alerts!.length - 2} more warnings active</span>
               )}
             </div>
+          ) : alertsUnchecked ? (
+            /* Deliberately not the no-coverage wording below: that says NWS does not
+               cover this position, which here would be untrue. The check was made and
+               it failed, and the panel says only that. */
+            <p className={`${textColorMuted} text-[13px] font-sans text-left`}>
+              Couldn't check for warnings — this is not an all-clear. Warnings may be in force; the app will try again at the next refresh.
+            </p>
           ) : noCoverage ? (
             /* Sans, like the other two. This arrived as italic mono, which is the
                hardest-to-read pairing on the panel — and of the three states this
@@ -398,7 +441,15 @@ export default function AlertsPanel({
 
                     </div>
                   ) : (
-                    noCoverage ? (
+                    alertsUnchecked ? (
+                      <div className="p-10 bg-warning/5 border border-warning/30 rounded-2xl text-center space-y-2 select-none">
+                        <Info className="w-8 h-8 mx-auto text-warning" />
+                        <h4 className="text-xs font-black uppercase tracking-widest text-warning">Warnings Not Checked</h4>
+                        <p className={`text-[13px] font-mono tracking-wide ${textColorMuted}`}>
+                          Couldn't check for warnings — this is not an all-clear. Warnings may be in force; the app will try again at the next refresh.
+                        </p>
+                      </div>
+                    ) : noCoverage ? (
                       <div className="p-10 bg-warning/5 border border-warning/30 rounded-2xl text-center space-y-2 select-none">
                         <Info className="w-8 h-8 mx-auto text-warning" />
                         <h4 className="text-xs font-black uppercase tracking-widest text-warning">Outside Warning Coverage</h4>
