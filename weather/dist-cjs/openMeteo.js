@@ -33,6 +33,13 @@
  *     as enrichment, never a dependency: if it is slow, blocked, or shaped
  *     differently than expected, the forecast still returns with wind, pressure
  *     and temperature intact.
+ *
+ *   - The alerts probe reports whether it ran. Warnings are the one part of a
+ *     forecast a watch acts on immediately, and an empty `alerts` array used to
+ *     mean either "NWS says nothing is in force" or "we never got an answer" —
+ *     the second dressed as the first, which is a false all-clear. `alerts`
+ *     still comes back empty on failure, because every consumer reads it that
+ *     way, but `alertsStatus` alongside it says which of the two happened.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isInsideNwsCoverage = isInsideNwsCoverage;
@@ -223,15 +230,26 @@ async function fetchMarineHourly(lat, lon) {
 }
 const cache = new Map();
 const cacheKey = (lat, lon) => `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
-/** Active NWS alerts for a point; empty on any failure. */
+/**
+ * Active NWS alerts for a point, or `null` when the check did not get an
+ * answer.
+ *
+ * The distinction is the whole point: an empty array is NWS saying nothing is
+ * in force, `null` is nobody having said anything. Returning `[]` for both is
+ * what turned a failed check into a false all-clear. The 2s timeout stays —
+ * this is a probe made after the primary forecast already failed, and a watch
+ * waiting on it is a watch not being shown a forecast.
+ */
 async function fetchNwsAlerts(lat, lon, userAgent) {
     try {
         const res = await fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`, {
             headers: { 'User-Agent': userAgent },
             signal: AbortSignal.timeout(2000)
         });
-        if (!res.ok)
-            return [];
+        if (!res.ok) {
+            console.warn(`[Weather] NWS alerts check failed: HTTP ${res.status}`);
+            return null;
+        }
         const data = await res.json();
         return (data.features || []).map((f) => ({
             event: f.properties.event,
@@ -245,8 +263,9 @@ async function fetchNwsAlerts(lat, lon, userAgent) {
             distance: 0
         }));
     }
-    catch {
-        return [];
+    catch (err) {
+        console.warn(`[Weather] NWS alerts check failed: ${err?.message ?? err}`);
+        return null;
     }
 }
 /**
@@ -364,7 +383,20 @@ async function getOpenMeteoForecast(lat, lon, options = {}) {
             pressure: pressureTrend
         });
     }
-    const alerts = probeNwsAlerts ? await fetchNwsAlerts(lat, lon, nwsUserAgent) : [];
+    // `alerts` keeps its old shape for every existing consumer; `alertsStatus`
+    // carries what that shape cannot say.
+    let alerts = [];
+    let alertsStatus = 'not-requested';
+    if (probeNwsAlerts) {
+        const probed = await fetchNwsAlerts(lat, lon, nwsUserAgent);
+        if (probed === null) {
+            alertsStatus = 'unavailable';
+        }
+        else {
+            alerts = probed;
+            alertsStatus = 'ok';
+        }
+    }
     const overallRisk = periods.some((p) => p.riskLevel === 'high')
         ? 'high'
         : periods.some((p) => p.riskLevel === 'moderate')
@@ -378,6 +410,7 @@ async function getOpenMeteoForecast(lat, lon, options = {}) {
             ? 'Open-Meteo global model with marine sea state'
             : 'Open-Meteo global model',
         alerts,
+        alertsStatus,
         // NWS zone ids are meaningless outside US waters; null so the UI omits the
         // zone label rather than printing "Zone GLOBAL".
         marineZone: null,

@@ -32,6 +32,13 @@
  *     as enrichment, never a dependency: if it is slow, blocked, or shaped
  *     differently than expected, the forecast still returns with wind, pressure
  *     and temperature intact.
+ *
+ *   - The alerts probe reports whether it ran. Warnings are the one part of a
+ *     forecast a watch acts on immediately, and an empty `alerts` array used to
+ *     mean either "NWS says nothing is in force" or "we never got an answer" —
+ *     the second dressed as the first, which is a false all-clear. `alerts`
+ *     still comes back empty on failure, because every consumer reads it that
+ *     way, but `alertsStatus` alongside it says which of the two happened.
  */
 export interface ForecastPeriod {
     periodName: string;
@@ -49,12 +56,37 @@ export interface ForecastPeriod {
     wavePeriod: number | null;
     pressure: string | null;
 }
+/**
+ * Whether the NWS alerts check actually ran, for a forecast that carries an
+ * `alerts` array.
+ *
+ *   - `'ok'`        — NWS answered. An empty `alerts` is a real all-clear.
+ *   - `'unavailable'` — the check was attempted and did not answer (network
+ *                     error, timeout, non-OK status, unparseable body). An
+ *                     empty `alerts` here means nothing at all, and must never
+ *                     be presented as an all-clear.
+ *   - `'not-requested'` — no check was attempted, because the caller did not
+ *                     ask for one. A caller that knows the position is outside
+ *                     NWS coverage leaves `probeNwsAlerts` off and lands here;
+ *                     see `isInsideNwsCoverage`.
+ */
+export type AlertsStatus = 'ok' | 'unavailable' | 'not-requested';
 export interface MarineForecast {
     summary: string;
     overallRisk: 'low' | 'moderate' | 'high';
     periods: ForecastPeriod[];
     source: string;
     alerts: any[];
+    /**
+     * Whether `alerts` is an answer or a silence. Always set by
+     * `getOpenMeteoForecast`.
+     *
+     * Optional only so that a consumer assembling its own `MarineForecast` — as
+     * the apps do for `errorNote` — keeps compiling; read it as `'ok'` at your
+     * peril, since `undefined` means the producer predates this field and its
+     * empty `alerts` carries the old ambiguity.
+     */
+    alertsStatus?: AlertsStatus;
     marineZone: string | null;
     locName: string;
     synopsis: string;
@@ -78,6 +110,9 @@ export interface ForecastOptions {
      * Worth doing even well outside the grid forecast area: a vessel can sit
      * outside the gridpoint forecast while remaining inside a zone that carries
      * active warnings.
+     *
+     * Whether the probe got an answer is reported as `alertsStatus` on the
+     * result; leaving this off reports `'not-requested'`.
      */
     probeNwsAlerts?: boolean;
     /** Contact string NWS asks API clients to identify themselves with. */

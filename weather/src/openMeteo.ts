@@ -32,6 +32,13 @@
  *     as enrichment, never a dependency: if it is slow, blocked, or shaped
  *     differently than expected, the forecast still returns with wind, pressure
  *     and temperature intact.
+ *
+ *   - The alerts probe reports whether it ran. Warnings are the one part of a
+ *     forecast a watch acts on immediately, and an empty `alerts` array used to
+ *     mean either "NWS says nothing is in force" or "we never got an answer" —
+ *     the second dressed as the first, which is a false all-clear. `alerts`
+ *     still comes back empty on failure, because every consumer reads it that
+ *     way, but `alertsStatus` alongside it says which of the two happened.
  */
 
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -62,12 +69,38 @@ export interface ForecastPeriod {
   pressure: string | null;
 }
 
+/**
+ * Whether the NWS alerts check actually ran, for a forecast that carries an
+ * `alerts` array.
+ *
+ *   - `'ok'`        — NWS answered. An empty `alerts` is a real all-clear.
+ *   - `'unavailable'` — the check was attempted and did not answer (network
+ *                     error, timeout, non-OK status, unparseable body). An
+ *                     empty `alerts` here means nothing at all, and must never
+ *                     be presented as an all-clear.
+ *   - `'not-requested'` — no check was attempted, because the caller did not
+ *                     ask for one. A caller that knows the position is outside
+ *                     NWS coverage leaves `probeNwsAlerts` off and lands here;
+ *                     see `isInsideNwsCoverage`.
+ */
+export type AlertsStatus = 'ok' | 'unavailable' | 'not-requested';
+
 export interface MarineForecast {
   summary: string;
   overallRisk: 'low' | 'moderate' | 'high';
   periods: ForecastPeriod[];
   source: string;
   alerts: any[];
+  /**
+   * Whether `alerts` is an answer or a silence. Always set by
+   * `getOpenMeteoForecast`.
+   *
+   * Optional only so that a consumer assembling its own `MarineForecast` — as
+   * the apps do for `errorNote` — keeps compiling; read it as `'ok'` at your
+   * peril, since `undefined` means the producer predates this field and its
+   * empty `alerts` carries the old ambiguity.
+   */
+  alertsStatus?: AlertsStatus;
   marineZone: string | null;
   locName: string;
   synopsis: string;
@@ -92,6 +125,9 @@ export interface ForecastOptions {
    * Worth doing even well outside the grid forecast area: a vessel can sit
    * outside the gridpoint forecast while remaining inside a zone that carries
    * active warnings.
+   *
+   * Whether the probe got an answer is reported as `alertsStatus` on the
+   * result; leaving this off reports `'not-requested'`.
    */
   probeNwsAlerts?: boolean;
   /** Contact string NWS asks API clients to identify themselves with. */
@@ -298,14 +334,30 @@ async function fetchMarineHourly(lat: number, lon: number): Promise<MarineHourly
 const cache = new Map<string, { at: number; value: MarineForecast }>();
 const cacheKey = (lat: number, lon: number) => `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
 
-/** Active NWS alerts for a point; empty on any failure. */
-async function fetchNwsAlerts(lat: number, lon: number, userAgent: string): Promise<any[]> {
+/**
+ * Active NWS alerts for a point, or `null` when the check did not get an
+ * answer.
+ *
+ * The distinction is the whole point: an empty array is NWS saying nothing is
+ * in force, `null` is nobody having said anything. Returning `[]` for both is
+ * what turned a failed check into a false all-clear. The 2s timeout stays —
+ * this is a probe made after the primary forecast already failed, and a watch
+ * waiting on it is a watch not being shown a forecast.
+ */
+async function fetchNwsAlerts(
+  lat: number,
+  lon: number,
+  userAgent: string
+): Promise<any[] | null> {
   try {
     const res = await fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`, {
       headers: { 'User-Agent': userAgent },
       signal: AbortSignal.timeout(2000)
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[Weather] NWS alerts check failed: HTTP ${res.status}`);
+      return null;
+    }
     const data = await res.json();
     return (data.features || []).map((f: any) => ({
       event: f.properties.event,
@@ -318,8 +370,9 @@ async function fetchNwsAlerts(lat: number, lon: number, userAgent: string): Prom
       ends: f.properties.ends || f.properties.expires,
       distance: 0
     }));
-  } catch {
-    return [];
+  } catch (err: any) {
+    console.warn(`[Weather] NWS alerts check failed: ${err?.message ?? err}`);
+    return null;
   }
 }
 
@@ -471,7 +524,19 @@ export async function getOpenMeteoForecast(
     });
   }
 
-  const alerts = probeNwsAlerts ? await fetchNwsAlerts(lat, lon, nwsUserAgent) : [];
+  // `alerts` keeps its old shape for every existing consumer; `alertsStatus`
+  // carries what that shape cannot say.
+  let alerts: any[] = [];
+  let alertsStatus: AlertsStatus = 'not-requested';
+  if (probeNwsAlerts) {
+    const probed = await fetchNwsAlerts(lat, lon, nwsUserAgent);
+    if (probed === null) {
+      alertsStatus = 'unavailable';
+    } else {
+      alerts = probed;
+      alertsStatus = 'ok';
+    }
+  }
 
   const overallRisk: 'low' | 'moderate' | 'high' = periods.some((p) => p.riskLevel === 'high')
     ? 'high'
@@ -487,6 +552,7 @@ export async function getOpenMeteoForecast(
       ? 'Open-Meteo global model with marine sea state'
       : 'Open-Meteo global model',
     alerts,
+    alertsStatus,
     // NWS zone ids are meaningless outside US waters; null so the UI omits the
     // zone label rather than printing "Zone GLOBAL".
     marineZone: null,

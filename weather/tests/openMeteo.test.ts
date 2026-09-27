@@ -57,8 +57,22 @@ function stubFetch(opts: {
   marine?: any;
   marineFails?: boolean;
   forecastStatus?: number;
+  /** Body the alerts leg answers with; defaults to a genuinely quiet feed. */
+  alerts?: any;
+  /** Make the alerts leg throw, as a network error or the 2s timeout does. */
+  alertsThrows?: boolean;
+  /** Answer the alerts leg with this status instead of 200. */
+  alertsStatus?: number;
 }) {
-  const { forecast, marine, marineFails = false, forecastStatus = 200 } = opts;
+  const {
+    forecast,
+    marine,
+    marineFails = false,
+    forecastStatus = 200,
+    alerts = { features: [] },
+    alertsThrows = false,
+    alertsStatus = 200
+  } = opts;
   calls = [];
   vi.stubGlobal('fetch', async (url: any) => {
     const u = String(url);
@@ -68,10 +82,35 @@ function stubFetch(opts: {
       return { ok: true, status: 200, json: async () => marine } as any;
     }
     if (u.includes('api.weather.gov')) {
-      return { ok: true, status: 200, json: async () => ({ features: [] }) } as any;
+      if (alertsThrows) throw new Error('simulated NWS outage');
+      return {
+        ok: alertsStatus >= 200 && alertsStatus < 300,
+        status: alertsStatus,
+        json: async () => alerts
+      } as any;
     }
     return { ok: forecastStatus === 200, status: forecastStatus, json: async () => forecast } as any;
   });
+}
+
+/** One active warning, shaped as api.weather.gov/alerts/active returns it. */
+function alertFeature(event = 'Gale Warning') {
+  return {
+    features: [
+      {
+        properties: {
+          event,
+          headline: `${event} in effect`,
+          description: 'Southwest winds 25 to 35 kt.',
+          severity: 'Severe',
+          urgency: 'Expected',
+          instruction: 'Mariners should seek safe harbour.',
+          effective: '2026-08-22T00:00:00Z',
+          expires: '2026-08-22T18:00:00Z'
+        }
+      }
+    ]
+  };
 }
 
 beforeEach(() => clearForecastCache());
@@ -225,6 +264,67 @@ describe('getOpenMeteoForecast', () => {
       stubFetch({ forecast: buildForecast(), marine: buildMarine() });
       await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
       expect(calls.some((u) => u.includes('api.weather.gov/alerts'))).toBe(true);
+    });
+
+    /*
+      The three cases below are the reason `alertsStatus` exists. All three end
+      with `alerts: []`, and until this field they were indistinguishable — so a
+      check that never answered rendered the same green all-clear as a coast
+      with genuinely nothing in force.
+    */
+    it('reports a quiet feed as a real all-clear', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine(), alerts: { features: [] } });
+      const fc = await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
+      expect(fc.alertsStatus).toBe('ok');
+      expect(fc.alerts).toEqual([]);
+    });
+
+    it('reports a thrown alerts check as unavailable, not as no alerts', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine(), alertsThrows: true });
+      const fc = await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
+      expect(fc.alertsStatus).toBe('unavailable');
+      // The array keeps its old shape: every consumer reads it as a list.
+      expect(fc.alerts).toEqual([]);
+    });
+
+    it.each([500, 503, 404, 400])('reports HTTP %i from the alerts feed as unavailable', async (status) => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine(), alertsStatus: status });
+      const fc = await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
+      expect(fc.alertsStatus).toBe('unavailable');
+      expect(fc.alerts).toEqual([]);
+    });
+
+    it('reports an unparseable alerts body as unavailable', async () => {
+      stubFetch({
+        forecast: buildForecast(),
+        marine: buildMarine(),
+        alerts: null
+      });
+      const fc = await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
+      expect(fc.alertsStatus).toBe('unavailable');
+      expect(fc.alerts).toEqual([]);
+    });
+
+    it('reports not-requested when the probe is off', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      const fc = await getOpenMeteoForecast(43.55, 7.02);
+      expect(fc.alertsStatus).toBe('not-requested');
+      expect(fc.alerts).toEqual([]);
+      expect(calls.some((u) => u.includes('api.weather.gov'))).toBe(false);
+    });
+
+    it('still reports ok, with the warnings, when the feed has something to say', async () => {
+      stubFetch({
+        forecast: buildForecast(),
+        marine: buildMarine(),
+        alerts: alertFeature('Gale Warning')
+      });
+      const fc = await getOpenMeteoForecast(41.5, -71.3, { probeNwsAlerts: true });
+      expect(fc.alertsStatus).toBe('ok');
+      expect(fc.alerts).toHaveLength(1);
+      expect(fc.alerts[0].event).toBe('Gale Warning');
+      // `ends` falls back to `expires`, which is what the live feed usually sends.
+      expect(fc.alerts[0].ends).toBe('2026-08-22T18:00:00Z');
     });
   });
 
