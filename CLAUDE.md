@@ -165,6 +165,17 @@ reproduce this layout before anything builds.
   assuming a bug is local; if the same logic lives in two or more apps it
   belongs in a package here. The `sentinel-check` skill in `skills/` is the
   review pass for exactly this, and for the pre-release checklist.
+- **A PR that changes what a customer sees says so in its body.** Any pull
+  request that changes user-visible copy, a message the app can show, or a
+  screen, setting or behaviour the knowledge base describes carries a
+  `Customer-visible:` line naming the screen or string and the old and new
+  wording, or `Customer-visible: none`. Nothing compares `docs-kb` with the
+  apps, and between 11 and 14 September 2026 forty merges left it wrong in
+  both directions for four days before anyone looked. The line is how the
+  coordinator's closing pass (`skills/fleet-coordinator/SKILL.md` §7) finds
+  the knowledge-base, copy-inventory and FAQ edits a change owes; a merge
+  that nobody coordinated owes the same edits, so its author makes them or
+  files them on the roadmap.
 - **Verify against a clean checkout, not a working tree.** Both release failures
   in this codebase were of that kind, and a local build proves nothing about
   them:
