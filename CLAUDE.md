@@ -34,6 +34,21 @@ doing anything else, decide from the shape of the task:
   from until it attaches the others, so do the skill's §0 first — otherwise
   that grep silently covers one repository.
 
+**Either way, a cloud session opens with a loose-ends check.** It is cloned
+fresh from GitHub, so what it holds is current, but it cannot see Craig's PC and
+it does not know what other sessions left open. Before the task, attach every
+fleet repo read-only (the fleet-coordinator skill's §0; attaching is one call a
+repo) and report, in a few lines:
+
+- open PRs in each repo, with their age;
+- branches ahead of `main` with no PR.
+
+These are the two checks the Website's `scripts/fleet-hygiene.mjs` runs nightly
+in `fleet-health.yml`. If any of them touches the task, say so before starting.
+Nothing found is one line ("No open PRs or unmerged branches"). Work stranded
+on the PC (uncommitted edits, commits never pushed) is not visible from here: a
+scheduled task on Craig's machine sweeps for it each weekday morning.
+
 Either way, the rest of this file applies.
 
 ## The layout everything assumes
