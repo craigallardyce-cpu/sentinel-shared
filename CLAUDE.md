@@ -371,13 +371,20 @@ repository file silently reverts every commit since: on 2026-09-26 that undid
 the Wave 1 and Wave 2 roadmap closures. The routine, agreed 2026-09-27:
 
 1. The project's context is added from GitHub (`docs-kb`), not uploaded, and is
-   synced at the start of every chat session.
-2. Chats hand back the changed sections where they can, not whole files.
-3. Edits come to a Claude Code session to merge, commit and open a PR; Craig
-   says when to merge.
-4. After a merge, the project is synced again before its next session.
+   synced at the start of every session. Chat mode reads that.
+2. The project's **Folder** points at the local `docs-kb` checkout, for Cowork
+   sessions, which edit the files in place. Before one starts, the checkout is
+   on `main`, clean, and pulled: it is only as current as its last pull, and it
+   is also where Claude Code sessions branch for PRs, so a Cowork edit made on
+   a PR branch lands in that PR.
+3. Chats hand back the changed sections where they can, not whole files.
+4. Edits come to a Claude Code session to commit and open a PR; Craig says when
+   to merge. A Cowork edit arrives as uncommitted changes in the checkout, made
+   on the current file, so it needs a review of the diff but no merge.
+5. After a merge, the project's GitHub context is synced again before its next
+   session.
 
-When a whole file does come back, find the committed version it started from
+When a whole file does come back from a chat, find the committed version it started from
 (the one with the smallest `diff --strip-trailing-cr` against the download), run
 `git merge-file` with the current file, that base and the download, and confirm
 the only removed lines are ones the download meant to change.
