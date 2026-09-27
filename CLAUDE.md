@@ -362,6 +362,36 @@ include OceanSentinel's items).
 OceanSentinel's own `ROADMAP.md` keeps the design narrative and decision history
 behind each of its entries; it is no longer where open work is tracked.
 
+**Edits drafted in the claude.ai project come back by merge, never by copy.**
+Craig drafts `docs-kb` changes (the roadmap, the KB, `COPY-INVENTORY.md`) in the
+claude.ai project "Mariner Sentinel Launch", whose context holds copies of the
+repository's files. Those copies go stale, and a whole file downloaded from a
+chat starts from whatever version the project last saw. Copying one over the
+repository file silently reverts every commit since: on 2026-09-26 that undid
+the Wave 1 and Wave 2 roadmap closures. The routine, agreed 2026-09-27:
+
+1. The project's context is added from GitHub (`docs-kb`), not uploaded, and is
+   synced at the start of every session. Chat mode reads that.
+2. The project's **Folder** points at the local `docs-kb` checkout, for Cowork
+   sessions, which edit the files in place. Before one starts, the checkout is
+   on `main`, clean, and pulled: it is only as current as its last pull, and it
+   is also where Claude Code sessions branch for PRs, so a Cowork edit made on
+   a PR branch lands in that PR.
+3. Chats hand back the changed sections where they can, not whole files.
+4. Edits come to a Claude Code session to commit and open a PR; Craig says when
+   to merge. A Cowork edit arrives as uncommitted changes in the checkout, made
+   on the current file, so it needs a review of the diff but no merge.
+5. After a merge, the project's GitHub context is synced again before its next
+   session.
+
+When a whole file does come back from a chat, find the committed version it started from
+(the one with the smallest `diff --strip-trailing-cr` against the download), run
+`git merge-file` with the current file, that base and the download, and confirm
+the only removed lines are ones the download meant to change.
+`COPY-INVENTORY.md`'s change log numbers its versions, so a stale copy's new
+entries can reuse numbers already committed; renumber them in date order and
+fix any cross-references. After merging, remind Craig to re-sync the project.
+
 ## Where things are decided and recorded
 
 - **This file:** how the fleet is built, changed and released.
