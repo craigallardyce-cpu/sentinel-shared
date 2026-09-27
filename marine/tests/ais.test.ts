@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { parseAisSentence, calculateTargetMetrics, getUpdatedAisTargets } from '../src/ais.js';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import {
+  parseAisSentence,
+  calculateTargetMetrics,
+  getUpdatedAisTargets,
+  resetAivdmBuffers,
+  AIS_FRAGMENT_TIMEOUT_MS
+} from '../src/ais.js';
 
 /**
  * Independent bit-level AIVDM encoder (the inverse of the module's private
@@ -232,5 +238,140 @@ describe('getUpdatedAisTargets', () => {
     const closeIdx = targetsList.findIndex(t => t.mmsi === '222222222');
     const farIdx = targetsList.findIndex(t => t.mmsi === '111111111');
     expect(closeIdx).toBeLessThan(farIdx);
+  });
+});
+
+/**
+ * Multipart reassembly, which had no test at all and no guard of any kind.
+ *
+ * Over TCP that was survivable: fragments arrive in order and none goes
+ * missing. UDP drops datagrams, and the failure it produces is not a dropped
+ * target but an INVENTED one -- fragment 1 of the next message joined to
+ * fragment 2 of the last decodes into a plausible vessel at a position no
+ * vessel is at. A collision assessment then runs against it.
+ *
+ * The fixtures split a real two-part payload rather than inventing fragments,
+ * so a passing reassembly is a decodable message and not just a string concat.
+ */
+function splitIntoFragments(sentence: string, seqId: string): [string, string] {
+  const body = sentence.slice(1, sentence.indexOf('*'));
+  const parts = body.split(',');
+  const armored = parts[5];
+  const half = Math.ceil(armored.length / 2);
+  return [
+    withChecksum(`${parts[0]},2,1,${seqId},A,${armored.slice(0, half)},0`),
+    withChecksum(`${parts[0]},2,2,${seqId},A,${armored.slice(half)},2`)
+  ];
+}
+
+function twoPart(seqId: string, mmsi: number, lat: number, lon: number): [string, string] {
+  return splitIntoFragments(
+    buildType1Sentence({ mmsi, lat, lon, sogKnots: 6, cogDeg: 90, headingDeg: 90 }),
+    seqId
+  );
+}
+
+describe('multipart AIVDM reassembly', () => {
+  beforeEach(() => {
+    resetAivdmBuffers();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    resetAivdmBuffers();
+  });
+
+  it('assembles a clean two-part message', () => {
+    const [one, two] = twoPart('5', 366123456, 41.5, -71.3);
+
+    expect(parseAisSentence(one)).toBeNull(); // Nothing to report from half a message.
+    const result = parseAisSentence(two);
+
+    expect(result).not.toBeNull();
+    expect(result!.mmsi).toBe('366123456');
+    expect(result!.lat).toBeCloseTo(41.5, 5);
+    expect(result!.lon).toBeCloseTo(-71.3, 5);
+  });
+
+  it('invents no target when fragment 1 is lost and the next message arrives', () => {
+    // The defect this guard exists for, in full. Message A's fragment 1 is
+    // dropped by the network; message B then starts on the same sequence id.
+    // The old buffer would be "full" at B1 + A2 and decode a ghost.
+    const [, aTwo] = twoPart('5', 366123456, 41.5, -71.3);
+    const [bOne] = twoPart('5', 244777888, 52.1, 4.3);
+
+    expect(parseAisSentence(aTwo)).toBeNull(); // Orphan: no fragment 1 here.
+    expect(parseAisSentence(bOne)).toBeNull(); // B is not complete either.
+
+    /*
+      What this does NOT claim. If A's fragment 2 turns up again AFTER B's
+      fragment 1 has started a partial, it is accepted, because at that moment
+      nothing in the protocol distinguishes it from B's own fragment 2 -- same
+      talker, same sequence id, same fragment count, same position in the
+      message. Ordering and a timeout close the loss case above, which is what
+      UDP actually does to a feed; a reordered duplicate of a fragment the
+      sender already sent is beyond what this layer can see. The timeout bounds
+      even that: a stale enough orphan is discarded rather than believed.
+    */
+  });
+
+  it('refuses a fragment that arrives out of order', () => {
+    const [aOne, aTwo] = twoPart('7', 366123456, 41.5, -71.3);
+
+    expect(parseAisSentence(aTwo)).toBeNull(); // Fragment 2 first: nothing to attach to.
+    expect(parseAisSentence(aOne)).toBeNull();
+    // The message still completes once its fragments do arrive in order.
+    expect(parseAisSentence(aTwo)).not.toBeNull();
+  });
+
+  it('refuses a repeat of a fragment it already holds', () => {
+    const [aOne, aTwo] = twoPart('7', 366123456, 41.5, -71.3);
+
+    expect(parseAisSentence(aOne)).toBeNull();
+    expect(parseAisSentence(aOne)).toBeNull(); // A second first fragment restarts it.
+    expect(parseAisSentence(aTwo)).not.toBeNull();
+  });
+
+  it('discards a partial older than the timeout rather than completing it', () => {
+    const [aOne, aTwo] = twoPart('3', 366123456, 41.5, -71.3);
+
+    expect(parseAisSentence(aOne)).toBeNull();
+    vi.setSystemTime(Date.now() + AIS_FRAGMENT_TIMEOUT_MS + 1);
+
+    expect(parseAisSentence(aTwo)).toBeNull();
+  });
+
+  it('completes a partial that is still inside the timeout', () => {
+    const [aOne, aTwo] = twoPart('3', 366123456, 41.5, -71.3);
+
+    expect(parseAisSentence(aOne)).toBeNull();
+    vi.setSystemTime(Date.now() + AIS_FRAGMENT_TIMEOUT_MS - 1);
+
+    expect(parseAisSentence(aTwo)).not.toBeNull();
+  });
+
+  it('is two seconds, which is many times longer than a message takes', () => {
+    expect(AIS_FRAGMENT_TIMEOUT_MS).toBe(2_000);
+  });
+
+  it('caps the partials it holds, dropping the oldest first', () => {
+    // 200 first fragments on distinct keys, none of which ever completes: the
+    // unbounded version kept every one of them for the life of the process.
+    // The clock does not move, so nothing is discarded by the timeout and the
+    // cap is the only thing under test.
+    const firsts = [];
+    for (let i = 0; i < 200; i++) {
+      const [one, two] = twoPart(String.fromCharCode(33 + (i % 90)) + i, 200000000 + i, 40 + i / 1000, -70);
+      expect(parseAisSentence(one)).toBeNull();
+      firsts.push(two);
+    }
+
+    // The oldest were evicted, so their second fragments find nothing.
+    expect(parseAisSentence(firsts[0])).toBeNull();
+    expect(parseAisSentence(firsts[100])).toBeNull();
+    // The most recent are still held and complete normally.
+    expect(parseAisSentence(firsts[199])).not.toBeNull();
+    expect(parseAisSentence(firsts[198])).not.toBeNull();
   });
 });

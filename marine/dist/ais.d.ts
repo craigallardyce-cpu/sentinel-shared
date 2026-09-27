@@ -59,6 +59,22 @@ export interface AisTargetEnriched extends AisTargetData, TargetMetrics {
      */
     cogText: string;
 }
+/**
+ * How long a partly-assembled multipart AIVDM may wait for the rest of it.
+ *
+ * A gateway sends the fragments of one message back to back, so two seconds is
+ * many times longer than a complete message ever takes. It is short enough that
+ * a partial cannot survive to meet a fragment of an unrelated message.
+ */
+export declare const AIS_FRAGMENT_TIMEOUT_MS = 2000;
+/**
+ * Forget every partly-assembled message.
+ *
+ * The buffers are module state, so one test's orphaned fragment is the next
+ * test's. Exported for that, and harmless in an app: it discards only fragments
+ * that have not yet made a target.
+ */
+export declare function resetAivdmBuffers(): void;
 /** Parses raw NMEA AIVDM / AIVDO sentences into AIS target data. */
 export declare function parseAisSentence(sentence: string): AisTargetData | null;
 /** Calculates CPA, TCPA, Range, Bearing, and Threat Level between Own Ship and Target. */

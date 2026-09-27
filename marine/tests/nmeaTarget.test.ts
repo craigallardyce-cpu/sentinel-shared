@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_NMEA_TARGET, resolveNmeaTarget, splitPoolKey, stalePoolKeys } from '../src/nmeaTarget.js';
+import {
+  DEFAULT_NMEA_TARGET,
+  nmeaPoolKey,
+  resolveNmeaTarget,
+  splitPoolKey,
+  stalePoolKeys,
+} from '../src/nmeaTarget.js';
 
 /**
  * These had no tests. The function decides which gateway every NMEA client in
@@ -104,5 +110,125 @@ describe('stalePoolKeys', () => {
 
   it('names none when the pool already matches', () => {
     expect(stalePoolKeys(['10.10.10.1:11102'], { host: '10.10.10.1', port: '11102' })).toEqual([]);
+  });
+});
+
+/**
+ * The transport, added 2026-09-27 alongside UDP.
+ *
+ * The bar for every test here is that TCP resolves to exactly what it resolved
+ * to before — including the shape of the object, since `protocol` is left off
+ * entirely rather than set to `'tcp'`. The tests above are the proof of that
+ * and were not touched.
+ */
+describe('protocol', () => {
+  it('says nothing about transport for a TCP target', () => {
+    const target = resolveNmeaTarget({ configured: { host: '10.10.10.1', port: '11102' } });
+    expect(target.protocol).toBeUndefined();
+    expect(target).toEqual({ host: '10.10.10.1', port: '11102', source: 'config' });
+  });
+
+  it('carries a configured UDP transport through', () => {
+    expect(resolveNmeaTarget({ configured: { host: '10.10.10.1', port: '11102', protocol: 'udp' } })).toEqual({
+      host: '10.10.10.1',
+      port: '11102',
+      protocol: 'udp',
+      source: 'config',
+    });
+  });
+
+  it('accepts a configured UDP listener with no host, because there is nothing to dial', () => {
+    expect(resolveNmeaTarget({ configured: { port: '11102', protocol: 'udp' } })).toEqual({
+      host: '',
+      port: '11102',
+      protocol: 'udp',
+      source: 'config',
+    });
+  });
+
+  it('still ignores a configured TCP port with no host', () => {
+    // Unchanged: a port alone is not somewhere to connect to.
+    expect(resolveNmeaTarget({ configured: { port: '11102' } }).source).toBe('fallback');
+  });
+
+  it('lets a UDP request win on a port alone', () => {
+    expect(
+      resolveNmeaTarget({
+        requested: { port: '2000', protocol: 'udp' },
+        configured: { host: '10.10.10.1', port: '11102' },
+      })
+    ).toEqual({ host: '', port: '2000', protocol: 'udp', source: 'requested' });
+  });
+
+  it('reads anything that is not udp as tcp', () => {
+    for (const protocol of ['TCP', 'websocket', '', null, undefined]) {
+      expect(resolveNmeaTarget({ configured: { host: 'boat.local', port: '11102', protocol } }).protocol).toBeUndefined();
+    }
+  });
+
+  it('recovers the transport from a pooled UDP key', () => {
+    expect(resolveNmeaTarget({ activeKeys: ['udp:11102'] })).toEqual({
+      host: '',
+      port: '11102',
+      protocol: 'udp',
+      source: 'pool',
+    });
+  });
+});
+
+describe('nmeaPoolKey', () => {
+  it('keeps the TCP key exactly as it was', () => {
+    expect(nmeaPoolKey({ host: '10.10.10.1', port: 11102 })).toBe('10.10.10.1:11102');
+    expect(nmeaPoolKey({ host: '10.10.10.1', port: '11102', protocol: 'tcp' })).toBe('10.10.10.1:11102');
+  });
+
+  it('separates a UDP listener from a TCP connection on the same port', () => {
+    expect(nmeaPoolKey({ port: 11102, protocol: 'udp' })).toBe('udp:11102');
+    expect(nmeaPoolKey({ host: '10.10.10.1', port: 11102, protocol: 'udp' })).toBe('udp:10.10.10.1:11102');
+    expect(nmeaPoolKey({ host: '10.10.10.1', port: 11102, protocol: 'udp' })).not.toBe(
+      nmeaPoolKey({ host: '10.10.10.1', port: 11102 })
+    );
+  });
+
+  it('round-trips through splitPoolKey', () => {
+    for (const target of [
+      { host: '10.10.10.1', port: '11102' },
+      { host: '[fe80::1]', port: '10110' },
+      { host: '', port: '11102', protocol: 'udp' as const },
+      { host: '10.10.10.1', port: '11102', protocol: 'udp' as const },
+      { host: '[fe80::1]', port: '10110', protocol: 'udp' as const },
+    ]) {
+      const split = splitPoolKey(nmeaPoolKey(target));
+      expect(split, nmeaPoolKey(target)).not.toBeNull();
+      expect(split!.host).toBe(target.host);
+      expect(split!.port).toBe(target.port);
+      expect(split!.protocol ?? 'tcp').toBe(target.protocol ?? 'tcp');
+    }
+  });
+
+  it('rejects a UDP key that is neither a port nor a host and port', () => {
+    expect(splitPoolKey('udp:')).toBeNull();
+    expect(splitPoolKey('udp:not-a-port')).toBeNull();
+    expect(splitPoolKey('udp::11102')).toBeNull();
+  });
+});
+
+describe('stalePoolKeys with a transport', () => {
+  it('keeps the UDP listener that matches and closes the rest', () => {
+    expect(
+      stalePoolKeys(['udp:11102', 'udp:10.10.10.1:11102', '10.10.10.1:11102'], {
+        host: '',
+        port: '11102',
+        protocol: 'udp',
+      })
+    ).toEqual(['udp:10.10.10.1:11102', '10.10.10.1:11102']);
+  });
+
+  it('treats a TCP connection to a port as stale once that port is being listened to', () => {
+    // Switching transport has to close the old socket, or the boat is fed by
+    // both and the one the navigator just stopped using keeps winning.
+    expect(stalePoolKeys(['10.10.10.1:11102'], { host: '10.10.10.1', port: '11102', protocol: 'udp' })).toEqual([
+      '10.10.10.1:11102',
+    ]);
   });
 });

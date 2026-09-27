@@ -220,9 +220,10 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         legacy: { harbor: ['harbor_sentinel_auto_dim_minutes'], ocean: ['ocean_sentinel_auto_dim_minutes'] },
     }),
     // ---------------------------------------------------------------------------
-    // NMEA. The group that forced the layered design, and the one the pool
-    // extraction waits on: `resolveNmeaTarget` in @sentinel/marine currently takes
-    // HarborSentinel's SQLite row shape, and should take these instead.
+    // NMEA. The group that forced the layered design. `resolveNmeaTarget` in
+    // @sentinel/marine takes an address now, not HarborSentinel's SQLite row
+    // shape, so these three resolve through account -> vessel -> host -> device
+    // and are handed to it already decided.
     //
     // There is no remote gateway here. A device off the boat reaches the same
     // local address over the VPN, so a `nmea.remote.*` group would be a second
@@ -271,6 +272,26 @@ exports.FLEET_SETTINGS = (0, registry_js_1.createRegistry)({
         label: 'NMEA gateway port',
         placeholder: 'e.g. 11102',
         legacy: { ocean: ['vessel_nmea_local_port'] },
+    }),
+    'nmea.gateway.protocol': (0, registry_js_1.defineSetting)({
+        /*
+          The same three layers as the address, and for the same reasons: a boat's
+          multiplexer either broadcasts or it does not (`vessel`), and a PC and a
+          phone can still differ about how they reach it (`host`, `device`).
+        */
+        scopes: ['vessel', 'host', 'device'],
+        type: (0, valueTypes_js_1.oneOf)(['tcp', 'udp']),
+        /*
+          One of the few defaults in this file, and forced rather than chosen: a
+          connection has to be attempted over something before anyone opens the
+          settings, and every install that exists today is TCP. Defaulting to UDP
+          instead would silently stop the fleet talking to every gateway already
+          configured. This is not a suggestion about which is better -- it is what
+          the fleet already does, written down.
+        */
+        default: 'tcp',
+        label: 'Connection type',
+        description: 'TCP connects to the gateway. UDP listens for the data the gateway broadcasts, so any number of devices can receive it.',
     }),
     'nmea.datahub_url': (0, registry_js_1.defineSetting)({
         scopes: ['vessel', 'host'],

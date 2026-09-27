@@ -5,6 +5,26 @@ import { parseAisSentence } from './ais.js';
 export const liveAisTargetsMap = new Map();
 /** Auto-detected own vessel MMSI (latched from AIVDO sentences). */
 export let ownVesselMmsi = null;
+/**
+ * How old a fix may be and still count as live, in milliseconds.
+ *
+ * Craig's call, 2026-09-27: a fix older than ten seconds is not a live fix, and
+ * a position-lost alarm fires after ten seconds without one. A gateway at 1 Hz
+ * has missed ten fixes by then, so this is not tight.
+ */
+export const FIX_MAX_AGE_MS = 10000;
+/**
+ * Whether a fix taken at `lastFixAt` is still live.
+ *
+ * Pure, and takes `now` so the alarm's tests do not depend on the clock. Never
+ * having had a fix is not freshness: null and undefined are both false, so a
+ * caller cannot get a live answer out of a feed that has produced nothing.
+ */
+export function isFixFresh(lastFixAt, now = Date.now(), maxAgeMs = FIX_MAX_AGE_MS) {
+    if (lastFixAt === null || lastFixAt === undefined)
+        return false;
+    return now - lastFixAt <= maxAgeMs;
+}
 export function createNmeaLiveData() {
     return {
         lat: null,
@@ -14,7 +34,8 @@ export function createNmeaLiveData() {
         depth: null,
         depth_offset_ft: null,
         sentenceCount: 0,
-        lastUpdate: 0
+        lastUpdate: 0,
+        lastFixAt: null
     };
 }
 /** Validates NMEA sentence checksum (XOR of all chars between $/! and *). */
@@ -380,6 +401,9 @@ export function handleNmeaSentence(sentence, liveData) {
     if (parsed.latDec !== undefined && parsed.lonDec !== undefined) {
         liveData.lat = parsed.latDec;
         liveData.lon = parsed.lonDec;
+        // Only here: see the note on `lastFixAt`. A sentence that carried no
+        // position must not make the position look newer than it is.
+        liveData.lastFixAt = Date.now();
         updated = true;
     }
     if (parsed.tws !== undefined) {

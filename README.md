@@ -19,7 +19,7 @@ Projects/
 
 | Package | What it is | Consumed by |
 |---|---|---|
-| `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing, AIS/AIVDM decoding, the NMEA gateway rule and the TCP connection pool | all three |
+| `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing (including how old a position fix may be and still count as live), AIS/AIVDM decoding, the NMEA gateway rule and the gateway connection pool over either TCP or UDP | all three |
 | `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global model used everywhere NWS has no data | OceanSentinel (server + client) |
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers | OceanSentinel, HarborSentinel |
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend) | all three |
@@ -224,8 +224,9 @@ authority on stays `unset` until they set it, `get()` returns `undefined`, and
 
 What keeps a default is what the app needs before anybody has opened the settings:
 on/off toggles, which have to be one way or the other; screen brightness, which the
-first frame has to render at; and the auto-dim interval, without which its toggle
-switches on and does nothing. `createRegistry` requires a default on every `bool`,
+first frame has to render at; the auto-dim interval, without which its toggle
+switches on and does nothing; and the NMEA gateway transport, because a connection
+has to be attempted over something and TCP is what every install already speaks. `createRegistry` requires a default on every `bool`,
 and a fleet test names the full list so it cannot quietly grow.
 
 Reading walks `account → vessel → host → device` and keeps the **last** layer that

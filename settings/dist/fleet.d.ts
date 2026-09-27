@@ -64,6 +64,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'nmea.source': import("./types.js").SettingSpec<"NMEA LOCAL" | "DEVICE GPS">;
     'nmea.gateway.host': import("./types.js").SettingSpec<string>;
     'nmea.gateway.port': import("./types.js").SettingSpec<number>;
+    'nmea.gateway.protocol': import("./types.js").SettingSpec<string> & {
+        default: string | ((platform: import("./types.js").PlatformContext) => string);
+    };
     'nmea.datahub_url': import("./types.js").SettingSpec<string>;
     'connection.backend_url': import("./types.js").SettingSpec<string>;
     'connection.pairing_token': import("./types.js").SettingSpec<string>;
