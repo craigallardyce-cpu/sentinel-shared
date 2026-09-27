@@ -13,8 +13,53 @@
  * The helpers take any Supabase client (`from(...)` shaped) so this package has
  * zero runtime dependencies and never bundles its own client copy.
  */
-/** Columns clients may SELECT (kept in sync with migrations 002, 007 and 053). */
-const READ_COLUMNS = 'id, vessel_slug, name, vessel_type, make_model, length_ft, homeport, photo_url, description, mmsi, updated_at';
+/** The three the database accepts, in the order a form should offer them. */
+export const HULL_FORMS = [
+    { value: 'monohull', label: 'Monohull' },
+    { value: 'catamaran', label: 'Catamaran' },
+    { value: 'trimaran', label: 'Trimaran' }
+];
+/**
+ * The ranges the database enforces, exported so a form can label its own field
+ * rather than re-typing the numbers and drifting from the CHECK.
+ *
+ * Both are exclusive at each end, as the CHECKs are: `loa_m > 0 AND loa_m < 200`
+ * and `beam_m > 0 AND beam_m < 100`. They are sanity bounds, not a claim about
+ * what a cruising boat is -- the point is to catch a beam typed in feet or a
+ * length typed in centimetres before the row is written, not to have an opinion
+ * about superyachts.
+ */
+export const LOA_M_RANGE = { exclusiveMin: 0, exclusiveMax: 200 };
+export const BEAM_M_RANGE = { exclusiveMin: 0, exclusiveMax: 100 };
+/** Columns clients may SELECT (kept in sync with migrations 002, 007, 053 and 066). */
+const READ_COLUMNS = 'id, vessel_slug, name, vessel_type, make_model, length_ft, homeport, photo_url, description, mmsi, hull_form, loa_m, beam_m, updated_at';
+/**
+ * A stored hull form, or null for anything this build does not recognise.
+ *
+ * Never throws and never guesses. A row written by a later release that adds a
+ * fourth hull form must still be readable by an app that has not been updated --
+ * on a boat, that app may not be updated for a season -- and the honest answer
+ * for a value it does not know is "not set", which the chart already handles.
+ */
+function toHullForm(value) {
+    if (typeof value !== 'string')
+        return null;
+    return HULL_FORMS.some((option) => option.value === value) ? value : null;
+}
+/**
+ * A stored dimension as a number, or null.
+ *
+ * Stricter than the `Number()` beside it on `length_ft`: `numeric` arrives from
+ * PostgREST as a string, and anything that does not parse to a finite number
+ * reads as absent rather than as `NaN`. A NaN reaching the chart would be drawn,
+ * silently, as a boat of no size.
+ */
+function toDimension(value) {
+    if (value === null || value === undefined || value === '')
+        return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
 function rowToProfile(row) {
     return {
         id: String(row.id ?? ''),
@@ -27,6 +72,9 @@ function rowToProfile(row) {
         mmsi: row.mmsi ?? null,
         photoUrl: row.photo_url ?? null,
         description: row.description ?? null,
+        hullForm: toHullForm(row.hull_form),
+        loaM: toDimension(row.loa_m),
+        beamM: toDimension(row.beam_m),
         updatedAt: row.updated_at ?? null,
     };
 }
@@ -86,12 +134,56 @@ export async function resolveOwnVessel(supabase) {
     return { id: profile.id, vesselSlug: profile.vesselSlug };
 }
 /**
+ * What is wrong with a patch, in a sentence, or null when there is nothing wrong.
+ *
+ * Exported so a settings screen can check a field as it is typed, and say which
+ * one is out of range, without having to catch anything. `saveVesselProfile`
+ * runs the same function, so a UI that validates and a UI that does not agree
+ * about what is acceptable.
+ *
+ * Only the fields the database constrains are checked, and only when the patch
+ * carries them: an absent field is not a value, and an explicit `null` clears a
+ * column the CHECK allows to be null.
+ */
+export function validateVesselProfilePatch(patch) {
+    if (patch.hullForm !== undefined && patch.hullForm !== null && !HULL_FORMS.some((option) => option.value === patch.hullForm)) {
+        return `hullForm must be one of ${HULL_FORMS.map((option) => option.value).join(', ')}.`;
+    }
+    if (patch.loaM !== undefined && patch.loaM !== null) {
+        const { exclusiveMin, exclusiveMax } = LOA_M_RANGE;
+        if (!Number.isFinite(patch.loaM) || patch.loaM <= exclusiveMin || patch.loaM >= exclusiveMax) {
+            return `loaM must be a length in metres greater than ${exclusiveMin} and less than ${exclusiveMax}.`;
+        }
+    }
+    if (patch.beamM !== undefined && patch.beamM !== null) {
+        const { exclusiveMin, exclusiveMax } = BEAM_M_RANGE;
+        if (!Number.isFinite(patch.beamM) || patch.beamM <= exclusiveMin || patch.beamM >= exclusiveMax) {
+            return `beamM must be a beam in metres greater than ${exclusiveMin} and less than ${exclusiveMax}.`;
+        }
+    }
+    return null;
+}
+/**
  * Write identity fields through to the shared record. Best-effort by design:
  * returns false (and stays quiet) when offline or unauthorised, so callers can
  * treat the shared record as eventually consistent rather than a hard
- * dependency. Requires a signed-in client for name/vesselType (migration 007).
+ * dependency. Requires a signed-in client for name/vesselType (migration 007)
+ * and for the hull geometry (migration 066).
+ *
+ * An out-of-range dimension is the one thing this function is loud about: it
+ * throws a `RangeError` before any request is made, rather than returning false.
+ * The two failures are not the same and a caller must not treat them alike --
+ * `false` means "the boat is offline, try again later", which is a reason to keep
+ * the value and retry, while a beam of 300 metres is a value that will never
+ * become valid and must be corrected by the person who typed it. Sending it
+ * anyway would return false too, from the CHECK, and be indistinguishable from
+ * bad signal. Use `validateVesselProfilePatch` to check a field without
+ * catching.
  */
 export async function saveVesselProfile(supabase, patch, target) {
+    const invalid = validateVesselProfilePatch(patch);
+    if (invalid)
+        throw new RangeError(`saveVesselProfile: ${invalid}`);
     const values = { updated_at: new Date().toISOString() };
     if (patch.name !== undefined)
         values.name = patch.name;
@@ -99,6 +191,12 @@ export async function saveVesselProfile(supabase, patch, target) {
         values.vessel_type = patch.vesselType;
     if (patch.mmsi !== undefined)
         values.mmsi = patch.mmsi;
+    if (patch.hullForm !== undefined)
+        values.hull_form = patch.hullForm;
+    if (patch.loaM !== undefined)
+        values.loa_m = patch.loaM;
+    if (patch.beamM !== undefined)
+        values.beam_m = patch.beamM;
     if (Object.keys(values).length === 1)
         return true; // nothing to write
     try {

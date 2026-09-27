@@ -38,6 +38,9 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'vessel.name': import("./types.js").SettingSpec<string>;
     'vessel.mmsi': import("./types.js").SettingSpec<string>;
     'vessel.type': import("./types.js").SettingSpec<string>;
+    'vessel.hull_form': import("./types.js").SettingSpec<"monohull" | "catamaran" | "trimaran">;
+    'vessel.loa_m': import("./types.js").SettingSpec<number>;
+    'vessel.beam_m': import("./types.js").SettingSpec<number>;
     'vessel.bow_roller_height_ft': import("./types.js").SettingSpec<number>;
     'units.metric': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);

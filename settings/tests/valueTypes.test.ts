@@ -56,6 +56,29 @@ describe('numbers', () => {
     expect(limit.parse(0.5)).toBe(0.5);
   });
 
+  /*
+    Exclusive bounds exist for the vessel dimensions, whose CHECKs (website
+    migration 066) are strictly greater than zero. An inclusive `min: 0` would
+    accept a zero-metre boat here and leave PostgREST to refuse the write -- a
+    settings screen that appears not to save, which is the failure shape this
+    fleet keeps finding.
+  */
+  it('refuses the bound itself when the bound is exclusive', () => {
+    const loa = numberType({ exclusiveMin: 0, exclusiveMax: 200 });
+    expect(loa.parse('0')).toBeUndefined();
+    expect(loa.parse('200')).toBeUndefined();
+    expect(loa.parse('-1')).toBeUndefined();
+    expect(loa.parse('0.5')).toBe(0.5);
+    expect(loa.parse('199.99')).toBe(199.99);
+  });
+
+  it('still accepts an inclusive bound as a legal value', () => {
+    // The pair every other setting in the fleet uses keeps its meaning.
+    const inclusive = numberType({ min: 0, max: 200 });
+    expect(inclusive.parse('0')).toBe(0);
+    expect(inclusive.parse('200')).toBe(200);
+  });
+
   it('rejects a non-integer for an int', () => {
     expect(intType().parse(5.5)).toBeUndefined();
     expect(numberType().parse(5.5)).toBe(5.5);

@@ -85,8 +85,22 @@ export const boolType: SettingType<boolean> = make<boolean>(
 );
 
 export interface NumberOptions {
+  /** Inclusive: the bound itself is accepted. */
   min?: number;
+  /** Inclusive: the bound itself is accepted. */
   max?: number;
+  /**
+   * Exclusive bounds, for a setting whose column has one.
+   *
+   * Added for the vessel dimensions, whose CHECKs in website migration 066 are
+   * `loa_m > 0` and `beam_m > 0` -- strictly greater. Declared with `min: 0` the
+   * registry would accept a zero-metre boat, PostgREST would refuse the write,
+   * and the failure would surface as a settings screen that appears not to save.
+   * A declared range is only useful if it refuses exactly what the database
+   * refuses.
+   */
+  exclusiveMin?: number;
+  exclusiveMax?: number;
 }
 
 /**
@@ -100,7 +114,7 @@ export interface NumberOptions {
  * that. Falling through to the next layer is both safer and visible.
  */
 function numeric(name: string, integral: boolean, options: NumberOptions): SettingType<number> {
-  const { min, max } = options;
+  const { min, max, exclusiveMin, exclusiveMax } = options;
   return make<number>(
     name,
     (raw) => {
@@ -110,6 +124,8 @@ function numeric(name: string, integral: boolean, options: NumberOptions): Setti
       if (integral && !Number.isInteger(value)) return undefined;
       if (min !== undefined && value < min) return undefined;
       if (max !== undefined && value > max) return undefined;
+      if (exclusiveMin !== undefined && value <= exclusiveMin) return undefined;
+      if (exclusiveMax !== undefined && value >= exclusiveMax) return undefined;
       return value;
     },
     (value) => String(value)

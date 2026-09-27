@@ -307,6 +307,17 @@ function createVesselStore(client, resolve, cacheStorage) {
             'vessel.name': 'name',
             'vessel.mmsi': 'mmsi',
             'vessel.type': 'vessel_type',
+            /*
+              The hull geometry (website migration 066) belongs on the identity row for
+              the same reason the three above do: @sentinel/vessel already reads and
+              writes those columns, the per-column grants govern them, and the safety
+              equipment chart reads the boat's dimensions through that record. A
+              second copy in the blob would be the drift this repository exists to
+              catch.
+            */
+            'vessel.hull_form': 'hull_form',
+            'vessel.loa_m': 'loa_m',
+            'vessel.beam_m': 'beam_m',
         },
         columnsTable: { table: 'vessels' },
         merge: { fn: 'merge_vessel_settings' },
