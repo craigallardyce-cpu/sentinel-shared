@@ -462,7 +462,9 @@ Self-contained, in this order. Copy the shape; fill in the specifics.
    than treating a missing credential as its own failure.
 6. *The pull request*: body sections to include — What, Where it shows,
    Migration status, Verified, a `Fleet:` line naming the companions by repo and
-   branch and which merges first, and **Worker notes**: anything missing from
+   branch and which merges first, a `Customer-visible:` line (the screens and
+   strings changed, old and new wording, or `none`; see CLAUDE.md), and
+   **Worker notes**: anything missing from
    the brief or the repo that it had to work around, or "nothing" — including
    the two pre-flight SHAs, so the base it worked from is on the record rather
    than inferred.
@@ -591,6 +593,12 @@ showed it pointed at the wrong surface, and list the follow-ups the run
 surfaced rather than leaving them in chat. Check the knowledge base for a
 `[NEEDS REVIEW]` tag the change removes (`grep -n "NEEDS REVIEW" 0*.md`); the
 first closing PR claimed there was none and there was.
+
+**Start from the `Customer-visible:` lines.** Every PR in the set carries one
+(CLAUDE.md, "A PR that changes what a customer sees"). Collect them first:
+each named screen or string is a claim to check in `0*.md`,
+`COPY-INVENTORY.md` and `06-faq.md`, and a PR with no such line at all is a
+finding in itself, so read its diff for copy before trusting its silence.
 
 **This check is the only thing keeping the knowledge base honest, so do it
 properly.** It was done thinly for a week and left six tags describing work that
