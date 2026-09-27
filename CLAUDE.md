@@ -362,6 +362,29 @@ include OceanSentinel's items).
 OceanSentinel's own `ROADMAP.md` keeps the design narrative and decision history
 behind each of its entries; it is no longer where open work is tracked.
 
+**Edits drafted in the claude.ai project come back by merge, never by copy.**
+Craig drafts `docs-kb` changes (the roadmap, the KB, `COPY-INVENTORY.md`) in the
+claude.ai project "Mariner Sentinel Launch", whose context holds copies of the
+repository's files. Those copies go stale, and a whole file downloaded from a
+chat starts from whatever version the project last saw. Copying one over the
+repository file silently reverts every commit since: on 2026-09-26 that undid
+the Wave 1 and Wave 2 roadmap closures. The routine, agreed 2026-09-27:
+
+1. The project's context is added from GitHub (`docs-kb`), not uploaded, and is
+   synced at the start of every chat session.
+2. Chats hand back the changed sections where they can, not whole files.
+3. Edits come to a Claude Code session to merge, commit and open a PR; Craig
+   says when to merge.
+4. After a merge, the project is synced again before its next session.
+
+When a whole file does come back, find the committed version it started from
+(the one with the smallest `diff --strip-trailing-cr` against the download), run
+`git merge-file` with the current file, that base and the download, and confirm
+the only removed lines are ones the download meant to change.
+`COPY-INVENTORY.md`'s change log numbers its versions, so a stale copy's new
+entries can reuse numbers already committed; renumber them in date order and
+fix any cross-references. After merging, remind Craig to re-sync the project.
+
 ## Where things are decided and recorded
 
 - **This file:** how the fleet is built, changed and released.
