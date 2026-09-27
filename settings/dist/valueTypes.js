@@ -82,7 +82,7 @@ export const boolType = make('bool', (raw) => {
  * that. Falling through to the next layer is both safer and visible.
  */
 function numeric(name, integral, options) {
-    const { min, max } = options;
+    const { min, max, exclusiveMin, exclusiveMax } = options;
     return make(name, (raw) => {
         const asText = typeof raw === 'number' ? null : text(raw);
         const value = typeof raw === 'number' ? raw : asText === null ? NaN : Number(asText);
@@ -93,6 +93,10 @@ function numeric(name, integral, options) {
         if (min !== undefined && value < min)
             return undefined;
         if (max !== undefined && value > max)
+            return undefined;
+        if (exclusiveMin !== undefined && value <= exclusiveMin)
+            return undefined;
+        if (exclusiveMax !== undefined && value >= exclusiveMax)
             return undefined;
         return value;
     }, (value) => String(value));

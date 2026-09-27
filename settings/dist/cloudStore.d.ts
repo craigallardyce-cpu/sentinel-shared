@@ -50,10 +50,10 @@ export interface CloudStoreOptions {
     /**
      * Registry keys whose home is a real column rather than the blob.
      *
-     * This exists for vessel identity. `vessels.name`, `mmsi` and `vessel_type`
-     * are governed by per-column grants the marketing site depends on, so they
-     * cannot move into a blob — but they are still settings, and a reader should
-     * not have to know which storage a key happens to use.
+     * This exists for vessel identity. `vessels.name`, `mmsi`, `vessel_type` and
+     * the hull geometry are governed by per-column grants the marketing site
+     * depends on, so they cannot move into a blob — but they are still settings,
+     * and a reader should not have to know which storage a key happens to use.
      */
     columns?: Record<string, string>;
     /**

@@ -34,10 +34,76 @@ export interface VesselProfile {
     mmsi?: string | null;
     photoUrl?: string | null;
     description?: string | null;
+    /**
+     * How many hulls, in metres, and how wide — the hull geometry the safety
+     * equipment location chart (OSR 4.12) draws its outline from.
+     *
+     * Added by website migration 066. All three are nullable because no existing
+     * vessel has them: a boat that has never been measured reads as `null` and the
+     * chart asks for the dimensions rather than guessing them.
+     *
+     * **Stored in metres, always**, whatever the owner's `units.metric` setting
+     * says. That setting is a display preference of the person reading the screen,
+     * and two crew on one boat may disagree about it — so it cannot be allowed to
+     * decide what a stored number means. Converting at the edge where a person
+     * types or reads is the only place it is safe.
+     */
+    hullForm?: HullForm | null;
+    /** Length overall, in metres. */
+    loaM?: number | null;
+    /** Maximum beam, in metres. */
+    beamM?: number | null;
     updatedAt?: string | null;
 }
-/** Identity fields a signed-in client is allowed to update (see migration 007). */
-export type VesselProfilePatch = Partial<Pick<VesselProfile, 'name' | 'vesselType' | 'mmsi'>>;
+/**
+ * How many hulls the boat has.
+ *
+ * Narrow where `vesselType` is deliberately free text, because this one is
+ * geometry rather than description: the chart has an outline to draw and there
+ * are three shapes of it. The database holds the same three values in a CHECK
+ * (website migration 066), so the set here and the set there are one fact.
+ *
+ * It does not replace or derive from `vesselType`, and the two genuinely differ:
+ * a "Power catamaran" and a "Sailing catamaran" are one hull form and two
+ * propulsions, and a boat described only as "Sloop" has said nothing about its
+ * hulls. `propulsionFor` keeps reading `vesselType`; nothing reads a propulsion
+ * out of this.
+ */
+export type HullForm = 'monohull' | 'catamaran' | 'trimaran';
+export interface HullFormOption {
+    /** Stored verbatim in `vessels.hull_form`. */
+    value: HullForm;
+    label: string;
+}
+/** The three the database accepts, in the order a form should offer them. */
+export declare const HULL_FORMS: HullFormOption[];
+/**
+ * The ranges the database enforces, exported so a form can label its own field
+ * rather than re-typing the numbers and drifting from the CHECK.
+ *
+ * Both are exclusive at each end, as the CHECKs are: `loa_m > 0 AND loa_m < 200`
+ * and `beam_m > 0 AND beam_m < 100`. They are sanity bounds, not a claim about
+ * what a cruising boat is -- the point is to catch a beam typed in feet or a
+ * length typed in centimetres before the row is written, not to have an opinion
+ * about superyachts.
+ */
+export declare const LOA_M_RANGE: {
+    readonly exclusiveMin: 0;
+    readonly exclusiveMax: 200;
+};
+export declare const BEAM_M_RANGE: {
+    readonly exclusiveMin: 0;
+    readonly exclusiveMax: 100;
+};
+/**
+ * Identity fields a signed-in client is allowed to update (see migrations 007
+ * and 066).
+ *
+ * A field absent from the patch is not written, so a caller that knows one fact
+ * about the boat sends one field. An explicit `null` is a value, not an absence:
+ * it clears the column.
+ */
+export type VesselProfilePatch = Partial<Pick<VesselProfile, 'name' | 'vesselType' | 'mmsi' | 'hullForm' | 'loaM' | 'beamM'>>;
 /**
  * Which vessel a helper acts on.
  *
@@ -81,10 +147,34 @@ export declare function resolveOwnVessel(supabase: SupabaseLike): Promise<{
     vesselSlug: string;
 } | null>;
 /**
+ * What is wrong with a patch, in a sentence, or null when there is nothing wrong.
+ *
+ * Exported so a settings screen can check a field as it is typed, and say which
+ * one is out of range, without having to catch anything. `saveVesselProfile`
+ * runs the same function, so a UI that validates and a UI that does not agree
+ * about what is acceptable.
+ *
+ * Only the fields the database constrains are checked, and only when the patch
+ * carries them: an absent field is not a value, and an explicit `null` clears a
+ * column the CHECK allows to be null.
+ */
+export declare function validateVesselProfilePatch(patch: VesselProfilePatch): string | null;
+/**
  * Write identity fields through to the shared record. Best-effort by design:
  * returns false (and stays quiet) when offline or unauthorised, so callers can
  * treat the shared record as eventually consistent rather than a hard
- * dependency. Requires a signed-in client for name/vesselType (migration 007).
+ * dependency. Requires a signed-in client for name/vesselType (migration 007)
+ * and for the hull geometry (migration 066).
+ *
+ * An out-of-range dimension is the one thing this function is loud about: it
+ * throws a `RangeError` before any request is made, rather than returning false.
+ * The two failures are not the same and a caller must not treat them alike --
+ * `false` means "the boat is offline, try again later", which is a reason to keep
+ * the value and retry, while a beam of 300 metres is a value that will never
+ * become valid and must be corrected by the person who typed it. Sending it
+ * anyway would return false too, from the CHECK, and be indistinguishable from
+ * bad signal. Use `validateVesselProfilePatch` to check a field without
+ * catching.
  */
 export declare function saveVesselProfile(supabase: SupabaseLike, patch: VesselProfilePatch, target?: VesselTarget): Promise<boolean>;
 /**
