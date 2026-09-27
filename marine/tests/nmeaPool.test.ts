@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createNmeaPool } from '../src/nmeaPool.js';
-import type { NmeaSocketLike, SseClientLike, WsClientLike } from '../src/nmeaPool.js';
+import { createNmeaPool, listenForNmea } from '../src/nmeaPool.js';
+import type { NmeaSocketLike, NmeaUdpSocketLike, SseClientLike, WsClientLike } from '../src/nmeaPool.js';
 
 /**
  * The guarantees both apps depend on, and none of which was asserted anywhere
@@ -81,6 +81,69 @@ function wsClient(readyState = 1) {
     },
   } as never;
   return client;
+}
+
+/**
+ * A bound UDP socket whose datagrams a test delivers by hand.
+ *
+ * Same trade as the TCP stub: nothing here needs a free port, and `dgram` never
+ * becomes an import of this package. `bind` records the port and calls back on
+ * the next tick, as the real one does.
+ */
+function stubUdpSocket() {
+  const handlers: Record<string, Array<(...args: never[]) => void>> = {};
+  const socket = {
+    bound: null as number | null,
+    closed: false,
+    broadcast: false,
+    /** Set to throw on close, for the socket that never bound. */
+    closeThrows: false,
+    bind(port: number, onListening?: () => void) {
+      socket.bound = port;
+      if (onListening) queueMicrotask(onListening);
+      return socket;
+    },
+    on(event: string, listener: (...args: never[]) => void) {
+      (handlers[event] ??= []).push(listener);
+      return socket;
+    },
+    close() {
+      if (socket.closeThrows) throw new Error('Not running');
+      socket.closed = true;
+      for (const listener of handlers.close ?? []) (listener as () => void)();
+      return socket;
+    },
+    setBroadcast(flag: boolean) {
+      socket.broadcast = flag;
+      return socket;
+    },
+    /** Deliver a datagram. `from` is the source address, as `rinfo` carries it. */
+    send(text: string, from?: string) {
+      for (const listener of handlers.message ?? []) {
+        (listener as (m: string, r?: { address?: string }) => void)(text, from ? { address: from } : undefined);
+      }
+    },
+    fail(message: string) {
+      for (const listener of handlers.error ?? []) (listener as (e: { message: string }) => void)({ message });
+    },
+  };
+  return socket as typeof socket & NmeaUdpSocketLike;
+}
+
+function makeUdpPool(options: Partial<Parameters<typeof createNmeaPool>[0]> = {}) {
+  const udpSockets: ReturnType<typeof stubUdpSocket>[] = [];
+  const pool = createNmeaPool({
+    createConnection: () => {
+      throw new Error('This pool is UDP-only in this test.');
+    },
+    createUdpSocket: () => {
+      const socket = stubUdpSocket();
+      udpSockets.push(socket);
+      return socket;
+    },
+    ...options,
+  });
+  return { pool, udpSockets };
 }
 
 function makePool(options: Partial<Parameters<typeof createNmeaPool>[0]> = {}) {
@@ -414,5 +477,290 @@ describe('two pools in one process', () => {
 
     expect(a.pool.entries.size).toBe(1);
     expect(b.pool.entries.size).toBe(0);
+  });
+});
+
+/**
+ * UDP, added 2026-09-27. A gateway that broadcasts has no client slot to
+ * contend for, so any number of devices can listen to one feed.
+ *
+ * Everything downstream of the bytes is the TCP path, deliberately: the tests
+ * below assert that it really is the same splitting, the same filter and the
+ * same watchdog rather than a second implementation that resembles it.
+ */
+describe('a UDP listener', () => {
+  it('binds the port instead of dialling, and keys itself apart from TCP', async () => {
+    const { pool, udpSockets } = makeUdpPool();
+
+    pool.establish(null, 11102, { transport: 'udp' });
+
+    expect(udpSockets[0].bound).toBe(11102);
+    expect([...pool.entries.keys()]).toEqual(['udp:11102']);
+  });
+
+  it('never collides with a TCP entry on the same port', () => {
+    const tcpSockets: ReturnType<typeof stubSocket>[] = [];
+    const pool = createNmeaPool({
+      createConnection: () => {
+        const socket = stubSocket();
+        tcpSockets.push(socket);
+        return socket;
+      },
+      createUdpSocket: () => stubUdpSocket(),
+    });
+
+    pool.establish('10.10.10.1', 11102);
+    pool.establish('10.10.10.1', 11102, { transport: 'udp' });
+
+    expect([...pool.entries.keys()]).toEqual(['10.10.10.1:11102', 'udp:10.10.10.1:11102']);
+    expect(pool.entries.size).toBe(2);
+  });
+
+  it('shares one listener between clients, as TCP does', () => {
+    const { pool, udpSockets } = makeUdpPool();
+
+    const first = pool.establish('', 11102, { transport: 'udp' });
+    const second = pool.establish('', 11102, { transport: 'udp' });
+
+    expect(second).toBe(first);
+    expect(udpSockets.length).toBe(1);
+  });
+
+  it('fans a datagram out through the same splitting and filter', () => {
+    const seen: string[] = [];
+    const { pool, udpSockets } = makeUdpPool({ onSentence: (s) => void seen.push(s) });
+    const entry = pool.establish('', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    const ws = wsClient();
+    entry.clients.add(sse);
+    entry.wsClients.add(ws);
+
+    udpSockets[0].send('garbage\r\n$GPRMC,one*00\r\n!AIVDM,1*00\r\n');
+
+    expect(sse.written).toEqual(['data: $GPRMC,one*00\n\n', 'data: !AIVDM,1*00\n\n']);
+    expect(JSON.parse(ws.sent[0])).toEqual({ type: 'nmea', sentence: '$GPRMC,one*00' });
+    expect(seen).toEqual(['$GPRMC,one*00', '!AIVDM,1*00']);
+  });
+
+  it('treats the end of a datagram as the end of a sentence', () => {
+    /*
+      The TCP path holds an unterminated tail until the rest arrives, which is
+      right for a stream and wrong for datagrams: there is no continuity between
+      them, so a retained tail would be spliced onto whatever came next. Here
+      each datagram stands alone and the buffer is empty between them.
+    */
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    udpSockets[0].send('$GPRMC,one*00');
+    udpSockets[0].send('$GPRMC,two*00');
+
+    expect(sse.written).toEqual(['data: $GPRMC,one*00\n\n', 'data: $GPRMC,two*00\n\n']);
+    expect(entry.buffer).toBe('');
+  });
+
+  it('accepts only the configured source when one was given', () => {
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('10.10.10.1', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    udpSockets[0].send('$GPRMC,theirs*00\r\n', '10.10.10.99');
+    expect(sse.written).toEqual([]);
+
+    udpSockets[0].send('$GPRMC,ours*00\r\n', '10.10.10.1');
+    expect(sse.written).toEqual(['data: $GPRMC,ours*00\n\n']);
+  });
+
+  it('matches a bracketed IPv6 source against the unbracketed one dgram reports', () => {
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('[fe80::1]', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    udpSockets[0].send('$GPRMC,ours*00\r\n', 'fe80::1');
+
+    expect(sse.written).toEqual(['data: $GPRMC,ours*00\n\n']);
+  });
+
+  it('accepts from anywhere when no source was configured', () => {
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish(null, 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    udpSockets[0].send('$GPRMC,one*00\r\n', '10.10.10.99');
+    udpSockets[0].send('$GPRMC,two*00\r\n', '192.168.1.7');
+
+    expect(sse.written.length).toBe(2);
+  });
+
+  it('trusts a datagram whose source the socket did not report', () => {
+    // A filter is there to keep two gateways apart, not to be a security
+    // boundary, so an unverifiable source is carried rather than silenced.
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('10.10.10.1', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    udpSockets[0].send('$GPRMC,one*00\r\n');
+
+    expect(sse.written).toEqual(['data: $GPRMC,one*00\n\n']);
+  });
+
+  it('reports reconnecting after the watchdog silence, then rebinds', async () => {
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+    await vi.advanceTimersByTimeAsync(0); // let the bind callback land
+
+    udpSockets[0].send('$GPRMC,one*00\r\n');
+    sse.written.length = 0;
+
+    await vi.advanceTimersByTimeAsync(8000); // watchdog
+    expect(sse.written.join('')).toContain('event: reconnecting');
+    expect(udpSockets[0].closed).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(5000); // reconnect delay
+    expect(udpSockets.length).toBe(2);
+    expect(udpSockets[1].bound).toBe(11102);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sse.written.join('')).toContain('event: reconnected');
+    expect(pool.entries.get('udp:11102')?.isSocketConnected).toBe(true);
+  });
+
+  it('feeds the watchdog on a datagram, so a live feed is never rebound', async () => {
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('', 11102, { transport: 'udp' });
+    entry.clients.add(sseClient());
+    await vi.advanceTimersByTimeAsync(0);
+
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(5000);
+      udpSockets[0].send('$GPRMC,alive*00\r\n');
+    }
+
+    expect(udpSockets.length).toBe(1);
+    expect(udpSockets[0].closed).toBe(false);
+  });
+
+  it('keeps retrying a socket that errors before it ever binds', async () => {
+    // EADDRINUSE: dgram reports it on the socket and then throws on close, so
+    // no 'close' follows and the pool's whole recovery hangs off that event.
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('', 11102, { transport: 'udp' });
+    entry.clients.add(sseClient());
+
+    udpSockets[0].closeThrows = true;
+    udpSockets[0].fail('bind EADDRINUSE 0.0.0.0:11102');
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(udpSockets.length).toBe(2);
+  });
+
+  it('closes and forgets a listener nothing is attached to', () => {
+    const { pool, udpSockets } = makeUdpPool();
+    pool.establish('', 11102, { transport: 'udp' });
+
+    pool.closeIfEmpty('udp:11102');
+
+    expect(udpSockets[0].closed).toBe(true);
+    expect(pool.entries.size).toBe(0);
+  });
+
+  it('drops a listener outright when the configuration changes', () => {
+    const { pool, udpSockets } = makeUdpPool();
+    const entry = pool.establish('', 11102, { transport: 'udp' });
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    pool.drop('udp:11102');
+
+    expect(sse.ended).toBe(true);
+    expect(udpSockets[0].closed).toBe(true);
+    expect(pool.entries.size).toBe(0);
+  });
+
+  it('refuses UDP outright when no socket factory was injected', () => {
+    // Better than a pool that silently answers with an entry no data reaches.
+    const { pool } = makePool();
+    expect(() => pool.establish('', 11102, { transport: 'udp' })).toThrow(/createUdpSocket/);
+    expect(pool.entries.size).toBe(0);
+  });
+
+  it('is still TCP when no transport is asked for', () => {
+    const { pool, connects } = makePool();
+    pool.establish('10.10.10.1', 11102);
+    expect(connects).toEqual([{ host: '10.10.10.1', port: 11102 }]);
+  });
+});
+
+/**
+ * The settings dialogs' test button, which has no connection to test under UDP:
+ * the only answer available is whether anything turns up.
+ */
+describe('listenForNmea', () => {
+  it('counts the sentences heard in the window and samples the first', async () => {
+    const socket = stubUdpSocket();
+    const promise = listenForNmea({ createUdpSocket: () => socket, port: '11102', timeoutMs: 3000 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    socket.send('$GPRMC,one*00\r\n$GPRMC,two*00\r\n');
+    socket.send('rubbish\r\n!AIVDM,three*00\r\n');
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await expect(promise).resolves.toEqual({ heard: 3, sample: '$GPRMC,one*00' });
+    expect(socket.bound).toBe(11102);
+    expect(socket.closed).toBe(true);
+  });
+
+  it('reports a silent gateway as zero rather than as a failure', async () => {
+    const socket = stubUdpSocket();
+    const promise = listenForNmea({ createUdpSocket: () => socket, port: 11102, timeoutMs: 2000 });
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await expect(promise).resolves.toEqual({ heard: 0 });
+  });
+
+  it('counts only the configured source', async () => {
+    const socket = stubUdpSocket();
+    const promise = listenForNmea({
+      createUdpSocket: () => socket,
+      port: 11102,
+      host: '10.10.10.1',
+      timeoutMs: 1000,
+    });
+
+    socket.send('$GPRMC,theirs*00\r\n', '10.10.10.99');
+    socket.send('$GPRMC,ours*00\r\n', '10.10.10.1');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(promise).resolves.toEqual({ heard: 1, sample: '$GPRMC,ours*00' });
+  });
+
+  it('rejects on a socket error, because a held port is not a quiet gateway', async () => {
+    const socket = stubUdpSocket();
+    const promise = listenForNmea({ createUdpSocket: () => socket, port: 11102, timeoutMs: 1000 });
+
+    socket.fail('bind EADDRINUSE 0.0.0.0:11102');
+
+    await expect(promise).rejects.toThrow(/EADDRINUSE/);
+    expect(socket.closed).toBe(true);
+  });
+
+  it('stops listening once the window closes', async () => {
+    const socket = stubUdpSocket();
+    const promise = listenForNmea({ createUdpSocket: () => socket, port: 11102, timeoutMs: 1000 });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await promise;
+    socket.send('$GPRMC,late*00\r\n');
+
+    expect(result.heard).toBe(0);
   });
 });

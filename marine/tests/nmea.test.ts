@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   validateNmeaChecksum,
   parseNmeaLatitude,
@@ -6,7 +6,9 @@ import {
   formatCoords,
   parseNmeaSentence,
   handleNmeaSentence,
-  createNmeaLiveData
+  createNmeaLiveData,
+  isFixFresh,
+  FIX_MAX_AGE_MS
 } from '../src/nmea.js';
 
 /**
@@ -209,5 +211,94 @@ describe('parseNmeaSentence', () => {
       if (live.w_dir !== null) seen.add(live.w_dir);
     }
     expect([...seen]).toEqual([232.8]);
+  });
+});
+
+/**
+ * Fix age, which is not update age.
+ *
+ * A boat's instruments do not stop when its GPS does: the depth sounder and the
+ * wind vane carry on, and every one of their sentences used to move the only
+ * timestamp there was. An anchor watch reading it saw a feed that looked live
+ * while the position under the alarm stood still.
+ */
+describe('fix age', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const RMC = withChecksum('GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W');
+  const DBT = withChecksum('SDDBT,036.8,f,011.2,M,006.1,F');
+
+  it('starts with no fix at all', () => {
+    const live = createNmeaLiveData();
+    expect(live.lastFixAt).toBeNull();
+    expect(isFixFresh(live.lastFixAt)).toBe(false);
+  });
+
+  it('stamps a fix when a position is accepted', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    const live = createNmeaLiveData();
+
+    handleNmeaSentence(RMC, live);
+
+    expect(live.lastFixAt).toBe(Date.now());
+    expect(isFixFresh(live.lastFixAt)).toBe(true);
+  });
+
+  it('leaves the fix time alone for a sentence that carries no position', () => {
+    // The regression in one test: a depth sounding must not make the position
+    // look newer than it is.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    const live = createNmeaLiveData();
+    handleNmeaSentence(RMC, live);
+    const fixedAt = live.lastFixAt;
+
+    vi.setSystemTime(new Date('2026-09-27T12:00:30Z'));
+    handleNmeaSentence(DBT, live);
+
+    expect(live.lastFixAt).toBe(fixedAt);
+    expect(live.lastUpdate).toBe(Date.now());
+    expect(isFixFresh(live.lastFixAt)).toBe(false);
+  });
+
+  it('rejects a position the receiver marked void without stamping it', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    const live = createNmeaLiveData();
+
+    handleNmeaSentence(withChecksum('GPRMC,123519,V,4807.038,N,01131.000,E,022.4,084.4,230394,,'), live);
+
+    expect(live.lastFixAt).toBeNull();
+  });
+});
+
+describe('isFixFresh', () => {
+  it('is false for a feed that has never had a fix', () => {
+    expect(isFixFresh(null, 1000)).toBe(false);
+    expect(isFixFresh(undefined, 1000)).toBe(false);
+  });
+
+  it('holds a fix live right up to the limit and not past it', () => {
+    const at = 1_000_000;
+    expect(isFixFresh(at, at)).toBe(true);
+    expect(isFixFresh(at, at + FIX_MAX_AGE_MS - 1)).toBe(true);
+    expect(isFixFresh(at, at + FIX_MAX_AGE_MS)).toBe(true);
+    expect(isFixFresh(at, at + FIX_MAX_AGE_MS + 1)).toBe(false);
+  });
+
+  it('is ten seconds, which is the decision the alarm rests on', () => {
+    expect(FIX_MAX_AGE_MS).toBe(10_000);
+  });
+
+  it('takes a caller-supplied age, for an alarm on a different clock', () => {
+    const at = 1_000_000;
+    expect(isFixFresh(at, at + 3000, 2000)).toBe(false);
+    expect(isFixFresh(at, at + 3000, 5000)).toBe(true);
+  });
+
+  it('calls a fix from the future fresh rather than stale', () => {
+    // A gateway whose clock is ahead should not read as a lost position.
+    expect(isFixFresh(2_000_000, 1_000_000)).toBe(true);
   });
 });

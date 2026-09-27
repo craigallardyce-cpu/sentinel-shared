@@ -47,7 +47,19 @@
  * on every request; Harbor resolves them server-side. That is a real
  * architectural difference rather than drift, so the pool is handed a target and
  * never decides one. See `resolveNmeaTarget`.
+ *
+ * **UDP is a second transport, not a second pool.** A gateway that broadcasts
+ * has no client slot to contend for, so any number of devices can listen to the
+ * same feed — which is the point of offering it. Everything downstream of the
+ * bytes is unchanged: the same line splitting, the same `$`/`!` filter, the same
+ * fan-out, and the same watchdog, which rebinds on silence exactly as it
+ * reconnects. The socket is injected like `createConnection` is, so Node's
+ * `dgram` never becomes an import of this package and a browser bundle never
+ * sees it. Entries are keyed `udp:<port>` or `udp:<host>:<port>` so a UDP
+ * listener and a TCP connection on one port cannot collide.
  */
+
+import { nmeaPoolKey, type NmeaProtocol } from './nmeaTarget.js';
 
 /**
  * This package carries no Node or DOM types, so timers are taken from the host
@@ -83,6 +95,42 @@ export interface NmeaSocketLike {
   setKeepAlive?(enable: boolean, initialDelayMs: number): unknown;
 }
 
+/**
+ * The subset of a bound UDP socket this pool uses, modelled on Node's `dgram`.
+ *
+ * The caller creates it — `dgram.createSocket({ type: 'udp4', reuseAddr: true })`
+ * — because `reuseAddr` is a creation option and because this package must not
+ * import `dgram`. `reuseAddr` is not optional in practice: without it, the
+ * second app on one boat PC cannot bind the port the first one is listening on,
+ * which would reintroduce the single-listener limit UDP is here to remove.
+ *
+ * One thing that follows from the sockets and not from this code, verified on
+ * Linux with real `dgram` sockets: two sockets bound to one port with
+ * `reuseAddr` both receive a BROADCAST datagram, and only one of them receives
+ * a UNICAST one. A gateway that broadcasts — which is the configuration this
+ * transport exists for — therefore feeds every app on the PC. A gateway
+ * configured to send to one address does not, and the second app will sit
+ * silent with a perfectly healthy socket. Worth knowing before blaming this
+ * pool for a feed that reaches one app of two.
+ */
+export interface NmeaUdpSocketLike {
+  bind(port: number, onListening?: () => void): unknown;
+  on(
+    event: 'message',
+    listener: (message: { toString(encoding: string): string } | string, rinfo?: { address?: string; port?: number }) => void
+  ): unknown;
+  on(event: 'error', listener: (error: { message: string }) => void): unknown;
+  on(event: 'close', listener: () => void): unknown;
+  close(): unknown;
+  /**
+   * Declared because `dgram` has it and a caller may want it set; the pool does
+   * not call it. Receiving a broadcast needs nothing but a bound port —
+   * `setBroadcast` governs SENDING to a broadcast address, and this pool only
+   * ever listens.
+   */
+  setBroadcast?(flag: boolean): unknown;
+}
+
 export interface ConnectionPoolEntry {
   socket: NmeaSocketLike;
   clients: Set<SseClientLike>;
@@ -103,6 +151,12 @@ export interface NmeaPoolLog {
 export interface NmeaPoolOptions {
   /** Open a TCP socket. Injected so this package needs no Node types. */
   createConnection(target: { host: string; port: number }, onConnect: () => void): NmeaSocketLike;
+  /**
+   * Create an unbound UDP socket, for `establish(..., { transport: 'udp' })`.
+   * Injected for the same reason `createConnection` is. Omit it and the pool is
+   * TCP-only, which is what every caller was before this existed.
+   */
+  createUdpSocket?(): NmeaUdpSocketLike;
   /** Seam 1. Silence for this long triggers a reconnect. OpenCPN's N_DOG_TIMEOUT. */
   watchdogSeconds?: number;
   /** Seam 1. Fixed delay between reconnection attempts; the pool never gives up. */
@@ -122,10 +176,21 @@ export interface NmeaPoolOptions {
 }
 
 export interface NmeaPool {
-  /** The live pool, keyed `host:port`. */
+  /** The live pool, keyed `host:port` for TCP and `udp:[host:]port` for UDP. */
   readonly entries: Map<string, ConnectionPoolEntry>;
-  /** Open a connection, or return the one already open for this target. */
-  establish(host: string, port: string | number): ConnectionPoolEntry;
+  /**
+   * Open a connection, or return the one already open for this target.
+   *
+   * With `{ transport: 'udp' }` this binds the port on all interfaces and
+   * listens instead of dialling; `host` is then an optional filter on the
+   * source address (pass `''` or null to accept from anywhere) rather than
+   * somewhere to connect to.
+   */
+  establish(
+    host: string | null | undefined,
+    port: string | number,
+    opts?: { transport?: NmeaProtocol }
+  ): ConnectionPoolEntry;
   /** Close if nothing is attached and `shouldKeepAlive` does not object. */
   closeIfEmpty(key: string): void;
   /**
@@ -153,7 +218,21 @@ interface Timers {
   reconnectTimer: unknown;
 }
 
+/** What a key was established as, so the reconnect path can repeat it. */
+interface PoolTarget {
+  transport: NmeaProtocol;
+  /** For UDP this is the source-address filter, and may be empty. */
+  host: string;
+  port: number;
+}
+
 const SILENT: NmeaPoolLog = { info: () => {}, warn: () => {}, error: () => {} };
+
+/** `[fe80::1]` and `fe80::1` are the same source; a pool key brackets, `rinfo` does not. */
+function stripBrackets(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+}
 
 /**
  * A factory, not module-level state.
@@ -165,6 +244,7 @@ const SILENT: NmeaPoolLog = { info: () => {}, warn: () => {}, error: () => {} };
 export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   const {
     createConnection,
+    createUdpSocket,
     watchdogSeconds = 8,
     reconnectDelayMs = 5000,
     onSentence,
@@ -175,6 +255,12 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
 
   const entries = new Map<string, ConnectionPoolEntry>();
   const timers = new Map<string, Timers>();
+  /*
+    What each key was established as. The reconnect path used to recover the
+    host and port by splitting the key, which stops being enough once a key can
+    also be `udp:11102`: reconnecting has to know whether to dial or to rebind.
+  */
+  const targets = new Map<string, PoolTarget>();
 
   function getTimers(key: string): Timers {
     let found = timers.get(key);
@@ -316,10 +402,9 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   function scheduleReconnect(key: string): void {
     clearReconnectTimer(key);
 
-    const at = key.lastIndexOf(':');
-    const targetHost = at > 0 ? key.slice(0, at) : '';
-    const targetPort = Number(key.slice(at + 1));
-    if (!targetHost || !targetPort) return;
+    const target = targets.get(key);
+    if (!target || !target.port) return;
+    if (target.transport === 'tcp' && !target.host) return;
 
     log.info(`[NMEA Pool] Reconnecting to ${key} in ${reconnectDelayMs}ms.`);
     notify(key, `event: reconnecting\ndata: Reconnecting in ${reconnectDelayMs / 1000}s...\n\n`, {
@@ -331,7 +416,11 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     const t = getTimers(key);
     t.reconnectTimer = host.setTimeout(() => {
       t.reconnectTimer = null;
-      attemptReconnect(key, targetHost, targetPort);
+      if (target.transport === 'udp') {
+        attemptRebind(key, target);
+      } else {
+        attemptReconnect(key, target.host, target.port);
+      }
     }, reconnectDelayMs);
   }
 
@@ -382,6 +471,120 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       socket.setKeepAlive?.(true, 10000);
     } catch {
       /* A socket-like without these is fine; they are optimisations, not correctness. */
+    }
+  }
+
+  /**
+   * A bound UDP socket, dressed as the TCP socket the rest of this file knows.
+   *
+   * Everything past the bytes — the watchdog, the fan-out, the close and
+   * reconnect handling — is transport-independent already, and the way to keep
+   * it that way is one adapter rather than a second copy of all of it with
+   * `message` where `data` used to be.
+   *
+   * Two things the adapter decides:
+   *
+   * 1. **A datagram ends a sentence.** The stream path holds an unterminated
+   *    tail until the rest of it arrives, which is right for TCP and wrong
+   *    here: UDP has no continuity between datagrams, so a retained tail would
+   *    be spliced onto whatever unrelated datagram came next — the same defect
+   *    as the AIS fragment splice. Appending the terminator when a datagram
+   *    lacks one keeps the same line splitting and the same `$`/`!` filter
+   *    while making the buffer always empty at the end of a datagram. A
+   *    truncated sentence is then emitted whole and fails its checksum
+   *    downstream, which is the safe way to be wrong.
+   * 2. **A source filter, when one was configured.** A datagram from any other
+   *    address is dropped. A socket that reports no `rinfo` cannot be checked,
+   *    and is trusted rather than silenced — the filter is there to keep two
+   *    gateways on one LAN apart, not to be a security boundary.
+   */
+  function udpAdapter(socket: NmeaUdpSocketLike, filterHost: string): NmeaSocketLike {
+    const listeners: Record<string, Array<(arg?: unknown) => void>> = {};
+    const wanted = stripBrackets(filterHost);
+
+    socket.on('message', (message, rinfo) => {
+      if (wanted && rinfo?.address && stripBrackets(rinfo.address) !== wanted) return;
+      const text = typeof message === 'string' ? message : message.toString('utf8');
+      const terminated = text.endsWith('\n') ? text : `${text}\r\n`;
+      for (const listener of listeners.data ?? []) (listener as (chunk: string) => void)(terminated);
+    });
+    socket.on('error', (error) => {
+      for (const listener of listeners.error ?? []) (listener as (e: { message: string }) => void)(error);
+    });
+    socket.on('close', () => {
+      for (const listener of listeners.close ?? []) (listener as () => void)();
+    });
+
+    return {
+      on(event: string, listener: (arg?: unknown) => void) {
+        (listeners[event] ??= []).push(listener);
+        return this;
+      },
+      destroy() {
+        try {
+          socket.close();
+        } catch {
+          /*
+            dgram throws rather than no-oping on a socket that never bound —
+            the EADDRINUSE path. No 'close' will follow, and the pool's whole
+            recovery hangs off that event, so emit it rather than going quiet.
+          */
+          for (const listener of listeners.close ?? []) (listener as () => void)();
+        }
+      },
+    } as NmeaSocketLike;
+  }
+
+  /** Bind a fresh UDP socket for a key, and wire it up exactly as a TCP one. */
+  function openUdp(key: string, target: PoolTarget, onBound?: () => void): NmeaSocketLike {
+    if (!createUdpSocket) {
+      throw new Error('[NMEA Pool] UDP was requested but no createUdpSocket was injected.');
+    }
+    const raw = createUdpSocket();
+    const adapter = udpAdapter(raw, target.host);
+    // All interfaces: a broadcast arrives on whichever one faces the gateway,
+    // and on a boat that is rarely the one an address would have named.
+    raw.bind(target.port, () => {
+      log.info(`[NMEA Pool] Listening on ${key}.`);
+      const conn = entries.get(key);
+      if (conn) {
+        conn.isSocketConnected = true;
+        conn.lastLoggedErrorMsg = '';
+      }
+      startWatchdog(key);
+      onBound?.();
+    });
+    return adapter;
+  }
+
+  /** The UDP half of `attemptReconnect`: silence means rebind, not redial. */
+  function attemptRebind(key: string, target: PoolTarget): void {
+    log.info(`[NMEA Pool] Rebinding ${key}.`);
+    try {
+      const socket = openUdp(key, target, () =>
+        notify(key, 'event: reconnected\ndata: Connection restored\n\n', {
+          type: 'status',
+          status: 'connected',
+          message: 'Connection restored',
+        })
+      );
+      const existing = entries.get(key);
+      if (existing) {
+        existing.socket = socket;
+        existing.buffer = '';
+      } else {
+        entries.set(key, newEntry(socket));
+      }
+      attachHandlers(socket, key);
+    } catch (error) {
+      const message = (error as Error)?.message ?? String(error);
+      log.error(`[NMEA Pool] Rebinding ${key} failed: ${message}`);
+      const conn = entries.get(key);
+      if (conn) {
+        conn.isSocketConnected = false;
+        conn.lastLoggedErrorMsg = message;
+      }
+      scheduleReconnect(key);
     }
   }
 
@@ -440,6 +643,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       } else {
         entries.delete(key);
         timers.delete(key);
+        targets.delete(key);
       }
     });
   }
@@ -447,13 +651,37 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   return {
     entries,
 
-    establish(rawHost, port) {
-      const key = `${normalizeHost(rawHost)}:${port}`;
+    establish(rawHost, port, opts) {
+      const transport: NmeaProtocol = opts?.transport === 'udp' ? 'udp' : 'tcp';
+      // A UDP listener may have no host at all; a TCP one always does, and
+      // normalizeHost has always been applied before the key is built.
+      const resolvedHost = rawHost ? normalizeHost(rawHost) : '';
+      const key = nmeaPoolKey({ host: resolvedHost, port, protocol: transport });
       const existing = entries.get(key);
       if (existing) return existing;
 
+      const target: PoolTarget = { transport, host: resolvedHost, port: Number(port) };
+      targets.set(key, target);
+
+      if (transport === 'udp') {
+        log.info(`[NMEA Pool] Listening for NMEA on ${key}.`);
+        let socket: NmeaSocketLike;
+        try {
+          socket = openUdp(key, target);
+        } catch (error) {
+          // No socket means no entry to hang a reconnect off, so the failure
+          // has to reach the caller rather than being retried into silence.
+          targets.delete(key);
+          throw error;
+        }
+        const udpEntry = newEntry(socket);
+        entries.set(key, udpEntry);
+        attachHandlers(socket, key);
+        return udpEntry;
+      }
+
       log.info(`[NMEA Pool] Establishing connection to ${key}.`);
-      const socket = createConnection({ host: normalizeHost(rawHost), port: Number(port) }, () => {
+      const socket = createConnection({ host: resolvedHost, port: Number(port) }, () => {
         log.info(`[NMEA Pool] Connected to ${key}.`);
         const conn = entries.get(key);
         if (conn) {
@@ -486,6 +714,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       }
       entries.delete(key);
       timers.delete(key);
+      targets.delete(key);
     },
 
     drop(key) {
@@ -520,6 +749,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
 
       entries.delete(key);
       timers.delete(key);
+      targets.delete(key);
       log.info(`[NMEA Pool] Dropped ${key} because the configured address changed.`);
     },
 
@@ -527,4 +757,90 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       for (const key of [...entries.keys()]) this.drop(key);
     },
   };
+}
+
+/** What `listenForNmea` needs to answer "is anything out there". */
+export interface ListenForNmeaOptions {
+  /** Same injected factory as the pool's, and the same `reuseAddr` expectation. */
+  createUdpSocket(): NmeaUdpSocketLike;
+  port: string | number;
+  /** Count only datagrams from this source. Absent means any. */
+  host?: string | null;
+  /** How long to listen. Long enough for a 1 Hz gateway to say something. */
+  timeoutMs?: number;
+}
+
+export interface ListenForNmeaResult {
+  /** Sentences seen in the window. Zero is the answer the dialog exists to give. */
+  heard: number;
+  /** The first one, so the dialog can show what arrived rather than just a count. */
+  sample?: string;
+}
+
+/**
+ * Listen on a UDP port for a fixed window and report what arrived.
+ *
+ * The settings dialogs' "test" button has nothing to test under UDP: there is
+ * no connection to make, so the question "did it work" can only be answered by
+ * whether any sentences turn up. Binding briefly and counting them is that
+ * answer, and it is deliberately not the pool — a test button must not leave an
+ * entry behind, and it must stop on its own.
+ *
+ * A sentence is counted on the same terms the pool broadcasts one: a line
+ * beginning `$` or `!`. No checksum is verified, so a gateway sending slightly
+ * malformed sentences still reads as present rather than as absent, which is
+ * the more useful failure to distinguish here.
+ *
+ * Errors REJECT rather than resolving with zero: a port already held by
+ * something that is not sharing it is a different problem from a quiet gateway,
+ * and the dialog should be able to say which.
+ */
+export function listenForNmea(options: ListenForNmeaOptions): Promise<ListenForNmeaResult> {
+  // Not destructured as `host`: that is the module's timer host, and shadowing
+  // it here would take `setTimeout` with it.
+  const { createUdpSocket, port, timeoutMs = 4000 } = options;
+  const wanted = stripBrackets(String(options.host ?? ''));
+
+  return new Promise<ListenForNmeaResult>((resolve, reject) => {
+    let heard = 0;
+    let sample: string | undefined;
+    let settled = false;
+    let timer: unknown = null;
+    const socket = createUdpSocket();
+
+    const stop = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) host.clearTimeout(timer);
+      try {
+        socket.close();
+      } catch {
+        /* Never bound, or already closed. */
+      }
+      finish();
+    };
+
+    socket.on('message', (message, rinfo) => {
+      if (wanted && rinfo?.address && stripBrackets(rinfo.address) !== wanted) return;
+      const text = typeof message === 'string' ? message : message.toString('utf8');
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || (!trimmed.startsWith('$') && !trimmed.startsWith('!'))) continue;
+        heard += 1;
+        sample ??= trimmed;
+      }
+    });
+
+    socket.on('error', (error) => {
+      stop(() => reject(error instanceof Error ? error : new Error(error?.message ?? String(error))));
+    });
+
+    timer = host.setTimeout(() => stop(() => resolve(sample === undefined ? { heard } : { heard, sample })), timeoutMs);
+
+    try {
+      socket.bind(Number(port));
+    } catch (error) {
+      stop(() => reject(error as Error));
+    }
+  });
 }

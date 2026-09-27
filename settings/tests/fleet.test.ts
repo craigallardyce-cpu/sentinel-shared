@@ -71,6 +71,11 @@ describe('the fleet registry', () => {
       // argument as chart.vector_minutes, and 12 is what the console always used.
       'logbook.instruments_range_hours',
       'logbook.quick_tap_presets',
+      // A gateway is reached over one transport or the other, and TCP is what
+      // every install already uses -- the same shape of argument as a toggle
+      // (2026-09-27, the UDP transport). Not a suggestion: changing it would
+      // stop the fleet talking to every gateway configured so far.
+      'nmea.gateway.protocol',
       'units.metric',
       'vhf.monitor_audio',
     ]);
@@ -141,6 +146,26 @@ describe('the settings that had drifted', () => {
 
   it('lets the gateway be held at the three layers the phone/PC split needs', () => {
     expect(FLEET_SETTINGS.get('nmea.gateway.host').scopes).toEqual(['vessel', 'host', 'device']);
+  });
+
+  it('offers a transport, defaulted to what every install already speaks', () => {
+    const protocol = FLEET_SETTINGS.get('nmea.gateway.protocol');
+    // The address and the transport are answered together, so they are held at
+    // the same layers; anything else and a phone could pick UDP for a PC.
+    expect(protocol.scopes).toEqual(FLEET_SETTINGS.get('nmea.gateway.host').scopes);
+    expect(protocol.default).toBe('tcp');
+    expect(protocol.type.parse('udp')).toBe('udp');
+    expect(protocol.type.parse('TCP')).toBeUndefined();
+    expect(protocol.type.parse('websocket')).toBeUndefined();
+  });
+
+  it('describes the transports rather than recommending one', () => {
+    // The dialog has to say what UDP is for -- a broadcast any number of
+    // devices can receive -- without telling a navigator which to pick.
+    const { label, description } = FLEET_SETTINGS.get('nmea.gateway.protocol');
+    expect(label).toBe('Connection type');
+    expect(description).toContain('TCP connects to the gateway.');
+    expect(description).toContain('UDP listens for the data the gateway broadcasts');
   });
 
   it('leaves the boat name and MMSI for the owner to give', () => {

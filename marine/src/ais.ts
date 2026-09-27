@@ -63,8 +63,86 @@ export interface AisTargetEnriched extends AisTargetData, TargetMetrics {
   cogText: string;
 }
 
-// Multi-sentence AIVDM buffer store (indexed by sequence ID)
-const aivdmBuffers = new Map<string, string[]>();
+/**
+ * How long a partly-assembled multipart AIVDM may wait for the rest of it.
+ *
+ * A gateway sends the fragments of one message back to back, so two seconds is
+ * many times longer than a complete message ever takes. It is short enough that
+ * a partial cannot survive to meet a fragment of an unrelated message.
+ */
+export const AIS_FRAGMENT_TIMEOUT_MS = 2_000;
+
+/**
+ * How many partly-assembled messages to hold at once.
+ *
+ * A busy anchorage has a handful in flight; anything beyond this is fragments
+ * that will never complete, and an unbounded map of them is a slow leak in a
+ * process that runs for weeks. The oldest goes first.
+ */
+const AIS_MAX_PARTIALS = 64;
+
+interface AivdmPartial {
+  /** Fragment payloads by index, `fragments[k - 1]` for fragment k. */
+  fragments: string[];
+  /** How many of them are present. */
+  received: number;
+  /** When fragment 1 arrived, for the timeout. */
+  startedAt: number;
+}
+
+/**
+ * Multi-sentence AIVDM reassembly, keyed talker + sequence id + fragment count.
+ *
+ * The key is not unique to a message -- it repeats every time the sequence id
+ * comes round -- which is fine over TCP, where fragments arrive in order and
+ * none goes missing. **UDP loses datagrams**, and the naive version of this
+ * (fill a sparse array, complete when it is full, no timeout, no ordering, no
+ * cap) then splices two different messages: lose fragment 1 of message A, and
+ * the fragment 1 of message B that follows completes A's buffer as B1 + A2.
+ * That decodes cleanly into a target at a position no vessel is at.
+ *
+ * So the rules are: fragment k is accepted only when 1..k-1 are already here,
+ * a fragment 1 starts a new partial over whatever was there, anything older
+ * than `AIS_FRAGMENT_TIMEOUT_MS` is discarded rather than completed, and a
+ * rejected fragment takes the partial with it -- a gap can never be filled
+ * later by a fragment of the next message.
+ *
+ * The limit of all this, stated rather than implied: once a fragment 1 has
+ * begun a partial, a fragment 2 of the PREVIOUS message that turns up out of
+ * order is accepted, because at that moment nothing in the sentence tells the
+ * two apart -- same talker, same sequence id, same fragment count, same slot.
+ * Loss is what UDP does to a feed and loss is closed here; a reordered
+ * duplicate is beyond what this layer can see, and the timeout is what bounds
+ * how long one can survive to be believed.
+ */
+const aivdmBuffers = new Map<string, AivdmPartial>();
+
+/**
+ * Forget every partly-assembled message.
+ *
+ * The buffers are module state, so one test's orphaned fragment is the next
+ * test's. Exported for that, and harmless in an app: it discards only fragments
+ * that have not yet made a target.
+ */
+export function resetAivdmBuffers(): void {
+  aivdmBuffers.clear();
+}
+
+/** Drop partials that can no longer legitimately complete. */
+function expireAivdmPartials(now: number): void {
+  for (const [key, partial] of aivdmBuffers) {
+    if (now - partial.startedAt > AIS_FRAGMENT_TIMEOUT_MS) aivdmBuffers.delete(key);
+  }
+}
+
+/** Keep the map bounded. Insertion order is age order, so the first key is the oldest. */
+function capAivdmPartials(): void {
+  while (aivdmBuffers.size > AIS_MAX_PARTIALS) {
+    const oldest = aivdmBuffers.keys().next();
+    if (oldest.done) return;
+    aivdmBuffers.delete(oldest.value);
+  }
+}
 
 /** 6-bit ASCII armoring lookup for AIVDM payloads. */
 function charTo6Bit(char: string): number {
@@ -132,17 +210,52 @@ export function parseAisSentence(sentence: string): AisTargetData | null {
 
   let fullPayload = armPayload;
   if (totalNum > 1) {
-    const key = `${talker}_${seqId}_${totalNum}`;
-    const buf = aivdmBuffers.get(key) || [];
-    buf[seqNum - 1] = armPayload;
-    aivdmBuffers.set(key, buf);
+    if (!Number.isFinite(seqNum) || seqNum < 1 || seqNum > totalNum) return null;
 
-    if (buf.filter(Boolean).length === totalNum) {
-      fullPayload = buf.join('');
+    const key = `${talker}_${seqId}_${totalNum}`;
+    const now = Date.now();
+    expireAivdmPartials(now);
+
+    let partial = aivdmBuffers.get(key);
+
+    if (seqNum === 1) {
+      // A first fragment always begins a new message. Whatever was under this
+      // key was waiting for a fragment that is now provably never coming.
+      partial = { fragments: new Array<string>(totalNum), received: 0, startedAt: now };
+      // Deleted first so the restart takes a new place in insertion order:
+      // `set` on a key already present keeps its old one, and the cap evicts by
+      // that order.
       aivdmBuffers.delete(key);
+      aivdmBuffers.set(key, partial);
+      capAivdmPartials();
     } else {
-      return null; // Wait for remaining fragments
+      // Every earlier fragment must already be here. If one is missing this is
+      // an orphan -- the tail of a message whose head was lost -- and keeping
+      // the partial would let it be completed by the next message's fragments.
+      let contiguous = partial !== undefined;
+      if (partial) {
+        for (let i = 0; i < seqNum - 1; i++) {
+          if (!partial.fragments[i]) {
+            contiguous = false;
+            break;
+          }
+        }
+        // A repeat of a fragment already held is not the message advancing.
+        if (partial.fragments[seqNum - 1]) contiguous = false;
+      }
+      if (!contiguous) {
+        aivdmBuffers.delete(key);
+        return null;
+      }
     }
+
+    partial!.fragments[seqNum - 1] = armPayload;
+    partial!.received += 1;
+
+    if (partial!.received !== totalNum) return null; // Wait for remaining fragments
+
+    fullPayload = partial!.fragments.join('');
+    aivdmBuffers.delete(key);
   }
 
   // AIVDO = own vessel's AIS transponder, AIVDM = other vessels
