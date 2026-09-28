@@ -23,13 +23,23 @@
  *   4. Print the two SHAs and each step's result, for the PR's "Verified" section.
  *
  * Exit code: 0 only if every step passed. The scratch directory is removed
- * unless --keep is given. Works on Windows (cmd, PowerShell) and POSIX: it uses
- * `git archive -o` and `tar -xf` rather than a pipe, and runs npm through the shell.
+ * unless --keep is given. Works on Windows (cmd, PowerShell, Git Bash) and POSIX: it
+ * uses `git archive -o` and `tar -xf` rather than a pipe, and runs npm through the shell.
+ *
+ * tar runs with its cwd in the destination and names the archive by a path relative
+ * to it, with no `-C`. Under Git Bash `tar` is GNU tar, which reads the `C:` of an
+ * absolute Windows path as a remote host ("Cannot connect to C:"); a relative path
+ * has no colon, so GNU tar and Windows' bsdtar both open it. (`--force-local` is not
+ * an answer: bsdtar rejects it.)
+ *
+ * The repo is named after the repository, not its folder, so a git worktree such as
+ * `HarborSentinel-wt-x` is still scratch-copied as `HarborSentinel`, the name
+ * check-fleet-drift.mjs finds apps by.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SHARED_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -82,11 +92,22 @@ export function resolveCommit(repoDir, ref) {
   return r.stdout.trim();
 }
 
-function extract(repoDir, ref, dest, scratch, mustExist = 'package.json') {
+/**
+ * The name of the repository `repoDir` belongs to: the folder of the main checkout,
+ * for the main checkout itself and for any of its worktrees. Falls back to the
+ * folder name if git cannot say. Exported for tests.
+ */
+export function canonicalRepoName(repoDir) {
+  const r = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: repoDir, encoding: 'utf8' });
+  const common = r.status === 0 ? r.stdout.trim() : '';
+  return common ? basename(dirname(common)) : basename(repoDir);
+}
+
+export function extract(repoDir, ref, dest, scratch, mustExist = 'package.json') {
   mkdirSync(dest, { recursive: true });
   const tarFile = join(scratch, `${basename(dest)}.tar`);
   git(repoDir, ['archive', '--format=tar', '-o', tarFile, ref]);
-  const r = spawnSync('tar', ['-xf', tarFile, '-C', dest], { encoding: 'utf8' });
+  const r = spawnSync('tar', ['-xf', relative(dest, tarFile)], { cwd: dest, encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`tar -xf ${tarFile} failed: ${r.stderr.trim()}`);
   rmSync(tarFile, { force: true });
   if (!existsSync(join(dest, mustExist))) {
@@ -116,7 +137,7 @@ function main() {
   }
 
   const repoDir = resolve(opts.repo);
-  const repoName = basename(repoDir);
+  const repoName = canonicalRepoName(repoDir);
   let repoSha, sharedSha;
   try {
     repoSha = resolveCommit(repoDir, opts.ref);
