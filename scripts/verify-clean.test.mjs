@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, installCommand } from './verify-clean.mjs';
+import { parseArgs, installCommand, resolveCommit } from './verify-clean.mjs';
 
 test('parseArgs defaults to HEAD for both refs', () => {
   assert.deepEqual(parseArgs(['../HarborSentinel']), {
@@ -27,4 +27,29 @@ test('installCommand prefers verify:install and falls back to npm ci', () => {
   assert.equal(installCommand({ scripts: { 'verify:install': 'npm install --legacy-peer-deps' } }), 'npm run verify:install');
   assert.equal(installCommand({ scripts: { verify: 'x' } }), 'npm ci');
   assert.equal(installCommand({}), 'npm ci');
+});
+
+test('resolveCommit returns a held commit and refuses one the clone does not have', async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const dir = mkdtempSync(join(tmpdir(), 'verify-clean-test-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+    git('init', '-q');
+    writeFileSync(join(dir, 'a.txt'), 'a');
+    git('add', 'a.txt');
+    git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'a');
+    const head = git('rev-parse', 'HEAD');
+
+    assert.equal(resolveCommit(dir, 'HEAD'), head);
+    assert.equal(resolveCommit(dir, head), head);
+    // A well-formed SHA of a commit this clone never fetched: plain rev-parse
+    // echoes it back, which is the bug this guards.
+    assert.throws(() => resolveCommit(dir, 'd15ee0feaa38ae6d3b6c72aa5f172518a07a188e'), /is not a commit .* Fetch it first/);
+    assert.throws(() => resolveCommit(dir, 'no-such-branch'), /is not a commit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

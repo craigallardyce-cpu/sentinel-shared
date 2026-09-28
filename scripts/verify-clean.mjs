@@ -65,6 +65,23 @@ function git(cwd, args) {
   return r.stdout.trim();
 }
 
+/**
+ * The full SHA of `ref` as a commit this clone actually holds, or an error that
+ * says what to do.
+ *
+ * Plain `git rev-parse <40-hex>` echoes a full SHA back whether or not the object
+ * exists, so a PR head not yet fetched passed here and only failed later, inside
+ * `git archive`, as "not a tree object". `--verify <ref>^{commit}` requires the
+ * commit itself. Exported for tests.
+ */
+export function resolveCommit(repoDir, ref) {
+  const r = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: repoDir, encoding: 'utf8' });
+  if (r.status !== 0) {
+    throw new Error(`${ref} is not a commit in ${repoDir}. Fetch it first (git -C ${repoDir} fetch origin <branch>), then re-run.`);
+  }
+  return r.stdout.trim();
+}
+
 function extract(repoDir, ref, dest, scratch, mustExist = 'package.json') {
   mkdirSync(dest, { recursive: true });
   const tarFile = join(scratch, `${basename(dest)}.tar`);
@@ -100,8 +117,15 @@ function main() {
 
   const repoDir = resolve(opts.repo);
   const repoName = basename(repoDir);
-  const repoSha = git(repoDir, ['rev-parse', opts.ref]);
-  const sharedSha = git(SHARED_DIR, ['rev-parse', opts.sharedRef]);
+  let repoSha, sharedSha;
+  try {
+    repoSha = resolveCommit(repoDir, opts.ref);
+    sharedSha = resolveCommit(SHARED_DIR, opts.sharedRef);
+  } catch (err) {
+    console.error(`ERROR ${err.message}`);
+    console.log('RESULT: FAIL');
+    process.exit(1);
+  }
 
   const scratch = opts.out ? resolve(opts.out) : mkdtempSync(join(tmpdir(), 'verify-clean-'));
   mkdirSync(scratch, { recursive: true });
@@ -116,8 +140,8 @@ function main() {
   const results = [];
   let failed = false;
   try {
-    extract(repoDir, opts.ref, appDir, scratch);
-    if (repoName !== 'sentinel-shared') extract(SHARED_DIR, opts.sharedRef, sharedDir, scratch, 'scripts/check-fleet-drift.mjs');
+    extract(repoDir, repoSha, appDir, scratch);
+    if (repoName !== 'sentinel-shared') extract(SHARED_DIR, sharedSha, sharedDir, scratch, 'scripts/check-fleet-drift.mjs');
 
     const pkg = JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf8'));
     if (!pkg.scripts?.verify) throw new Error(`${repoName}@${opts.ref} has no "verify" script in package.json`);
