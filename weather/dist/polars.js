@@ -39,8 +39,8 @@ export function boatSpeed(polar, twaDeg, twsKts) {
      *
      * It used to short-circuit at `twsKts <= 0`, which was a true statement
      * about a sailing boat smuggled into a function that does not only describe
-     * sailing boats. A motorboat's diagram is a throttle setting with the
-     * windage taken off it, and its lightest column IS 0 knots — so zero wind is
+     * sailing boats. A motorboat's diagram is its throttle setting, the same
+     * speed in every cell, and its lightest column IS 0 knots — so zero wind is
      * a value that table has a real answer for, and returning 0 instead left a
      * motorboat becalmed in the one condition it most wants.
      *

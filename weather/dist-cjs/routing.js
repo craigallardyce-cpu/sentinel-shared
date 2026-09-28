@@ -800,8 +800,8 @@ function routeIsochrone(options) {
             const speedIn = (headingDeg, twaDeg) => {
                 const sailed = sailedOn(headingDeg, twaDeg);
                 // Under power there is no second option to weigh: the polar already
-                // IS the engine at its throttle setting, with the windage taken off
-                // it, and `inSea` has taken the sea off that. Every leg is a motoring
+                // IS the engine at its throttle setting, the same speed in any wind,
+                // and `inSea` has taken the sea off that. Every leg is a motoring
                 // leg, which is what makes the fuel arithmetic downstream simply the
                 // elapsed time.
                 if (isMotorVessel)

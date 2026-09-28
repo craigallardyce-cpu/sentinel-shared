@@ -6,7 +6,6 @@ import {
   powerPolar,
   powerSeaState,
   powerRangeFrom,
-  windageLossFraction,
   isUsablePowerProfile,
   type PowerProfile
 } from '../src/powerPerformance.js';
@@ -21,10 +20,7 @@ const TRAWLER: PowerProfile = {
   tankLitres: 1200,
   reservePercent: 20,
   lwlM: 11.8,
-  displacementTonnes: 13.6,
-  beamM: 3.9,
-  draughtM: 1.0,
-  heightAboveWaterlineM: 4.5
+  draughtM: 1.0
 };
 
 const steadyWind = (speedKts: number, directionDeg: number): WindSampler => () => ({
@@ -53,43 +49,26 @@ describe('the power performance model', () => {
 
   it('has no no-go zone: it makes way straight into the wind', () => {
     const polar = powerPolar(TRAWLER);
-    expect(boatSpeed(polar, 0, 20)).toBeGreaterThan(6);
+    expect(boatSpeed(polar, 0, 20)).toBeCloseTo(8, 6);
     // Where a sailing boat is stopped dead.
     expect(boatSpeed(GENERIC_POLARS.cruisingMonohull, 0, 20)).toBe(0);
   });
 
-  it('loses speed to a headwind and gains a little from a following one', () => {
+  it('is flat: the wind is not charged against a motorboat', () => {
+    // Windage was removed on purpose (2026-09-28). Every cell is the economic
+    // speed, from a flat calm to 50 knots, dead ahead or dead astern.
     const polar = powerPolar(TRAWLER);
-    const head = boatSpeed(polar, 0, 25);
-    const beam = boatSpeed(polar, 90, 25);
-    const following = boatSpeed(polar, 180, 25);
-    expect(head).toBeLessThan(beam);
-    expect(beam).toBeCloseTo(8, 1); // only the along-track component is charged
-    expect(following).toBeGreaterThan(beam);
-    expect(following).toBeLessThan(8 * 1.16); // and the gain is capped
-  });
-
-  it('charges the headwind harder the stronger it blows', () => {
-    const polar = powerPolar(TRAWLER);
-    const speeds = [0, 10, 20, 30, 40].map((tws) => boatSpeed(polar, 0, tws));
-    for (let i = 1; i < speeds.length; i++) expect(speeds[i]).toBeLessThan(speeds[i - 1]);
-    // Order of magnitude: a 20-knot headwind costs a small trawler about a
-    // knot, not a tenth of one and not four.
-    expect(8 - speeds[2]).toBeGreaterThan(0.4);
-    expect(8 - speeds[2]).toBeLessThan(1.6);
-  });
-
-  it('says nothing about windage rather than guessing when the hull is undescribed', () => {
-    const bare: PowerProfile = {
-      economicSpeedKts: 8,
-      fuelLitresPerHour: 11,
-      tankLitres: 1200
-    };
-    expect(windageLossFraction(bare, 0, 40)).toBe(0);
-    const polar = powerPolar(bare);
-    expect(boatSpeed(polar, 0, 40)).toBeCloseTo(8, 6);
-    expect(polar.note).toMatch(/have not been entered/);
-    expect(powerPolar(TRAWLER).note).toMatch(/frontal area and displacement/);
+    for (const row of polar.speeds) for (const cell of row) expect(cell).toBe(8);
+    for (const twa of [0, 180]) {
+      for (const tws of [0, 50]) expect(boatSpeed(polar, twa, tws)).toBe(8);
+    }
+    expect(polar.twsValues[0]).toBe(0);
+    expect(polar.note).toBe(
+      'Timings hold 8 knots at the economic throttle setting in any wind; the sea is charged ' +
+        'along the route, the wind is not. The setting is the only one modelled, so a plan that ' +
+        'would have you throttle up to clear a front is a plan this cannot make.'
+    );
+    expect(polar.note).toMatch(/the wind is not/);
   });
 
   it('names the throttle setting it was built from', () => {

@@ -477,9 +477,10 @@ export interface RouteOptions {
      * there being no sails rather than settings:
      *
      *   - The polar is a throttle setting. Build it with `powerPolar`, which
-     *     charges windage against it; the sea is charged on top by the same
-     *     `seaState` path a sailing boat uses, with `powerSeaState` supplying
-     *     the coefficients.
+     *     is flat: the wind is not charged against a motorboat (removed on
+     *     purpose, 2026-09-28; see powerPerformance.ts). The sea is charged by
+     *     the same `seaState` path a sailing boat uses, with `powerSeaState`
+     *     supplying the coefficients.
      *   - A calm is not a stall. The search does not give up on a position with
      *     no forecast wind, because no wind is exactly the weather a motorboat
      *     wants.

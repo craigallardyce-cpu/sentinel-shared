@@ -618,9 +618,10 @@ export interface RouteOptions {
    * there being no sails rather than settings:
    *
    *   - The polar is a throttle setting. Build it with `powerPolar`, which
-   *     charges windage against it; the sea is charged on top by the same
-   *     `seaState` path a sailing boat uses, with `powerSeaState` supplying
-   *     the coefficients.
+   *     is flat: the wind is not charged against a motorboat (removed on
+   *     purpose, 2026-09-28; see powerPerformance.ts). The sea is charged by
+   *     the same `seaState` path a sailing boat uses, with `powerSeaState`
+   *     supplying the coefficients.
    *   - A calm is not a stall. The search does not give up on a position with
    *     no forecast wind, because no wind is exactly the weather a motorboat
    *     wants.
@@ -1404,8 +1405,8 @@ export function routeIsochrone(options: RouteOptions): RouteResult {
       const speedIn = (headingDeg: number, twaDeg: number): { speed: number; motoring: boolean } => {
         const sailed = sailedOn(headingDeg, twaDeg);
         // Under power there is no second option to weigh: the polar already
-        // IS the engine at its throttle setting, with the windage taken off
-        // it, and `inSea` has taken the sea off that. Every leg is a motoring
+        // IS the engine at its throttle setting, the same speed in any wind,
+        // and `inSea` has taken the sea off that. Every leg is a motoring
         // leg, which is what makes the fuel arithmetic downstream simply the
         // elapsed time.
         if (isMotorVessel) return { speed: sailed, motoring: true };

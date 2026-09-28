@@ -76,54 +76,6 @@ export const FLEET_SETTINGS = createRegistry({
         placeholder: 'e.g. Sloop',
         legacy: { ocean: ['vessel_type'] },
     }),
-    /*
-      The hull geometry, on `public.vessels` beside the rest of the boat's identity
-      (website migration 066). VesselKeeper's safety equipment location chart
-      (OSR 4.12) draws its outline from these three.
-  
-      **Stored in metres, shown in the owner's units.** `units.metric` is scoped to
-      the account and the device precisely because two crew on one boat may
-      disagree about it -- so it cannot be allowed to decide what a stored number
-      means. Storing metres and converting where a person types or reads is the
-      only arrangement that survives one navigator switching to feet. The same rule
-      is written into `VesselProfile` in @sentinel/vessel, which these keys share a
-      column with.
-  
-      The ranges below are the database CHECKs, not a view about what a cruising
-      boat is: they catch a beam typed in feet before the row is written.
-    */
-    'vessel.hull_form': defineSetting({
-        scopes: ['vessel'],
-        /*
-          Closed, where `vessel.type` beside it is deliberately free text, because
-          this is geometry rather than description -- the chart has an outline to
-          draw and there are three shapes of it. The set matches the CHECK in
-          migration 066 and `HULL_FORMS` in @sentinel/vessel; a value outside it
-          reads as unset rather than throwing.
-    
-          It does not derive from `vessel.type` and must not be inferred from it: a
-          "Power catamaran" and a "Sailing catamaran" are one hull form and two
-          propulsions, and a boat described only as "Sloop" has said nothing about
-          how many hulls it has.
-        */
-        type: oneOf(['monohull', 'catamaran', 'trimaran']),
-        label: 'Hull form',
-        description: 'How many hulls the boat has. Used to draw the safety equipment chart.',
-    }),
-    'vessel.loa_m': defineSetting({
-        scopes: ['vessel'],
-        type: numberType({ exclusiveMin: 0, exclusiveMax: 200 }),
-        label: 'Length overall',
-        description: 'Stored in metres and shown in the units you have chosen.',
-        placeholder: 'metres',
-    }),
-    'vessel.beam_m': defineSetting({
-        scopes: ['vessel'],
-        type: numberType({ exclusiveMin: 0, exclusiveMax: 100 }),
-        label: 'Beam',
-        description: 'Widest point, stored in metres and shown in the units you have chosen.',
-        placeholder: 'metres',
-    }),
     'vessel.bow_roller_height_ft': defineSetting({
         scopes: ['vessel'],
         type: numberType({ min: 0, max: 60 }),

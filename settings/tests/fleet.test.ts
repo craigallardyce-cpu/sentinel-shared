@@ -221,9 +221,6 @@ describe('the settings that had drifted', () => {
       'vessel.name',
       'vessel.mmsi',
       'vessel.type',
-      'vessel.hull_form',
-      'vessel.loa_m',
-      'vessel.beam_m',
     ]) {
       expect(FLEET_SETTINGS.get(key).scopes, key).toEqual(['vessel']);
     }
@@ -443,71 +440,14 @@ describe('VesselKeeper', () => {
 });
 
 /**
- * The hull geometry (website migration 066), which VesselKeeper's safety
- * equipment location chart draws its outline from.
- *
- * The load-bearing test here is the unit one. These are stored in metres while
- * `units.metric` decides only what a screen shows, and the two are separately
- * scoped on purpose -- a per-reader display preference must never decide what a
- * stored number means, or one navigator switching to feet changes the boat.
+ * The hull geometry keys (website migration 066) were removed with the safety
+ * equipment chart that read them (2026-09-28). Pinned so a stray re-add is a
+ * decision, not an accident.
  */
-describe('the hull geometry', () => {
-  it('is a fact about the boat, not about the reader or the device', () => {
+describe('the removed hull geometry', () => {
+  it('is no longer registered', () => {
     for (const key of ['vessel.hull_form', 'vessel.loa_m', 'vessel.beam_m']) {
-      expect(FLEET_SETTINGS.get(key).scopes, key).toEqual(['vessel']);
-    }
-    // The units preference is the reader's, and deliberately somewhere else.
-    expect(FLEET_SETTINGS.get('units.metric').scopes).toEqual(['account', 'device']);
-  });
-
-  it('leaves all three for the owner to measure', () => {
-    // A guessed hull form draws the wrong boat; a guessed length draws it wrong
-    // and says nothing about which.
-    for (const key of ['vessel.hull_form', 'vessel.loa_m', 'vessel.beam_m']) {
-      expect(FLEET_SETTINGS.get(key).default, key).toBeUndefined();
-    }
-  });
-
-  it('accepts exactly the three hull forms the database CHECK allows', () => {
-    const { type } = FLEET_SETTINGS.get('vessel.hull_form');
-    expect(type.parse('monohull')).toBe('monohull');
-    expect(type.parse('catamaran')).toBe('catamaran');
-    expect(type.parse('trimaran')).toBe('trimaran');
-    // Outside the set is unset, which falls through rather than throwing.
-    expect(type.parse('proa')).toBeUndefined();
-    expect(type.parse('Monohull')).toBeUndefined();
-  });
-
-  it('bounds the dimensions where the database CHECKs do', () => {
-    const loa = FLEET_SETTINGS.get('vessel.loa_m').type;
-    expect(loa.parse('12.8')).toBe(12.8);
-    expect(loa.parse('0')).toBeUndefined();
-    expect(loa.parse('-3')).toBeUndefined();
-    expect(loa.parse('200')).toBeUndefined();
-
-    const beam = FLEET_SETTINGS.get('vessel.beam_m').type;
-    expect(beam.parse('7.2')).toBe(7.2);
-    expect(beam.parse('0')).toBeUndefined();
-    // A beam typed in feet, which is the mistake the bound is here to catch.
-    expect(beam.parse('100')).toBeUndefined();
-  });
-
-  it('says in the field itself that the stored number is metres', () => {
-    for (const key of ['vessel.loa_m', 'vessel.beam_m']) {
-      const definition = FLEET_SETTINGS.get(key);
-      expect(definition.description, key).toContain('metres');
-      expect(definition.placeholder, key).toBe('metres');
-    }
-    expect(FLEET_SETTINGS.get('vessel.loa_m').label).toBe('Length overall');
-    expect(FLEET_SETTINGS.get('vessel.beam_m').label).toBe('Beam');
-    expect(FLEET_SETTINGS.get('vessel.hull_form').label).toBe('Hull form');
-  });
-
-  it('needs no legacy alias, because no app has ever stored them', () => {
-    // Nothing to migrate: the columns did not exist before migration 066, so a
-    // legacy key here would name a value that was never written.
-    for (const key of ['vessel.hull_form', 'vessel.loa_m', 'vessel.beam_m']) {
-      expect(FLEET_SETTINGS.get(key).legacy, key).toBeUndefined();
+      expect(FLEET_SETTINGS.has(key), key).toBe(false);
     }
   });
 });

@@ -5,17 +5,24 @@ import type { SeaStateOptions } from './routing.js';
  * The motorboat's performance model — what a polar is for a sailing boat.
  *
  * A sailing boat's speed is a function of the wind, which is why routing one
- * means searching for wind. A motorboat's speed is a throttle setting, and the
- * weather only ever takes away from it. So this file does not predict speed
- * from the weather; it starts from a speed the owner MEASURED at a known
- * throttle and subtracts what the wind and the sea will cost.
+ * means searching for wind. A motorboat's speed is a throttle setting. So this
+ * file does not predict speed from the weather; it starts from a speed the
+ * owner MEASURED at a known throttle, holds it, and lets the router charge the
+ * sea against it along the route.
  *
  * That is the honest shape of the problem, and it is also why the inputs are
  * the ones they are. An owner cannot tell you their vessel's effective power
  * or its resistance curve. They can tell you, off the engine hours and the
  * fuel dock, that at 2000 rpm the boat does 8 knots and burns 11 litres an
- * hour — and those two numbers, with the hull's dimensions, are enough to
- * charge weather against them defensibly.
+ * hour — and those two numbers, with the waterline length to scale the sea
+ * against, are what the passage is planned from.
+ *
+ * THE WIND IS NOT CHARGED, DELIBERATELY. There used to be a windage term here
+ * that slowed the boat into a headwind and credited it downwind, worked out
+ * from its beam, height above the waterline and displacement. It was removed
+ * on purpose (Craig, 2026-09-28), along with those inputs: it rested on a drag
+ * coefficient and a hull-resistance fraction nobody had measured for any boat
+ * in the fleet. Do not re-add it as a tidy-up: it was taken out, not lost.
  *
  * ONE THROTTLE SETTING, DELIBERATELY. A real motorboat has a whole curve of
  * them, and a router given the curve would trade fuel against time — push
@@ -25,10 +32,10 @@ import type { SeaStateOptions } from './routing.js';
  * know, and being clear that it is the only one modelled, beats interpolating
  * a fuel curve out of one point and presenting the result as a choice.
  *
- * NOTHING HERE IS MEASURED except the numbers the owner types in. The windage
- * and sea-state terms are physically shaped approximations standing in for a
- * tank test nobody ran, exactly as `seaStateFactor` is for a sailing boat, and
- * every route computed with them says so in its warnings.
+ * NOTHING HERE IS MEASURED except the numbers the owner types in. The
+ * sea-state term is a physically shaped approximation standing in for a tank
+ * test nobody ran, exactly as `seaStateFactor` is for a sailing boat, and
+ * every route computed with it says so in its warnings.
  */
 
 export interface PowerProfile {
@@ -60,54 +67,9 @@ export interface PowerProfile {
   economicRpm?: number | null;
   /** Waterline length in metres — what the sea penalty is scaled against. */
   lwlM?: number | null;
-  /** Displacement in tonnes — what the windage penalty is scaled against. */
-  displacementTonnes?: number | null;
-  /** Beam in metres. With the height below, the frontal area the wind sees. */
-  beamM?: number | null;
-  /** Height of the superstructure above the waterline, in metres. */
-  heightAboveWaterlineM?: number | null;
   /** Draught in metres. Recorded for the skipper, not used in routing. */
   draughtM?: number | null;
 }
-
-const KTS_TO_MS = 0.514444;
-const AIR_DENSITY = 1.225; // kg/m³
-const GRAVITY = 9.80665;
-
-/**
- * Drag coefficient of a motorboat's superstructure, referred to its frontal
- * area. Around 0.8 is the usual figure for the boxy end of the fleet — a
- * flybridge trawler is closer to a van than to an aerofoil. A sleek express
- * cruiser is lower and this will over-charge it slightly, in the direction
- * that costs the skipper time on paper rather than fuel at sea.
- */
-const SUPERSTRUCTURE_DRAG_COEFFICIENT = 0.8;
-
-/**
- * Hull resistance at cruising speed as a fraction of displacement weight.
- *
- * The one number here with no owner-supplied basis, and the one doing the most
- * work: it converts "how hard is the wind pushing" into "how much slower does
- * this boat go". A displacement hull at a Froude number around 0.3 — which is
- * where an economic setting sits — takes roughly 3–4% of its weight in total
- * resistance. 0.035 is the middle of that, and it is a stand-in for a
- * resistance curve, not a measurement of one.
- */
-const HULL_RESISTANCE_FRACTION = 0.035;
-
-/**
- * How resistance grows with speed near the cruising setting.
- *
- * At a fixed throttle the engine holds roughly constant power, so P = R·V is
- * fixed and R ≈ k·Vⁿ. Adding a small resistance ΔR therefore costs about
- * ΔR / ((n+1)·R) of the speed. n = 3 is the usual figure for a displacement
- * hull in this range, giving the divisor of 4 below.
- */
-const RESISTANCE_SPEED_EXPONENT = 3;
-
-/** Most speed the wind is allowed to take, and most it can give back. */
-const MAX_WINDAGE_LOSS = 0.5;
-const MAX_WINDAGE_GAIN = 0.15;
 
 const positive = (v: unknown): number | null => {
   const n = Number(v);
@@ -122,81 +84,6 @@ export function isUsablePowerProfile(profile: PowerProfile | null | undefined): 
       positive(profile.fuelLitresPerHour) &&
       positive(profile.tankLitres)
   );
-}
-
-/**
- * The frontal area the wind acts on, in square metres, or null when the hull
- * has not been described well enough to know it.
- *
- * Beam × height above the waterline is a rectangle, and a boat is not one — a
- * real superstructure fills perhaps 70% of that box. The shortfall is folded
- * into the drag coefficient rather than applied here, because splitting one
- * fudge factor into two does not make it two measurements.
- */
-function frontalAreaM2(profile: PowerProfile): number | null {
-  const beam = positive(profile.beamM);
-  const height = positive(profile.heightAboveWaterlineM);
-  return beam && height ? beam * height : null;
-}
-
-/**
- * The fraction of its speed the boat loses to the wind at a given true wind
- * angle and strength. Negative where a following wind pushes it along.
- *
- * The wind the hull actually feels is the apparent one, which depends on boat
- * speed, which depends on this answer. That loop is closed once, from the
- * economic speed, rather than iterated: at these magnitudes a second pass
- * moves the result by well under a tenth of a knot, and pretending otherwise
- * would be precision the drag coefficient cannot support.
- *
- * Only the along-track component is charged. A beam wind on a high-sided boat
- * is a real force, but what it produces is leeway and a corrected heading, not
- * a slower boat, and this router does not model leeway for a sailing boat
- * either.
- *
- * WHAT IS CHARGED IS THE EXCESS over still air, which is the subtlety that
- * decides whether any of this is honest. A boat doing 8 knots in a flat calm
- * is already pushing through 8 knots of wind of its own making — and the
- * owner's 8 knots at 2000 rpm was measured with that drag included. Charging
- * the full apparent wind would bill the vessel a second time for the air it
- * has already paid for, and the tell is unmissable once you look: a flat calm
- * would come out slower than the stated economic speed. So the still-air case
- * is subtracted, which makes zero wind cost exactly nothing and a beam wind
- * cost exactly nothing along the track, both of which are the right answers.
- */
-export function windageLossFraction(
-  profile: PowerProfile,
-  twaDeg: number,
-  twsKts: number
-): number {
-  const area = frontalAreaM2(profile);
-  const displacementKg = (positive(profile.displacementTonnes) ?? 0) * 1000;
-  const speed = positive(profile.economicSpeedKts);
-  // Without an area or a displacement there is nothing to scale a wind force
-  // against, so the wind costs nothing and the polar's note says as much.
-  // Silence beats a made-up number: a default hull would be this app claiming
-  // to know a boat it has never been told about.
-  if (!area || !displacementKg || !speed || !Number.isFinite(twsKts)) return 0;
-
-  // Component of the true wind along the boat's axis, positive when opposing.
-  const axialTrueKts = twsKts * Math.cos((twaDeg * Math.PI) / 180);
-  const apparentAxialMs = (speed + axialTrueKts) * KTS_TO_MS;
-  // The still-air case the economic speed was measured in, and therefore the
-  // datum. Only what the weather adds on top of this is the weather's fault.
-  const ownHeadwindMs = speed * KTS_TO_MS;
-
-  // Signed throughout, so a following wind subtracts resistance rather than
-  // adding it, and the vessel is credited for being pushed along.
-  const airResistanceN =
-    0.5 *
-    AIR_DENSITY *
-    SUPERSTRUCTURE_DRAG_COEFFICIENT *
-    area *
-    (apparentAxialMs * Math.abs(apparentAxialMs) - ownHeadwindMs * ownHeadwindMs);
-
-  const hullResistanceN = HULL_RESISTANCE_FRACTION * displacementKg * GRAVITY;
-  const loss = airResistanceN / ((RESISTANCE_SPEED_EXPONENT + 1) * hullResistanceN);
-  return Math.min(MAX_WINDAGE_LOSS, Math.max(-MAX_WINDAGE_GAIN, loss));
 }
 
 /**
@@ -218,8 +105,8 @@ const POWER_TWA = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180];
  *
  * This is the trick the whole feature turns on. A polar is just a function
  * from wind angle and strength to boat speed, and a motorboat has one of
- * those too — it is simply nearly flat, has no no-go zone, and slopes gently
- * downhill into a headwind instead of uphill into a reach. Expressing it in
+ * those too — it is flat: every cell is the economic speed, with no no-go
+ * zone and no charge for the wind (see the header for why). Expressing it in
  * the existing shape means the router, the corridor, the hazard scan and the
  * chart drawing all keep working unmodified, and the parts that genuinely do
  * differ — fuel as a hard limit, tacks and gybes not existing — are handled
@@ -235,30 +122,18 @@ export function powerPolar(profile: PowerProfile): PolarDiagram {
     throw new Error('A motorboat needs a speed at its economic setting before it can be routed.');
   }
 
-  const speeds = POWER_TWA.map((twa) =>
-    POWER_TWS.map((tws) => {
-      const kept = 1 - windageLossFraction(profile, twa, tws);
-      return Math.round(speed * Math.max(0, kept) * 100) / 100;
-    })
-  );
-
+  const speeds = POWER_TWA.map(() => POWER_TWS.map(() => speed));
   const rpm = positive(profile.economicRpm);
-  const modelled = frontalAreaM2(profile) !== null && positive(profile.displacementTonnes) !== null;
 
   return {
     name: `Under power at ${speed} kt${rpm ? ` (${rpm} rpm)` : ''}`,
     twsValues: POWER_TWS,
     twaValues: POWER_TWA,
     speeds,
-    note: modelled
-      ? `Timings hold ${speed} knots at the economic throttle setting and charge the wind against ` +
-        "the vessel's frontal area and displacement. That windage term is a physically shaped " +
-        'estimate, not this hull measured — and the setting is the only one modelled, so a plan ' +
-        'that would have you throttle up to clear a front is a plan this cannot make.'
-      : `Timings hold ${speed} knots at the economic throttle setting in any wind, because the ` +
-        'beam, height above the waterline and displacement needed to work out what a headwind ' +
-        'costs this vessel have not been entered. Fill them in and a headwind will slow the ' +
-        'passage down the way it actually will.'
+    note:
+      `Timings hold ${speed} knots at the economic throttle setting in any wind; the sea is charged ` +
+      'along the route, the wind is not. The setting is the only one modelled, so a plan that would ' +
+      'have you throttle up to clear a front is a plan this cannot make.'
   };
 }
 

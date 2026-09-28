@@ -4,17 +4,24 @@ import type { SeaStateOptions } from './routing.js';
  * The motorboat's performance model — what a polar is for a sailing boat.
  *
  * A sailing boat's speed is a function of the wind, which is why routing one
- * means searching for wind. A motorboat's speed is a throttle setting, and the
- * weather only ever takes away from it. So this file does not predict speed
- * from the weather; it starts from a speed the owner MEASURED at a known
- * throttle and subtracts what the wind and the sea will cost.
+ * means searching for wind. A motorboat's speed is a throttle setting. So this
+ * file does not predict speed from the weather; it starts from a speed the
+ * owner MEASURED at a known throttle, holds it, and lets the router charge the
+ * sea against it along the route.
  *
  * That is the honest shape of the problem, and it is also why the inputs are
  * the ones they are. An owner cannot tell you their vessel's effective power
  * or its resistance curve. They can tell you, off the engine hours and the
  * fuel dock, that at 2000 rpm the boat does 8 knots and burns 11 litres an
- * hour — and those two numbers, with the hull's dimensions, are enough to
- * charge weather against them defensibly.
+ * hour — and those two numbers, with the waterline length to scale the sea
+ * against, are what the passage is planned from.
+ *
+ * THE WIND IS NOT CHARGED, DELIBERATELY. There used to be a windage term here
+ * that slowed the boat into a headwind and credited it downwind, worked out
+ * from its beam, height above the waterline and displacement. It was removed
+ * on purpose (Craig, 2026-09-28), along with those inputs: it rested on a drag
+ * coefficient and a hull-resistance fraction nobody had measured for any boat
+ * in the fleet. Do not re-add it as a tidy-up: it was taken out, not lost.
  *
  * ONE THROTTLE SETTING, DELIBERATELY. A real motorboat has a whole curve of
  * them, and a router given the curve would trade fuel against time — push
@@ -24,10 +31,10 @@ import type { SeaStateOptions } from './routing.js';
  * know, and being clear that it is the only one modelled, beats interpolating
  * a fuel curve out of one point and presenting the result as a choice.
  *
- * NOTHING HERE IS MEASURED except the numbers the owner types in. The windage
- * and sea-state terms are physically shaped approximations standing in for a
- * tank test nobody ran, exactly as `seaStateFactor` is for a sailing boat, and
- * every route computed with them says so in its warnings.
+ * NOTHING HERE IS MEASURED except the numbers the owner types in. The
+ * sea-state term is a physically shaped approximation standing in for a tank
+ * test nobody ran, exactly as `seaStateFactor` is for a sailing boat, and
+ * every route computed with it says so in its warnings.
  */
 export interface PowerProfile {
     /** Speed through the water at the economic throttle setting, in knots. */
@@ -58,51 +65,19 @@ export interface PowerProfile {
     economicRpm?: number | null;
     /** Waterline length in metres — what the sea penalty is scaled against. */
     lwlM?: number | null;
-    /** Displacement in tonnes — what the windage penalty is scaled against. */
-    displacementTonnes?: number | null;
-    /** Beam in metres. With the height below, the frontal area the wind sees. */
-    beamM?: number | null;
-    /** Height of the superstructure above the waterline, in metres. */
-    heightAboveWaterlineM?: number | null;
     /** Draught in metres. Recorded for the skipper, not used in routing. */
     draughtM?: number | null;
 }
 /** True when there is enough here to model a motorboat at all. */
 export declare function isUsablePowerProfile(profile: PowerProfile | null | undefined): boolean;
 /**
- * The fraction of its speed the boat loses to the wind at a given true wind
- * angle and strength. Negative where a following wind pushes it along.
- *
- * The wind the hull actually feels is the apparent one, which depends on boat
- * speed, which depends on this answer. That loop is closed once, from the
- * economic speed, rather than iterated: at these magnitudes a second pass
- * moves the result by well under a tenth of a knot, and pretending otherwise
- * would be precision the drag coefficient cannot support.
- *
- * Only the along-track component is charged. A beam wind on a high-sided boat
- * is a real force, but what it produces is leeway and a corrected heading, not
- * a slower boat, and this router does not model leeway for a sailing boat
- * either.
- *
- * WHAT IS CHARGED IS THE EXCESS over still air, which is the subtlety that
- * decides whether any of this is honest. A boat doing 8 knots in a flat calm
- * is already pushing through 8 knots of wind of its own making — and the
- * owner's 8 knots at 2000 rpm was measured with that drag included. Charging
- * the full apparent wind would bill the vessel a second time for the air it
- * has already paid for, and the tell is unmissable once you look: a flat calm
- * would come out slower than the stated economic speed. So the still-air case
- * is subtracted, which makes zero wind cost exactly nothing and a beam wind
- * cost exactly nothing along the track, both of which are the right answers.
- */
-export declare function windageLossFraction(profile: PowerProfile, twaDeg: number, twsKts: number): number;
-/**
  * The motorboat as a `PolarDiagram`, so the isochrone search needs to know
  * nothing about propulsion to move it.
  *
  * This is the trick the whole feature turns on. A polar is just a function
  * from wind angle and strength to boat speed, and a motorboat has one of
- * those too — it is simply nearly flat, has no no-go zone, and slopes gently
- * downhill into a headwind instead of uphill into a reach. Expressing it in
+ * those too — it is flat: every cell is the economic speed, with no no-go
+ * zone and no charge for the wind (see the header for why). Expressing it in
  * the existing shape means the router, the corridor, the hazard scan and the
  * chart drawing all keep working unmodified, and the parts that genuinely do
  * differ — fuel as a hard limit, tacks and gybes not existing — are handled

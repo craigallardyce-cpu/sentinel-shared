@@ -39,10 +39,10 @@ export interface NumberOptions {
     /**
      * Exclusive bounds, for a setting whose column has one.
      *
-     * Added for the vessel dimensions, whose CHECKs in website migration 066 are
-     * `loa_m > 0` and `beam_m > 0` -- strictly greater. Declared with `min: 0` the
-     * registry would accept a zero-metre boat, PostgREST would refuse the write,
-     * and the failure would surface as a settings screen that appears not to save.
+     * Added for columns with exclusive database CHECKs (`x > 0`, strictly
+     * greater). Declared with `min: 0` the registry would accept a zero that
+     * PostgREST then refuses, and the failure would surface as a settings screen
+     * that appears not to save.
      * A declared range is only useful if it refuses exactly what the database
      * refuses.
      */

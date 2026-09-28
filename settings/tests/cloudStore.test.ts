@@ -88,10 +88,6 @@ const VESSEL = {
     name: 'Saorsa',
     mmsi: '366895720',
     vessel_type: '',
-    // The hull geometry, as `numeric` arrives from PostgREST.
-    hull_form: 'catamaran',
-    loa_m: '12.8',
-    beam_m: '7.2',
   },
 };
 
@@ -481,80 +477,5 @@ describe('the cache across the slug-to-uuid move', () => {
     const { client } = recordingClient();
 
     expect(createVesselStore(client, OWN, storage).get('vessel.name')).toBe('Newer');
-  });
-});
-
-/**
- * The hull geometry (website migration 066) lives on the identity row, not in
- * the settings blob.
- *
- * Which storage a key uses is the whole point of the `columns` map, and getting
- * it wrong here is silent: the write would land in `vessel_settings.settings`,
- * `@sentinel/vessel` would keep reading a null column, and the safety equipment
- * chart would show a boat with no dimensions while the settings screen showed
- * the numbers the owner typed.
- */
-describe('the vessel hull geometry', () => {
-  const resolve = async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' });
-
-  it('reads the three columns as registry keys', async () => {
-    const { client } = fakeClient(VESSEL);
-    const store = createVesselStore(client, resolve);
-    await store.load();
-
-    expect(store.get('vessel.hull_form')).toBe('catamaran');
-    expect(store.get('vessel.loa_m')).toBe('12.8');
-    expect(store.get('vessel.beam_m')).toBe('7.2');
-  });
-
-  it('asks the vessels row for them, so a mapped key is never silently absent', async () => {
-    const { client, calls } = fakeClient(VESSEL);
-    await createVesselStore(client, resolve).load();
-
-    const identity = calls.find((call) => call.kind === 'select' && call.table === 'vessels');
-    for (const column of ['hull_form', 'loa_m', 'beam_m']) {
-      expect(identity?.columns, column).toContain(column);
-    }
-  });
-
-  it.each([
-    ['vessel.hull_form', 'hull_form', 'trimaran'],
-    ['vessel.loa_m', 'loa_m', '12.8'],
-    ['vessel.beam_m', 'beam_m', '7.2'],
-  ])('writes %s to vessels.%s rather than into the blob', async (key, column, value) => {
-    const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client, resolve);
-    await store.load();
-
-    await store.set(key, value);
-
-    const update = calls.find((call) => call.kind === 'update');
-    expect(update?.table).toBe('vessels');
-    expect((update?.payload as Record<string, unknown>)[column]).toBe(value);
-    expect(calls.some((call) => call.kind === 'rpc')).toBe(false);
-  });
-
-  it('clears one by nulling its column, not by removing a blob key', async () => {
-    const { client, calls } = fakeClient(VESSEL);
-    const store = createVesselStore(client, resolve);
-    await store.load();
-
-    await store.clear('vessel.beam_m');
-
-    const update = calls.find((call) => call.kind === 'update');
-    expect(update?.table).toBe('vessels');
-    expect((update?.payload as Record<string, unknown>).beam_m).toBeNull();
-    expect(calls.some((call) => call.kind === 'rpc')).toBe(false);
-    expect(store.get('vessel.beam_m')).toBeUndefined();
-  });
-
-  it('resolves through the registry as a vessel-layer value', async () => {
-    const { client } = fakeClient(VESSEL);
-    const vessel = createVesselStore(client, resolve);
-    await vessel.load();
-
-    const settings = createSettingsStore({ registry: FLEET_SETTINGS, stores: [vessel] });
-    expect(settings.resolve('vessel.loa_m')).toEqual({ value: 12.8, source: 'vessel' });
-    expect(settings.resolve('vessel.hull_form')).toEqual({ value: 'catamaran', source: 'vessel' });
   });
 });

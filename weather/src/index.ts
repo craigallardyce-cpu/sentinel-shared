@@ -45,7 +45,6 @@ export {
   powerPolar,
   powerSeaState,
   powerRangeFrom,
-  windageLossFraction,
   isUsablePowerProfile
 } from './powerPerformance.js';
 export type { PowerProfile, PowerRange } from './powerPerformance.js';
