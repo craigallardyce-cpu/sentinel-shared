@@ -339,7 +339,6 @@ describe('legacy values that a device store cannot reach on its own', () => {
       .sort();
 
     expect(unreachable).toEqual([
-      'ai.model',
       'logbook.auto_interval_min',
       'logbook.included_nmea',
       'logbook.quick_tap_presets',
@@ -449,5 +448,15 @@ describe('the removed hull geometry', () => {
     for (const key of ['vessel.hull_form', 'vessel.loa_m', 'vessel.beam_m']) {
       expect(FLEET_SETTINGS.has(key), key).toBe(false);
     }
+  });
+});
+
+/**
+ * Removed 2026-09-29 when the fleet moved its AI to Claude and the server began
+ * choosing the model. Pinned so a stray re-add is a decision, not an accident.
+ */
+describe('the removed AI model choice', () => {
+  it('is no longer registered', () => {
+    expect(FLEET_SETTINGS.has('ai.model')).toBe(false);
   });
 });

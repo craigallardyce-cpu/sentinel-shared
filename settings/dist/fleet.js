@@ -481,13 +481,6 @@ export const FLEET_SETTINGS = createRegistry({
     // ---------------------------------------------------------------------------
     // Everything else OceanSentinel keeps.
     // ---------------------------------------------------------------------------
-    'ai.model': defineSetting({
-        scopes: ['account'],
-        type: stringType({ maxLength: 64 }),
-        label: 'Transcription model',
-        placeholder: 'e.g. gemini-2.5-flash',
-        legacy: { ocean: ['gemini_model'] },
-    }),
     'alarms.sound_enabled': defineSetting({
         scopes: ['device'],
         /*
