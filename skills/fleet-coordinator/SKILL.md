@@ -819,6 +819,28 @@ The last one shows where the Sonnet saving goes: the edit was pinned to the
 character, but driving two modals in a browser (one needing a filed passage)
 costs the same browser time whatever the model.
 
+The Gemini-to-Claude migration, 2026-09-29: local `Agent` workers, planned,
+evaluated, built, deployed and documented in one day. The coordinator did the
+eval and the docs-kb close-out itself.
+
+| Worker | Model | Tokens | Wall-clock |
+|---|---|---|---|
+| sentinel-shared: retire `ai.model`, tests, rebuilt dist | Sonnet 5.5 | ~85k | 4m |
+| OceanSentinel: Claude helper, prompt split, desktop via Edge Functions, two review rounds | Opus 5.5 | ~373k | 28m + 9m |
+| VesselKeeper: two Edge Functions ported, helper split for tests | Opus 5.5 | ~201k | 14m + 1m |
+| HarborSentinel: dead `@google/genai` and template leftovers | Sonnet 5.5 | ~68k | 10m |
+| Website: the same | Sonnet 5.5 | ~69k | 5m |
+| Website: privacy page, wording pinned verbatim | Sonnet 5.5 | ~73k | 3m |
+
+API spend outside the workers' own tokens: the eval, 210 calls on the fleet's
+own prompts, cost $1.06; the two workers' real-API smoke tests cost $0.06
+between them. The eval decided four model choices and overturned one guess
+(Haiku looked right for Ask on cost and was confidently wrong on three
+safety-relevant questions), which is cheap for what it settled. When a change
+chooses a model, run the eval before briefing anyone: Node 24 imports the
+fleet's `.ts` prompt modules directly, so a scratchpad harness can run the
+production prompts unchanged.
+
 ## What has gone wrong so far
 
 - **A coordinating session spent its first calls discovering it could see one
@@ -997,3 +1019,50 @@ costs the same browser time whatever the model.
   branch was modified", which reads like the branch moved. The guard caught it.
   Read full SHAs from `git rev-parse` or the API, never by extending a short
   one.
+
+- **An Anthropic outage was diagnosed as a bad key, and Craig rotated a key
+  for nothing.** 2026-09-29: an API key that had served 210 eval calls started
+  returning `503` with a plain-text body, "credential validation failed". The
+  status page showed no incident when first checked; one was posted minutes
+  later (14:21 UTC). A freshly created key failed identically, and the calls
+  recovered by 14:41 with no change on our side. A 5xx is never evidence
+  about a key. The quick test is a deliberately invalid key: it gets the
+  normal JSON 401, which proves the API is reachable and that the failure is
+  server-side. Re-fetch the status page before asking Craig to touch a key.
+- **The Supabase CLI deployed with the wrong token, twice.** Craig's user
+  environment holds a restricted `SUPABASE_ACCESS_TOKEN` (the connector's,
+  which also lacks `edge_functions_read`, so this session cannot list
+  functions either). It overrides `supabase login`, and `login` run while it
+  is set silently saves that same token rather than opening the browser. What
+  worked, in one Command Prompt: `set SUPABASE_ACCESS_TOKEN=`, then
+  `npx supabase@latest login` (the browser must open), then
+  `functions deploy … --project-ref <ref> --use-api` (no `link` needed;
+  `--use-api` because Docker is not running). Edge Functions live in each
+  app's own repo, so it is one deploy per repo, not one command for all.
+- **A removal from a shared package reverses the merge order, and no check
+  catches it.** Retiring `ai.model` from `@sentinel/settings`: the registry
+  throws on an undeclared key, so the consumer PR that stops reading it must
+  merge first. `verify-clean OceanSentinel --shared-ref <branch>` PASSED while
+  the app still read the key, because nothing exercises that path against the
+  real registry. The merge order in the PR body was the only protection.
+- **Edge Function time budgets were left to the worker, and needed a review
+  round.** Supabase kills a function at 150 s. The first OceanSentinel diff
+  gave the briefing 120 s × 3 attempts, and the transcription call had an
+  unbounded Gemini fetch ahead of a 90 s Claude budget. Put the budget in the
+  brief: timeout × (retries + 1) plus every upstream call must stay under
+  150 s.
+- **A 200 in the function log proved nothing about which code answered.** The
+  new functions also return 200 with no key configured (raw passages, an
+  empty description). What proved the switch: `log_attributes['version']` on
+  `function_edge_logs` (v3 → v5, v2 → v4 across the deploy), and response
+  sizes only a model-written answer produces (413 bytes against about 40 for
+  the empty description).
+- **A merge to the website's `main` is a deploy.** A Cloud Build trigger
+  publishes it; nothing in the repo says so. Confirm the build for the merge
+  SHA and read the served bundle for the new strings before telling Craig a
+  page is live: the privacy page had to be live before the Edge Functions
+  switched.
+- **A worktree clean-up printed a false alarm.** A PowerShell file count on
+  `sentinel-shared/settings` read 0 after removing worktrees; the files were
+  all there, and the count expression was wrong. Check the shared repo with
+  `git ls-files -d` (tracked files missing), not a count.
