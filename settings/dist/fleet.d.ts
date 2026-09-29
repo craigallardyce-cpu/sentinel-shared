@@ -97,7 +97,6 @@ export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'logbook.instruments_range_hours': import("./types.js").SettingSpec<number> & {
         default: number | ((platform: import("./types.js").PlatformContext) => number);
     };
-    'ai.model': import("./types.js").SettingSpec<string>;
     'alarms.sound_enabled': import("./types.js").SettingSpec<boolean> & {
         default: boolean | ((platform: import("./types.js").PlatformContext) => boolean);
     };
