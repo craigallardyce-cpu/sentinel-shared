@@ -322,15 +322,18 @@ worker, so when in doubt about the *brief*, fix the brief, not the model.
 
 | Model | `model` | Rate (in / out, per MTok) | Use for |
 |---|---|---|---|
-| Sonnet 5 | `claude-sonnet-5` | $2 / $10 | Fully pinned, mechanical work: a wording or row change with the exact text given, a seed or pin bump, a migration copied from a named template with the SQL given, a rehearsal or read-only diagnostic. Most fleet workers are this. |
+| Sonnet 5.5 | `claude-sonnet-5-5` | $2 / $10 | Fully pinned, mechanical work: a wording or row change with the exact text given, a seed or pin bump, a migration copied from a named template with the SQL given, a rehearsal or read-only diagnostic. Most fleet workers are this. |
 | Opus 5.5 | `claude-opus-5-5` | $4 / $20 | A real code change in one repo where the worker must read and judge: a component or package edit with tests and a `dist/` build, a CI failure to diagnose, anything with a test to make pass. |
 | Fable 5.1 | `claude-fable-5-1` | $10 / $50 | Only when the brief cannot pin the decisions: unfamiliar debugging, a shared-package change every consumer breaks on if wrong, work that may need redesigning mid-way. |
 
 Haiku is not a worker model; it does not hold a repo well enough. Opus 5.5
 replaced Opus 5 on 2026-09-28: cheaper per token, same context. Its effort
 defaults to `medium`, one below Opus 5's `high`, so a worker that under-reads
-its repo wants `high` in the brief rather than a bigger model. The costs under "What it costs"
-were recorded on Opus 5 and stand as they were run.
+its repo wants `high` in the brief rather than a bigger model. Sonnet 5.5
+replaced Sonnet 5 on 2026-09-29 at the same rate and context; its effort still
+defaults to `high`, but the levels are recalibrated, so a pinned mechanical
+brief can try `medium`. The costs under "What it costs" were recorded on Opus 5
+and Sonnet 5 and stand as they were run.
 
 **The coordinator itself runs on Opus 5.5.** It greps, writes briefs and reads
 diffs, and its context is the one that grows over a run, so it is the session
