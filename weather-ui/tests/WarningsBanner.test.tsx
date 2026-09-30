@@ -67,9 +67,10 @@ describe('WarningsBanner notices (the non-answers)', () => {
     expect(row).toHaveTextContent(/not an all-clear/i);
     const el = container.querySelector(`[data-notice="${notice}"]`)!;
     expect(el).toBeTruthy();
-    // Quiet: neutral hairline, no status colour, no blur.
+    // Quiet: the banner's glass, a neutral hairline, no status colour.
     expect(el.className).toContain('border-border-color');
-    expect(el.className).not.toMatch(/border-(red|warning)|backdrop/);
+    expect(el.className).toContain('bg-[var(--bg-panel-glass)]');
+    expect(el.className).not.toMatch(/--color-(red|warning)|shadow/);
   });
 
   it('is replaced by the banner once a warning is in force', () => {
@@ -126,17 +127,21 @@ describe('severity', () => {
     expect(band).toHaveTextContent(/^Storm warning/);
   });
 
-  it('colours an alarm red and an advisory amber by stroke, with no blur', () => {
+  it("draws the board's glass band: 40% severity stroke, blur, no shadow, no dim fill", () => {
     const { rerender } = render(<WarningsBanner warnings={[STORM]} />);
     let section = screen.getByRole('alert');
-    expect(section.className).toContain('border-red');
-    expect(section.className).toContain('rounded-xl');
-    expect(section.className).toContain('bg-bg-panel');
-    expect(section.className).not.toMatch(/backdrop|glow/);
+    const cls = section.className;
+    expect(cls).toContain('border-[color:color-mix(in_srgb,var(--color-red)_40%,transparent)]');
+    expect(cls).toContain('bg-[var(--bg-panel-glass)]');
+    expect(cls).toContain('[backdrop-filter:blur(16px)]');
+    expect(cls).toContain('[-webkit-backdrop-filter:blur(16px)]');
+    expect(cls).toContain('rounded-xl');
+    expect(cls).not.toMatch(/shadow|glow|-dim/);
+    expect(screen.getByRole('button').className).toMatch(/h-12/);
 
     rerender(<WarningsBanner warnings={[SCA]} />);
     section = screen.getByRole('status');
-    expect(section.className).toContain('border-warning');
+    expect(section.className).toContain('var(--color-warning)_40%');
   });
 });
 

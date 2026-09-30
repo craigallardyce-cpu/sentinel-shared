@@ -18,10 +18,13 @@ import { ChevronDown, ChevronRight, CloudOff, TriangleAlert } from 'lucide-react
   one. They stay, as a quiet one-line `notice` the host has to ask for
   explicitly. The banner never infers one from an empty list.
 
-  Styling is tokens only (`@sentinel/theme`), so night mode follows with no code
-  here: a solid panel with no backdrop blur, the 16px surface radius, the one
-  panel shadow, and severity carried by stroke and fill in `--color-red` /
-  `--color-warning` and their `-dim` pairs. Nothing glows.
+  It looks as the approved board draws it (`OceanNightAfter.dc.html`): a glass
+  surface (`--bg-panel-glass` behind a 16px backdrop blur), the 16px surface
+  radius, 48px tall, no shadow, and a 1px border of the severity colour at 40%.
+  The event name carries the severity colour; the rest is secondary text.
+  Severity is `--color-red` or `--color-warning`, never a glow. Tokens only
+  (`@sentinel/theme`), so night mode follows with no code here: `night.css`
+  redefines `--bg-panel-glass` and the text colours.
 */
 
 /** The fields the banner reads. `WeatherAlert` from this package satisfies it. */
@@ -182,18 +185,22 @@ const NOTICE_TEXT: Record<WarningsNotice, string> = {
    package's dist for Tailwind. */
 const TONE: Record<WarningLevel, { band: string; text: string; chip: string }> = {
   alarm: {
-    band: 'border-red',
+    band: 'border-[color:color-mix(in_srgb,var(--color-red)_40%,transparent)]',
     text: 'text-red',
     chip: 'bg-red-dim border-red text-text-primary',
   },
   warning: {
-    band: 'border-warning',
+    band: 'border-[color:color-mix(in_srgb,var(--color-warning)_40%,transparent)]',
     text: 'text-warning',
     chip: 'bg-warning-dim border-warning text-text-primary',
   },
 };
 
-const SURFACE = 'bg-bg-panel rounded-xl shadow-[var(--panel-shadow)] border font-sans';
+/* The glass surface, spelled out rather than `.glass-panel` so it carries the
+   -webkit- form (older Android WebViews) and no shadow: the board draws none. */
+const GLASS =
+  'bg-[var(--bg-panel-glass)] [-webkit-backdrop-filter:blur(16px)] [backdrop-filter:blur(16px)]';
+const SURFACE = `${GLASS} rounded-xl border font-sans`;
 
 /* ------------------------------------------------------------------------ */
 
@@ -264,7 +271,7 @@ export function WarningsBanner({
   );
 
   const rowClass =
-    'w-full min-h-12 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
+    'w-full h-12 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
     'rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus';
 
   return (
@@ -342,7 +349,7 @@ function WarningItem({ warning }: { warning: BannerWarning }) {
   const from = formatWhen(warning.effective, true);
   const to = formatWhen(warning.ends, true);
   return (
-    <li className={`rounded-md border-l-4 ${tone.band} bg-bg-card px-3 py-2 flex flex-col gap-1`}>
+    <li className={`rounded-md border-l-4 ${tone.band} px-3 py-2 flex flex-col gap-1`}>
       <span className={`font-semibold ${tone.text}`}>{sentenceCase(warning.event)}</span>
       {warning.headline && <span className="text-body-md text-text-primary">{warning.headline}</span>}
       {(from || to) && (
@@ -369,8 +376,8 @@ function NoticeRow({
   onOpen?: () => void;
   className: string;
 }) {
-  /* Quiet on purpose: a neutral hairline and secondary text, not a status
-     colour. Outside NWS coverage this shows every day, and an amber band across
+  /* Quiet on purpose: the same glass as the banner, but a neutral hairline and
+     secondary text, not a status colour. Outside NWS coverage this shows every day, and an amber band across
      the chart for a permanent condition is the H4 problem again. It must only
      never look like an all-clear, and it does not: it says so in words. */
   const body = (
@@ -382,7 +389,7 @@ function NoticeRow({
   );
   const shape =
     'pointer-events-auto inline-flex w-fit max-w-full items-center gap-2 px-4 py-1.5 min-h-9 ' +
-    'bg-bg-panel border border-border-color rounded-full shadow-[var(--panel-shadow)] ' +
+    `${GLASS} border border-border-color rounded-full ` +
     'font-sans text-body-sm text-text-secondary';
   return onOpen ? (
     <button
