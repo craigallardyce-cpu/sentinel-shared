@@ -179,7 +179,16 @@ export function Modal({
               )}
             </div>
             {!hideClose && (
-              <Button variant="ghost" size="md" aria-label="Close" onClick={onClose} className="w-12 px-0 shrink-0">
+              // `bare`, because a square icon button is a shape `size` does not
+              // draw: `md`'s own padding would squeeze the icon to 8px.
+              <Button
+                variant="ghost"
+                layout="bare"
+                touchFloor={false}
+                aria-label="Close"
+                onClick={onClose}
+                className="inline-flex items-center justify-center h-12 w-12 shrink-0 rounded-md"
+              >
                 <X size={20} />
               </Button>
             )}

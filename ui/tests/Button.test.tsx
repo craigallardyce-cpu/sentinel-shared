@@ -91,9 +91,11 @@ describe('Button sizes', () => {
     expect(heightOf('sm')).toEqual(['h-10']);
   });
 
-  it('draws the deprecated 32px `dense` at 40px, the same as `sm`', () => {
+  it('draws the deprecated 32px `dense` at 40px, as `sm`, keeping its narrow padding for square icon buttons', () => {
     expect(heightOf('dense')).toEqual(['h-10']);
-    expect(classOf({ size: 'dense' })).toBe(classOf({ size: 'sm' }));
+    const dense = classOf({ size: 'dense' }).split(/\s+/);
+    expect(dense).toContain('px-2');
+    expect(dense).toContain('text-[15px]');
   });
 
   it('draws both sizes at the control radius', () => {
@@ -117,7 +119,7 @@ describe('deprecated Button variants', () => {
 
   it('keeps the aliases working with `active`, `size` and `layout`', () => {
     expect(classOf({ variant: 'success', size: 'dense', active: true })).toBe(
-      classOf({ variant: 'primary', size: 'sm', active: true })
+      classOf({ variant: 'primary', size: 'dense', active: true })
     );
     expect(classOf({ variant: 'accent', layout: 'bare' })).toBe(classOf({ variant: 'secondary', layout: 'bare' }));
   });

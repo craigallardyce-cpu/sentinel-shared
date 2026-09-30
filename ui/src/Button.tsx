@@ -127,12 +127,15 @@ const VARIANT_ALIAS: Record<ButtonVariant, CanonicalVariant> = {
  * Inter 15/600 at both, so the two sizes differ in height and padding only.
  *
  * `dense` was 32px. That size is retired and renders at 40, as `sm` does, so
- * nothing that asked for it gets smaller. `md` was 44px and is 48 now.
+ * nothing that asked for it gets smaller. It keeps its old 8px side padding,
+ * because the callers that still use it include square icon buttons sized by
+ * a `w-8` of their own (OceanSentinel's panel close buttons), which `sm`'s
+ * padding would squeeze to nothing. `md` was 44px and is 48 now.
  */
 const SIZE: Record<ButtonSize, string> = {
   md: 'h-12 px-5 text-[15px] gap-2 rounded-md',
   sm: 'h-10 px-4 text-[15px] gap-2 rounded-md',
-  dense: 'h-10 px-4 text-[15px] gap-2 rounded-md',
+  dense: 'h-10 px-2 text-[15px] gap-2 rounded-md',
 };
 
 /**
