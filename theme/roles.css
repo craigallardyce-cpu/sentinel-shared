@@ -2,7 +2,7 @@
  * Tailwind v4 role map for the Mariner Sentinel fleet.
  *
  * Turns the raw tokens in tokens.css into utility names (`bg-bg-card`,
- * `text-cyan`, `bg-primary`, `font-heading`…). Import it after tokens.css in
+ * `text-cyan`, `bg-primary`, `font-heading`, `font-wordmark`…). Import it after tokens.css in
  * each app's index.css:
  *
  *   @import "tailwindcss";
@@ -24,6 +24,7 @@
 @theme inline reference {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-heading);
+  --font-wordmark: var(--font-wordmark);
   --font-mono: var(--font-mono);
 
   /* Direct token names */
@@ -111,7 +112,9 @@
 
   /* Radius. Declared so `rounded-md` / `rounded-lg` / `rounded-xl` mean the same
      thing in all three apps and do not move when Tailwind changes its defaults.
-     See tokens.css for which size belongs to which kind of surface. */
+     See tokens.css for which size belongs to which kind of surface: 8px for a
+     control (`rounded-md`), 16px for a floating surface (`rounded-xl`), full for
+     pills and dots. sm, default and lg are deprecated aliases of md. */
   --radius-sm: var(--radius-sm);
   --radius-default: var(--radius-default);
   --radius-md: var(--radius-md);
