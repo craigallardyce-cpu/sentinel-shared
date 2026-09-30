@@ -137,7 +137,7 @@ describe('severity', () => {
     expect(cls).toContain('[-webkit-backdrop-filter:blur(16px)]');
     expect(cls).toContain('rounded-xl');
     expect(cls).not.toMatch(/shadow|glow|-dim/);
-    expect(screen.getByRole('button').className).toMatch(/h-12/);
+    expect(screen.getByRole('button').className.split(' ')).toContain('h-12');
 
     rerender(<WarningsBanner warnings={[SCA]} />);
     section = screen.getByRole('status');
