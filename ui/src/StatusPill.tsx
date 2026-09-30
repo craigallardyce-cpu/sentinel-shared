@@ -43,9 +43,14 @@ export interface StatusPillProps {
   status: Status;
   children?: React.ReactNode;
   /**
-   * Animate the dot. Honoured only for `alarm`: only alarms pulse
-   * (fit-and-finish X5), so a pulse asked for on any other status — syncing,
-   * listening, pending — draws a still dot.
+   * Animate the dot, for a state that wants attention. Honoured for `alarm`
+   * and, for now, `warning`; ignored for `ok`, `info` and `offline`, so
+   * "syncing" and "listening" draw a still dot.
+   *
+   * Fit-and-finish X5 says only alarms pulse. `warning` still pulses because
+   * HarborSentinel's Device GPS pill pulses while acquiring and its tests pin
+   * that; @deprecated for `warning` — Wave 2 moves the apps off it, and then
+   * this narrows to `alarm` alone.
    */
   pulse?: boolean;
   /** Dot only, no label — for tight HUD spots. Provide `title` for a tooltip. */
@@ -62,7 +67,7 @@ export interface StatusPillProps {
  */
 export function StatusPill({ status, children, pulse = false, compact = false, size = 'sm', className, title }: StatusPillProps) {
   const c = STATUS_CLASS[status];
-  const pulsing = pulse && status === 'alarm';
+  const pulsing = pulse && (status === 'alarm' || status === 'warning');
   const dot = (
     <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
       {pulsing && <span className={cn('absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping', c.dot)} />}

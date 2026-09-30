@@ -1,4 +1,4 @@
-import { jsx as _jsx } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { cn } from './cn';
 const LABEL = {
     account: 'Account',
@@ -21,7 +21,10 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }) {
         return null;
     // Narrower than the layers beneath it, so it is the one worth pointing at.
     const isOverride = source === 'device' || source === 'host';
-    return (_jsx("span", { role: "img", "aria-label": LABEL[source], title: `${LABEL[source]}: ${DESCRIPTION[source]}`, "data-source": source, className: cn('inline-block shrink-0 h-1.5 w-1.5 rounded-full align-middle', isOverride ? 'bg-text-secondary' : 'border border-text-muted', className) }));
+    // The word stays a text node of this element (so the name reaches assistive
+    // technology and a caller can still find the badge by its text) at font-size
+    // 0, so the only thing drawn is the dot.
+    return (_jsxs("span", { title: DESCRIPTION[source], "data-source": source, className: cn('inline-flex items-center shrink-0 align-middle leading-none', isOverride ? 'text-cyan' : 'text-text-muted', className), style: { fontSize: 0 }, children: [_jsx("span", { "aria-hidden": true, className: cn('inline-block h-1.5 w-1.5 rounded-full', isOverride ? 'bg-current' : 'border border-current') }), LABEL[source]] }));
 }
 export function ClearOverride({ fallsBackTo, onClear, disabled, className }) {
     return (_jsx("button", { type: "button", onClick: onClear, disabled: disabled, title: `Remove this device's value and use the ${LABEL[fallsBackTo].toLowerCase()} one instead.`, className: cn('shrink-0 h-10 px-3 rounded-md text-[13px] font-semibold text-text-secondary', 'hover:text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer', className), children: "Clear override" }));

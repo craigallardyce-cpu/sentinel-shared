@@ -120,14 +120,19 @@ describe('StatusPill', () => {
     expect(screen.getByText('Instruments')).toBeInTheDocument();
   });
 
-  it('pulses only for an alarm', () => {
-    for (const status of ['ok', 'warning', 'offline', 'info'] as const) {
+  it('pulses only for a state that wants attention (alarm, and warning until Wave 2)', () => {
+    for (const status of ['ok', 'offline', 'info'] as const) {
       const { container, unmount } = render(<StatusPill status={status} pulse>x</StatusPill>);
       expect(container.querySelector('.animate-ping'), status).toBeNull();
       unmount();
     }
-    const { container } = render(<StatusPill status="alarm" pulse>Sync error</StatusPill>);
-    expect(container.querySelector('.animate-ping')).not.toBeNull();
+    for (const status of ['alarm', 'warning'] as const) {
+      const { container, unmount } = render(<StatusPill status={status} pulse>x</StatusPill>);
+      expect(container.querySelector('.animate-ping'), status).not.toBeNull();
+      unmount();
+    }
+    const { container } = render(<StatusPill status="alarm">No pulse asked</StatusPill>);
+    expect(container.querySelector('.animate-ping')).toBeNull();
   });
 
   it('draws no box around a HeaderGroup either', () => {
@@ -137,12 +142,23 @@ describe('StatusPill', () => {
 });
 
 describe('ScopeBadge', () => {
-  it('is a dot that still names its scope for a screen reader and a tooltip', () => {
+  it('draws only a dot, but still carries its scope as text and a tooltip', () => {
     render(<ScopeBadge source="device" />);
-    const dot = screen.getByRole('img', { name: 'This device' });
-    expect(dot.textContent).toBe('');
-    expect(dot.getAttribute('title')).toMatch(/^This device: /);
+    const badge = screen.getByText('This device');
+    // The word is there for a screen reader, drawn at zero size.
+    expect(badge.style.fontSize).toBe('0px');
+    expect(badge.getAttribute('title')).toMatch(/overriding/);
+    const dot = badge.querySelector('[aria-hidden]')!;
     expect(dot.className).toContain('rounded-full');
+    expect(dot.className).toContain('h-1.5');
+  });
+
+  it('fills the dot for an override and hollows it for an inherited layer', () => {
+    const { container: device } = render(<ScopeBadge source="device" />);
+    expect(device.querySelector('[aria-hidden]')!.className).toContain('bg-current');
+    const { container: vessel } = render(<ScopeBadge source="vessel" />);
+    expect(vessel.querySelector('[aria-hidden]')!.className).toContain('border');
+    expect(vessel.querySelector('[aria-hidden]')!.className).not.toContain('bg-current');
   });
 
   it('still hides for an untouched value', () => {

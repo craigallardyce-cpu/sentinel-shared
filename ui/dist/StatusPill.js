@@ -32,7 +32,7 @@ const WORD = {
  */
 export function StatusPill({ status, children, pulse = false, compact = false, size = 'sm', className, title }) {
     const c = STATUS_CLASS[status];
-    const pulsing = pulse && status === 'alarm';
+    const pulsing = pulse && (status === 'alarm' || status === 'warning');
     const dot = (_jsxs("span", { className: "relative flex h-2 w-2 shrink-0", "aria-hidden": true, children: [pulsing && _jsx("span", { className: cn('absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping', c.dot) }), _jsx("span", { className: cn('relative inline-flex h-2 w-2 rounded-full', c.dot) })] }));
     if (compact) {
         return (_jsx("span", { className: cn('inline-flex items-center', className), title: title, role: "img", "aria-label": title ?? status, children: dot }));

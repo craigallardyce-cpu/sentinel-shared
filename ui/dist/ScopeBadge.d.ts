@@ -26,9 +26,10 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * muted word, and on a tab where several values are device-set it still put
  * "This device" on row after row (fit-and-finish X5). It is a 6px dot now,
  * beside the label: filled for an override (this device, this PC), hollow for
- * an inherited layer. The layer's name is the dot's accessible name and its
- * tooltip, so it is still announced, and the dialog explains the dot once, in
- * its header (SettingsShell's `scopeLegend`).
+ * an inherited layer, and only an override takes the accent. The layer's name
+ * is still in the element -- set at zero size, so a screen reader announces it
+ * and nothing is drawn -- and in the tooltip. The dialog explains the dot once,
+ * in its header (SettingsShell's `scopeLegend`).
  */
 export interface ScopeBadgeProps {
     source: SettingSource;
