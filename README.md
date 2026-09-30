@@ -254,9 +254,11 @@ import { WarningsBanner } from '@sentinel/weather-ui';
   `checkedAt` (warnings from the last good check, with their age), `partial`
   (read from forecast wording), `onOpenForecast`. Harbor's `usingChartCentre`
   adds the "Chart centre" qualifier.
-- Tokens only: a solid `bg-bg-panel` band, `--radius-xl`, `--panel-shadow`, no
-  backdrop blur, severity on the stroke and in the `-dim` count chip. Night mode
-  needs nothing. Tailwind classes, so an app must `@source` this package's
+- Drawn as the approved board (`OceanNightAfter`) draws it: a glass surface
+  (`--bg-panel-glass` behind a 16px backdrop blur, `-webkit-` form included),
+  `--radius-xl`, 48px tall, no shadow, a 1px border of the severity colour at
+  40%, the event name in the severity colour. Tokens only, so night mode needs
+  nothing. Tailwind classes, so an app must `@source` this package's
   `dist` (both consumers already do). No new runtime imports: `react` and
   `lucide-react` only.
 
