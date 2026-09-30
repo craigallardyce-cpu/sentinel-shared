@@ -45,10 +45,12 @@ One import gives an app the whole fleet look:
 
 | File | What it is |
 |---|---|
-| `tokens.css` | Raw values — surfaces, text, border, accent and status colours, fonts, glass, safe-area insets. The only place a hex should live. |
-| `roles.css` | `@theme inline reference` map from tokens to Tailwind utilities: `bg-bg-card`, `text-cyan`, `bg-primary`, `font-heading`… Role meanings are fixed: **primary = cyan accent, secondary = orange, tertiary = warning (amber), error = red (alarm)**. |
+| `tokens.css` | Raw values — surfaces, text, border, accent and status colours, fonts, radii, spacing, the one shadow, glass, motion, safe-area insets. The only place a hex should live. Three radii: 8px for a control (`--radius-md`), 16px for a floating surface (`--radius-xl`), full for pills and dots. Spacing is `--space-1`…`--space-8` (4, 8, 12, 16, 24, 32, 48, 64 px), deliberately not mapped into Tailwind's `p-*`/`m-*`. Nothing glows: the `--color-*-glow` tokens are transparent and deprecated. |
+| `roles.css` | `@theme inline reference` map from tokens to Tailwind utilities: `bg-bg-card`, `text-cyan`, `bg-primary`, `font-heading` (Inter), `font-wordmark` (Outfit, the wordmark only)… Role meanings are fixed: **primary = cyan accent, secondary = orange, tertiary = warning (amber), error = red (alarm)**. |
 | `night.css` | `.theme-night` / `.night-mode` red-shifted overrides. ok / warning / alarm keep three distinct luminances. |
-| `glass.css` | `.glass-panel`, `.glass-divider`, `.glass-btn[-active]`, `.custom-scrollbar`. |
+| `type.css` | The type scale: reading 13 / 15 / 20 / 28 in Inter, instrument 15 / 24 / 40 in JetBrains Mono, 13px floor. `text-label` (sentence case) and `text-instrument-label` (uppercase, over an instrument); `text-label-caps` is deprecated. |
+| `glass.css` | `.glass-panel`, `.glass-divider`, `.glass-btn[-active]`, `.custom-scrollbar`. Neutral hairline border, no glows. |
+| `motion.css` | `sentinel-fade` / `sentinel-rise` keyframes; 120ms for a state change, 200ms for a surface entering, on `cubic-bezier(0.2, 0, 0, 1)`. |
 
 Status colours carry meaning and must come from the tokens, never the Tailwind
 palette: `green` = ok, `warning`/`amber` = warning, `red` = alarm, `text-muted` =

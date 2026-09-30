@@ -8,19 +8,33 @@
  * on a heeled boat, in spray, sometimes through gloves, often on a plotter
  * mounted further away than a laptop ever is.
  *
- * These rules are HarborSentinel's — it was the only app with a scale, defined
- * locally in its own index.css — hoisted here so all three share them, with the
- * two smallest steps raised to a 12px floor.
+ * These rules began as HarborSentinel's — it was the only app with a scale —
+ * and were tightened fleet-wide by fit-and-finish (2026-09-30) to fewer steps,
+ * each at least 1.3x the one below it so the levels stay distinct at a glance:
  *
- * THE FLOOR IS 12px. Nothing in a Sentinel app renders below it. The drift
- * checker fails a build that introduces `text-[Npx]` under 12, because that is
- * how the fleet got here the first time.
+ *   reading     13, 15, 20, 28   Inter 400 (text) / 600 (headings, labels)
+ *   instrument  15, 24, 40       JetBrains Mono 500 (data) / 700 (readouts)
+ *
+ * One face for words, one for numbers: `--font-heading` is Inter now, and mono
+ * is for numbers, coordinates and times only.
+ *
+ * THE FLOOR IS 13px for every class in this file. The drift checker still fails
+ * a hand-written `text-[Npx]` only below 12 until the apps have moved (Wave 3 of
+ * fit-and-finish raises it to 13, with VesselKeeper's phone layout keeping 12).
  *
  * Two scales, kept apart on purpose. The reading scale (headline/body/label)
  * answers "what is this?" at conversational distance. The instrument scale
  * (data-mono/readout) answers "what is the number?" from across the cockpit.
  * They are sized for different viewing distances, and merging them is precisely
  * how the labels around the big numbers ended up at 10px.
+ *
+ * Class names predate the new steps and are kept, so every existing use moves to
+ * the nearest step without an app edit:
+ *   text-headline-lg  28/700 -> 28/600    text-data-mono-lg  16/500 -> 15/500
+ *   text-headline-md  20/600 -> 20/600    text-data-mono-md  13/500 -> 15/500
+ *   text-body-lg      16/400 -> 15/400    text-readout       40/700 -> 40/700
+ *   text-body-md      14/400 -> 15/400    text-label-caps    12/700 -> 13/600
+ *   text-body-sm      13/400 -> 13/400      (deprecated; see below)
  *
  * Related: `font-size-adjust` is NOT set here. HarborSentinel carried
  * `font-size-adjust: 0.5` while the other two apps carried nothing, so the same
@@ -29,16 +43,18 @@
  * all three apps at once.
  */
 
-/* ---- Reading scale ---------------------------------------------------- */
+/* ---- Reading scale: 13 / 15 / 20 / 28 -------------------------------- */
 
+/* Screen title. */
 @utility text-headline-lg {
   font-family: var(--font-heading);
   font-size: 28px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 36px;
   letter-spacing: -0.02em;
 }
 
+/* Section and dialog title. */
 @utility text-headline-md {
   font-family: var(--font-heading);
   font-size: 20px;
@@ -47,22 +63,24 @@
   letter-spacing: -0.01em;
 }
 
+/* Body. Was 16px; lg and md are one step now. */
 @utility text-body-lg {
   font-family: var(--font-sans);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
-  line-height: 24px;
+  line-height: 22px;
 }
 
+/* Body. Was 14px. */
 @utility text-body-md {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 22px;
 }
 
-/* Was 12px/16px. The smallest reading size in the fleet — hints, descriptions,
-   the second line of a settings row. */
+/* Caption: hints, descriptions, the second line of a settings row. The
+   smallest reading size in the fleet. */
 @utility text-body-sm {
   font-family: var(--font-sans);
   font-size: 13px;
@@ -70,38 +88,73 @@
   line-height: 18px;
 }
 
-/* Was 11px/16px, and the single most-copied size in the fleet. Field labels,
-   scope badges, header buttons, dock footers. At 11px uppercase with 0.05em
-   tracking it was the hardest string on the screen to read; 12px is the floor. */
+/* A field label, a table head, a group heading. Sentence case: capitals are
+   reserved for labels over instruments. */
+@utility text-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+/* The quiet label over an instrument reading (DEPTH, WIND, DIST). Uppercase is
+   the marine-display convention there, and only there. */
+@utility text-instrument-label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* DEPRECATED (fit-and-finish, 2026-09-30): delete after the first weekly
+   release that carries this change. Each use moves by hand to `text-label`
+   (sentence case) or `text-instrument-label` (over an instrument). Kept with its
+   old casing and tracking so nothing changes case before that decision is
+   made; raised from 12px/700 to the 13px floor and the 600 label weight. */
 @utility text-label-caps {
   font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-/* ---- Instrument scale ------------------------------------------------- */
+/* ---- Instrument scale: 15 / 24 / 40 ---------------------------------- */
 
+/* Data: coordinates, times, a number in a table or a row. Was 16px. */
 @utility text-data-mono-lg {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
-  line-height: 24px;
+  line-height: 22px;
 }
 
+/* Was 13px, below the instrument scale's smallest step; it is the data step
+   now, the same as data-mono-lg. */
 @utility text-data-mono-md {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 22px;
+}
+
+/* A reading on an instrument panel: a bearing, a wind speed, a depth in a
+   cell of the strip or the HUD, under a text-instrument-label. New with
+   fit-and-finish; the step between data and readout. */
+@utility text-instrument {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 30px;
+  letter-spacing: -0.01em;
 }
 
 /* The one number on a screen that is meant to be read from the far side of the
-   cockpit: distance from anchor, depth, speed over ground. Both apps already
-   render these enormous — Harbor's distance readout and Ocean's depth — but each
-   picked its own size inline. Named, so the next one matches. */
+   cockpit: distance from anchor, depth, speed over ground, and the instrument
+   strip. Named, so every one matches. */
 @utility text-readout {
   font-family: var(--font-mono);
   font-size: 40px;

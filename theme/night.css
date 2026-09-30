@@ -31,29 +31,32 @@
   /* Accent: lighter and less saturated than alarm */
   --color-cyan: #ff7b7b;
   --color-cyan-dim: #5c0d0d;
-  --color-cyan-glow: rgba(255, 123, 123, 0.15);
+  --color-cyan-glow: transparent; /* DEPRECATED: see "Glows" in tokens.css */
 
   /* ok: dim, muted */
   --color-green: #b85a5a;
   --color-green-dim: #3a0f0f;
-  --color-green-glow: rgba(184, 90, 90, 0.15);
+  --color-green-glow: transparent; /* DEPRECATED: see "Glows" in tokens.css */
 
   --color-orange: #ff7300;
   --color-orange-dim: #7a3000;
-  --color-orange-glow: rgba(255, 115, 0, 0.15);
+  --color-orange-glow: transparent; /* DEPRECATED: see "Glows" in tokens.css */
 
   /* warning: amber */
   --color-amber: #ffaa00;
   --color-amber-dim: #7a5500;
-  --color-amber-glow: rgba(255, 170, 0, 0.15);
+  --color-amber-glow: transparent; /* DEPRECATED: see "Glows" in tokens.css */
 
   /* alarm: bright, saturated */
   --color-red: #ff3838;
   --color-red-dim: #93000a;
-  --color-red-glow: rgba(255, 56, 56, 0.15);
+  --color-red-glow: transparent; /* DEPRECATED: see "Glows" in tokens.css */
 
   --bg-panel-glass: rgba(19, 5, 5, 0.75);
-  --border-color-glass: rgba(255, 56, 56, 0.25);
+  /* The glass border is the neutral hairline in both modes, so at night it
+     follows the red-shifted --border-color above rather than a brighter red of
+     its own. DEPRECATED alias, as in tokens.css. */
+  --border-color-glass: var(--border-color);
 }
 
 /*

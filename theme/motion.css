@@ -1,18 +1,34 @@
 /*
  * Shared motion for @sentinel/ui (modal scrim, panel rise, toasts). Used via
- * Tailwind arbitrary animations, e.g. `animate-[sentinel-rise_200ms_cubic-bezier(0.16,1,0.3,1)]`.
+ * Tailwind arbitrary animations, e.g.
+ * `animate-[sentinel-rise_200ms_cubic-bezier(0.2,0,0,1)]`.
+ *
+ * Two durations on one curve, carried as tokens in tokens.css:
+ *   --motion-state  120ms  a state change (hover, press, toggle)
+ *   --motion-enter  200ms  a surface entering (modal, toast, popover)
+ *   --motion-ease   cubic-bezier(0.2, 0, 0, 1) for both
+ * Motion shows where something came from; it never decorates. The rise moves a
+ * surface up from where it will sit and does not scale it: a panel that grows
+ * as it arrives reads as zooming, not arriving.
  */
 @keyframes sentinel-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 @keyframes sentinel-rise {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
+
+/*
+ * Matched by prefix rather than by the exact class, so it holds whatever
+ * duration and easing a component writes after the keyframe name — the
+ * previous exact selectors went stale the moment a primitive retimed its
+ * animation.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .animate-\[sentinel-fade_150ms_ease-out\],
-  .animate-\[sentinel-rise_200ms_cubic-bezier\(0\.16\,1\,0\.3\,1\)\] {
+  [class*="animate-[sentinel-fade"],
+  [class*="animate-[sentinel-rise"] {
     animation: none;
   }
 }

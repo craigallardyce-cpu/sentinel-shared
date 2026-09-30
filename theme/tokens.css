@@ -16,7 +16,10 @@
  */
 :root {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  --font-heading: 'Outfit', 'Inter', sans-serif;
+  /* One face for words, one for numbers (fit-and-finish X1). Headings are Inter,
+     like the text around them; Outfit survives only in the wordmark. */
+  --font-heading: 'Inter', sans-serif;
+  --font-wordmark: 'Outfit', 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   /* Native controls are painted by the OS, not by us, so they have to be told
@@ -48,56 +51,99 @@
   /* Accent */
   --color-cyan: #4cd7f6;
   --color-cyan-dim: #00424e;
-  --color-cyan-glow: rgba(76, 215, 246, 0.15);
+  --color-cyan-glow: transparent; /* DEPRECATED: see "Glows" */
 
   /* Status: ok */
   --color-green: #22c55e;
   --color-green-dim: #052e16;
-  --color-green-glow: rgba(34, 197, 94, 0.15);
+  --color-green-glow: transparent; /* DEPRECATED: see "Glows" */
 
   /* Secondary accent (data highlights, not a status colour) */
   --color-orange: #ffb690;
   --color-orange-dim: #7a3000;
-  --color-orange-glow: rgba(255, 182, 144, 0.15);
+  --color-orange-glow: transparent; /* DEPRECATED: see "Glows" */
 
   /* Status: warning. Was #03b5d3 (a cyan) until v2.8.x — every token-styled
      warning rendered as the accent. `--color-warning` is the preferred name;
      `--color-amber` remains as an alias for existing classes. */
   --color-amber: #ffaa00;
   --color-amber-dim: #5c3d00;
-  --color-amber-glow: rgba(255, 170, 0, 0.15);
+  --color-amber-glow: transparent; /* DEPRECATED: see "Glows" */
   --color-warning: var(--color-amber);
   --color-warning-dim: var(--color-amber-dim);
-  --color-warning-glow: var(--color-amber-glow);
+  --color-warning-glow: var(--color-amber-glow); /* DEPRECATED: see "Glows" */
 
   /* Status: alarm */
   --color-red: #ff3838;
   --color-red-dim: #93000a;
-  --color-red-glow: rgba(255, 56, 56, 0.15);
+  --color-red-glow: transparent; /* DEPRECATED: see "Glows" */
 
-  /* Corner radius, with the meanings fixed so the choice stops being ad hoc.
-     `rounded-md` was used 324 times fleet-wide, `rounded-lg` 206 and `rounded-xl`
-     158, with nothing anywhere saying which was for what — so the same kind of
-     surface got a different corner in each app. Three sizes carry meaning:
-       control (buttons, inputs, chips, small tiles) -> --radius-md   6px
-       card    (a panel of content inside a surface) -> --radius-lg   8px
-       panel   (a floating surface: header, dock,
-                modal, the glass containers)         -> --radius-xl  12px
-     `sm` is for hairline chips only, `full` for pills and dots. Hoisted from
-     HarborSentinel, which was the only app that pinned these rather than
-     inheriting whatever Tailwind's defaults happened to be that major version. */
-  --radius-sm: 0.125rem;
-  --radius-default: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
+  /* Glows. State is carried by fill and stroke, never by a halo, so the five
+     `--color-*-glow` tokens (and `--color-warning-glow`, which aliases amber)
+     are transparent: anything still built from one renders flat instead of
+     failing to build. DEPRECATED (fit-and-finish, 2026-09-30): delete them
+     after the first weekly release that carries this change, once the apps
+     and @sentinel/ui have dropped their last `var(--color-*-glow)`. night.css
+     mirrors this. */
+
+  /* Corner radius: three values, each with one job.
+       8px   control  (button, input, chip, tile, menu row)  -> --radius-md
+       16px  surface  (a floating panel: header, dock, modal,
+                       popover, the glass containers)        -> --radius-xl
+       full  pill and dot                                    -> --radius-full
+     Corners are concentric: a surface's radius is its control radius plus its
+     padding (8 + 8 = 16), so a button sitting in a panel's padding has a corner
+     that runs parallel to the panel's own.
+     `sm`, `default` and `lg` now equal the control radius, so every existing
+     `rounded-sm`, `rounded` and `rounded-lg` lands on 8px. They are DEPRECATED
+     aliases of `--radius-md` (fit-and-finish, 2026-09-30) and go after the
+     first weekly release that carries this change, once the apps use only
+     `rounded-md`, `rounded-xl` and `rounded-full`. */
+  --radius-sm: 0.5rem;      /* DEPRECATED alias of --radius-md */
+  --radius-default: 0.5rem; /* DEPRECATED alias of --radius-md */
+  --radius-md: 0.5rem;
+  --radius-lg: 0.5rem;      /* DEPRECATED alias of --radius-md */
+  --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  /* Shadow & Blur effects */
-  --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  /* Spacing: one 4px-based scale.
+       4–8   inside a control    --space-1, --space-2
+       8–12  between controls    --space-2, --space-3
+       24    between groups      --space-5
+       48    between sections    --space-7
+     Deliberately NOT mapped into Tailwind's `--spacing` in roles.css: that
+     would move every `p-*`, `m-*` and `gap-*` utility in all three apps at
+     once. Use them in hand-written CSS and arbitrary values
+     (`gap-[var(--space-5)]`). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Elevation: one shadow, for surfaces floating over the chart, where it
+     separates the panel from busy chart detail. Every other shadow the theme
+     draws uses this one; nothing glows. */
+  --panel-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+  /* Glass: earns its keep only over the chart. Its border is the neutral
+     hairline, not the accent — a cyan border was the accent used as
+     ornament. `--border-color-glass` is a DEPRECATED alias of --border-color
+     (fit-and-finish, 2026-09-30), kept for anything that still names it; it
+     goes after the first weekly release that carries this change. */
   --glass-blur: blur(8px);
   --bg-panel-glass: rgba(17, 28, 45, 0.75);
-  --border-color-glass: rgba(76, 215, 246, 0.2);
+  --border-color-glass: var(--border-color);
+
+  /* Motion: two durations on one curve. 120ms for a state change (hover,
+     press, toggle), 200ms for a surface entering (modal, toast, popover).
+     Motion shows where something came from; it never decorates. */
+  --motion-state: 120ms;
+  --motion-enter: 200ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
 
   /* Device safe areas (notches, gesture bars). Per-app layout classes build on these. */
   --safe-area-top: env(safe-area-inset-top, 0px);
