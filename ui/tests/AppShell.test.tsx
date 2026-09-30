@@ -144,9 +144,11 @@ describe('StatusPill', () => {
 describe('ScopeBadge', () => {
   it('draws only a dot, but still carries its scope as text and a tooltip', () => {
     render(<ScopeBadge source="device" />);
-    const badge = screen.getByText('This device');
-    // The word is there for a screen reader, drawn at zero size.
-    expect(badge.style.fontSize).toBe('0px');
+    const word = screen.getByText('This device');
+    // The word is there for a screen reader, visually hidden.
+    expect(word.className).toContain('sr-only');
+    expect(word.getAttribute('title')).toMatch(/overriding/);
+    const badge = word.parentElement!;
     expect(badge.getAttribute('title')).toMatch(/overriding/);
     const dot = badge.querySelector('[aria-hidden]')!;
     expect(dot.className).toContain('rounded-full');

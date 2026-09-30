@@ -147,7 +147,7 @@ Still accepted so every app compiles; delete after the apps have moved off them.
 | `AppShell` `dockFooter` | not rendered; the version lives in Settings > About |
 | `ShellTab.shortLabel` | ignored; the tab bar shows the full `label` |
 | `SettingsTab.icon`, `SettingsSection` `icon` | not drawn |
-| `StatusPill` `pulse` on `warning` | still pulses (HarborSentinel's GPS pill relies on it); on `ok`, `info` and `offline` it is ignored. After Wave 2 only `alarm` pulses |
+| `StatusPill` `pulse` on `warning` | interim: still pulses (HarborSentinel's GPS pill test pins it); on `ok`, `info` and `offline` it is ignored. Wave 3 makes the pulse alarm-only |
 
 ### `openExternal(url)`
 

@@ -47,10 +47,11 @@ export interface StatusPillProps {
    * and, for now, `warning`; ignored for `ok`, `info` and `offline`, so
    * "syncing" and "listening" draw a still dot.
    *
-   * Fit-and-finish X5 says only alarms pulse. `warning` still pulses because
-   * HarborSentinel's Device GPS pill pulses while acquiring and its tests pin
-   * that; @deprecated for `warning` — Wave 2 moves the apps off it, and then
-   * this narrows to `alarm` alone.
+   * INTERIM (fit-and-finish Wave 1b): X5 says only alarms pulse. `warning`
+   * still pulses because HarborSentinel's Device GPS pill pulses while
+   * acquiring and its `tests/connectionStatusPill.test.tsx:56` pins that.
+   * HarborSentinel's Wave 2 PR changes that test; Wave 3 makes the pulse
+   * alarm-only here. @deprecated for `warning`.
    */
   pulse?: boolean;
   /** Dot only, no label — for tight HUD spots. Provide `title` for a tooltip. */
@@ -67,6 +68,7 @@ export interface StatusPillProps {
  */
 export function StatusPill({ status, children, pulse = false, compact = false, size = 'sm', className, title }: StatusPillProps) {
   const c = STATUS_CLASS[status];
+  // INTERIM: `warning` goes in Wave 3 (see `pulse` above).
   const pulsing = pulse && (status === 'alarm' || status === 'warning');
   const dot = (
     <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
