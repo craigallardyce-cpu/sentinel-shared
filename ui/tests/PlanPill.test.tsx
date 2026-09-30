@@ -98,7 +98,8 @@ describe('PlanPill', () => {
 
     const { container: healthy } = render(<PlanPill planLabel="Premium Suite" trial daysLeft={20} onManage={vi.fn()} />);
     expect(healthy.querySelector('.text-warning')).toBeNull();
-    expect(healthy.querySelector('.text-cyan')).toBeTruthy();
+    // The running trial is `info`: the dot carries the accent, the word stays quiet.
+    expect(healthy.querySelector('.bg-cyan')).toBeTruthy();
   });
 
   it('keeps a paid plan quieter than any status the header carries', () => {

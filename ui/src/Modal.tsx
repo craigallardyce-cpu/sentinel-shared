@@ -27,7 +27,14 @@ export interface ModalProps {
   bodyClassName?: string;
   /** Class for the panel. */
   className?: string;
-  /** Draws the panel with the alarm treatment (red border + glow). */
+  /**
+   * A strip between the header and the scrolling body that does not scroll
+   * with it -- a tab strip, typically (SettingsShell's). When set, the header
+   * drops its own bottom hairline, so the strip's is the only line between the
+   * title and the content.
+   */
+  subheader?: React.ReactNode;
+  /** Draws the panel with the alarm treatment (red border). */
   tone?: 'default' | 'danger';
   children?: React.ReactNode;
 }
@@ -62,6 +69,7 @@ export function Modal({
   hideClose = false,
   bodyClassName,
   className,
+  subheader,
   tone = 'default',
   children,
 }: ModalProps) {
@@ -126,7 +134,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center bg-bg-lowest/80 backdrop-blur-sm animate-[sentinel-fade_150ms_ease-out]"
+      className="fixed inset-0 flex items-center justify-center bg-bg-lowest/80 backdrop-blur-sm animate-[sentinel-fade_200ms_cubic-bezier(0.2,0,0,1)]"
       style={{
         zIndex: MODAL_Z,
         paddingTop: 'calc(1rem + var(--safe-area-top, 0px))',
@@ -146,37 +154,40 @@ export function Modal({
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={cn(
-          'w-full flex flex-col max-h-full rounded-xl border shadow-[0_8px_32px_rgba(0,0,0,0.5)] outline-none',
-          'bg-bg-panel text-text-primary animate-[sentinel-rise_200ms_cubic-bezier(0.16,1,0.3,1)]',
-          tone === 'danger' ? 'border-red/50 shadow-[0_0_24px_var(--color-red-glow)]' : 'border-border-color',
+          // One radius for a floating surface (16px) and the one shadow the
+          // theme draws. The alarm tone is a red stroke, not a red halo.
+          'w-full flex flex-col max-h-full rounded-xl border [box-shadow:var(--panel-shadow)] outline-none',
+          'bg-bg-panel text-text-primary animate-[sentinel-rise_200ms_cubic-bezier(0.2,0,0,1)]',
+          tone === 'danger' ? 'border-red/50' : 'border-border-color',
           SIZE[size],
           className
         )}
       >
         {(title || !hideClose) && (
-          <header className="flex items-start gap-3 px-5 pt-4 pb-3 border-b border-border-color/60">
-            {icon && <span className={cn('mt-0.5 shrink-0', tone === 'danger' ? 'text-red' : 'text-cyan')}>{icon}</span>}
-            <div className="min-w-0 flex-1">
+          <header className={cn('flex items-start gap-3 pl-6 pr-3 pt-5 pb-4', !subheader && 'border-b border-border-color/60')}>
+            {icon && <span className={cn('mt-1.5 shrink-0', tone === 'danger' ? 'text-red' : 'text-cyan')}>{icon}</span>}
+            <div className="min-w-0 flex-1 pt-2">
               {title && (
-                <h2 id={titleId} className="font-heading font-semibold text-base leading-tight text-text-primary">
+                <h2 id={titleId} className="font-heading font-semibold text-[20px] leading-7 text-text-primary">
                   {title}
                 </h2>
               )}
               {description && (
-                <p id={descId} className="text-xs text-text-muted mt-1">
+                <p id={descId} className="text-[13px] leading-5 text-text-muted mt-1.5">
                   {description}
                 </p>
               )}
             </div>
             {!hideClose && (
-              <Button variant="ghost" size="sm" aria-label="Close" onClick={onClose} className="-mr-2 -mt-1 w-10 px-0">
-                <X size={16} />
+              <Button variant="ghost" size="md" aria-label="Close" onClick={onClose} className="w-12 px-0 shrink-0">
+                <X size={20} />
               </Button>
             )}
           </header>
         )}
-        <div className={cn('flex-1 min-h-0 overflow-y-auto custom-scrollbar px-5 py-4', bodyClassName)}>{children}</div>
-        {footer && <footer className="flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-border-color/60">{footer}</footer>}
+        {subheader}
+        <div className={cn('flex-1 min-h-0 overflow-y-auto custom-scrollbar px-6 py-4', bodyClassName)}>{children}</div>
+        {footer && <footer className="flex flex-wrap items-center justify-end gap-2 px-6 pt-4 pb-5 border-t border-border-color/60">{footer}</footer>}
       </div>
     </div>,
     document.body
@@ -228,7 +239,7 @@ export function ConfirmDialog({
         </>
       }
     >
-      {message && <p className="text-sm text-text-secondary leading-relaxed">{message}</p>}
+      {message && <p className="text-[15px] text-text-secondary leading-relaxed">{message}</p>}
     </Modal>
   );
 }

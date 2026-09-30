@@ -25,12 +25,13 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * because inheritance is the ordinary case and the thing worth noticing is the
  * value that departs from it.
  *
- * Quiet means quiet. This was a bordered chip in bold uppercase mono, and on a
- * settings tab where several values are device-set it drew a row of small cyan
- * boxes that pulled the eye harder than the settings themselves -- a caption
- * shouting over its own subject. It is a caption now: small, muted, sentence
- * case, no border and no fill. An override keeps the accent, because that is the
- * one this exists to point at, but as ink rather than as a box.
+ * Quiet means quiet. This was a bordered chip in bold uppercase mono, then a
+ * muted word, and on a tab where several values are device-set it still put
+ * "This device" on row after row (fit-and-finish X5). It is a 6px dot now,
+ * beside the label: filled for an override (this device, this PC), hollow for
+ * an inherited layer. The layer's name is the dot's accessible name and its
+ * tooltip, so it is still announced, and the dialog explains the dot once, in
+ * its header (SettingsShell's `scopeLegend`).
  */
 export interface ScopeBadgeProps {
   source: SettingSource;
@@ -65,15 +66,16 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }: ScopeBa
 
   return (
     <span
-      title={DESCRIPTION[source]}
+      role="img"
+      aria-label={LABEL[source]}
+      title={`${LABEL[source]}: ${DESCRIPTION[source]}`}
+      data-source={source}
       className={cn(
-        'shrink-0 text-[12px] font-medium leading-none',
-        isOverride ? 'text-cyan/80' : 'text-text-muted',
+        'inline-block shrink-0 h-1.5 w-1.5 rounded-full align-middle',
+        isOverride ? 'bg-text-secondary' : 'border border-text-muted',
         className
       )}
-    >
-      {LABEL[source]}
-    </span>
+    />
   );
 }
 
@@ -100,7 +102,7 @@ export function ClearOverride({ fallsBackTo, onClear, disabled, className }: Cle
       disabled={disabled}
       title={`Remove this device's value and use the ${LABEL[fallsBackTo].toLowerCase()} one instead.`}
       className={cn(
-        'shrink-0 h-8 px-3 rounded-md text-xs text-text-secondary',
+        'shrink-0 h-10 px-3 rounded-md text-[13px] font-semibold text-text-secondary',
         'hover:text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
         className
       )}

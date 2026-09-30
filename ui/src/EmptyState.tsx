@@ -34,7 +34,7 @@ export function EmptyState({ icon, title, description, action, variant = 'panel'
         </span>
       )}
       <p className="font-heading font-semibold text-sm text-text-primary">{title}</p>
-      {description && <p className="mt-1 max-w-xs text-xs text-text-muted leading-relaxed">{description}</p>}
+      {description && <p className="mt-1 max-w-xs text-[13px] text-text-muted leading-relaxed">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

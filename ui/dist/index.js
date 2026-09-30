@@ -10,6 +10,8 @@ export { PlanPill } from './PlanPill';
 export { EmptyState } from './EmptyState';
 export { UnitField } from './UnitField';
 export { Stepper } from './Stepper';
+export { InstrumentCell } from './InstrumentCell';
+export { Tabs } from './Tabs';
 export { useAppUpdater } from './useAppUpdater';
 export { UpdatePanel } from './UpdatePanel';
 export { ScopeBadge, ClearOverride } from './ScopeBadge';

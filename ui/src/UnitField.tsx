@@ -13,8 +13,8 @@ import { cn } from './cn';
  * `<input>` inside a styled `<div>` instead, and why the fleet has several
  * slightly different versions of the same cell.
  *
- * The control is still 44px, because these are touched at anchor. The saving
- * against `Input` is the chrome around it, not the target itself.
+ * The control is 48px, the fleet's input height, because these are touched at
+ * anchor. The saving against `Input` is the chrome around it, not the target.
  *
  * ```tsx
  * <UnitField label="Scope" icon={<Ruler size={14} />} unit=":1"
@@ -62,7 +62,7 @@ export const UnitField = React.forwardRef<HTMLInputElement, UnitFieldProps>(func
       {label && (
         <label
           htmlFor={id}
-          className="mb-1 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-text-muted"
+          className="mb-1.5 flex items-center gap-1.5 font-sans text-[13px] font-semibold text-text-muted"
         >
           {icon && <span className="shrink-0 text-cyan" aria-hidden>{icon}</span>}
           <span className="truncate">{label}</span>
@@ -73,7 +73,7 @@ export const UnitField = React.forwardRef<HTMLInputElement, UnitFieldProps>(func
           read as one field instead of an input with a label stuck on. */}
       <div
         className={cn(
-          'flex items-center gap-1 h-11 px-2.5 rounded-md bg-bg-lowest border transition-colors',
+          'flex items-center gap-1.5 h-12 px-3 rounded-md bg-bg-lowest border transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]',
           TONE[tone],
           disabled && 'opacity-50',
         )}
@@ -85,7 +85,7 @@ export const UnitField = React.forwardRef<HTMLInputElement, UnitFieldProps>(func
           aria-invalid={tone === 'alarm' ? true : undefined}
           className={cn(
             'w-full min-w-0 bg-transparent border-none outline-none p-0',
-            'font-mono text-sm font-bold tabular-nums',
+            'font-mono text-[15px] font-medium tabular-nums',
             'disabled:cursor-not-allowed placeholder:text-text-muted placeholder:font-normal',
             VALUE_TONE[tone],
             className,
@@ -93,7 +93,7 @@ export const UnitField = React.forwardRef<HTMLInputElement, UnitFieldProps>(func
           {...rest}
         />
         {unit && (
-          <span className="shrink-0 font-mono text-[12px] text-text-muted select-none" aria-hidden>
+          <span className="shrink-0 font-mono text-[13px] text-text-muted select-none" aria-hidden>
             {unit}
           </span>
         )}

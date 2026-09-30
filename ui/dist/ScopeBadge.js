@@ -21,8 +21,8 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }) {
         return null;
     // Narrower than the layers beneath it, so it is the one worth pointing at.
     const isOverride = source === 'device' || source === 'host';
-    return (_jsx("span", { title: DESCRIPTION[source], className: cn('shrink-0 text-[12px] font-medium leading-none', isOverride ? 'text-cyan/80' : 'text-text-muted', className), children: LABEL[source] }));
+    return (_jsx("span", { role: "img", "aria-label": LABEL[source], title: `${LABEL[source]}: ${DESCRIPTION[source]}`, "data-source": source, className: cn('inline-block shrink-0 h-1.5 w-1.5 rounded-full align-middle', isOverride ? 'bg-text-secondary' : 'border border-text-muted', className) }));
 }
 export function ClearOverride({ fallsBackTo, onClear, disabled, className }) {
-    return (_jsx("button", { type: "button", onClick: onClear, disabled: disabled, title: `Remove this device's value and use the ${LABEL[fallsBackTo].toLowerCase()} one instead.`, className: cn('shrink-0 h-8 px-3 rounded-md text-xs text-text-secondary', 'hover:text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer', className), children: "Clear override" }));
+    return (_jsx("button", { type: "button", onClick: onClear, disabled: disabled, title: `Remove this device's value and use the ${LABEL[fallsBackTo].toLowerCase()} one instead.`, className: cn('shrink-0 h-10 px-3 rounded-md text-[13px] font-semibold text-text-secondary', 'hover:text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer', className), children: "Clear override" }));
 }

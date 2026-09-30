@@ -36,7 +36,7 @@ describe('Button layout="bare"', () => {
     expect(leaked()).toEqual([]);
   });
 
-  it('keeps the colours, focus ring and the 44px floor by default', () => {
+  it('keeps the colours, focus ring and the 48px floor by default', () => {
     render(
       <Button layout="bare" className="w-full flex justify-between items-center px-3 py-2">
         <span>Kestrel</span>
@@ -44,9 +44,9 @@ describe('Button layout="bare"', () => {
       </Button>
     );
     const cls = tokens(screen.getByRole('button'));
-    expect(cls).toContain('bg-bg-card');
+    expect(cls).toContain('border-border-color');
     expect(cls).toContain('focus-visible:ring-2');
-    expect(cls).toContain('min-h-11');
+    expect(cls).toContain('min-h-12');
     expect(cls).toContain('justify-between');
     expect(cls).not.toContain('justify-center');
     expect(cls).not.toContain('inline-flex');
@@ -54,23 +54,23 @@ describe('Button layout="bare"', () => {
 
   it('drops the floor only when asked', () => {
     render(<Button layout="bare" touchFloor={false}>Go</Button>);
-    expect(tokens(screen.getByRole('button'))).not.toContain('min-h-11');
+    expect(tokens(screen.getByRole('button'))).not.toContain('min-h-12');
   });
 
   it('ignores size, whose height and padding would outrank the caller', () => {
     render(<Button layout="bare" size="md">Go</Button>);
     const cls = tokens(screen.getByRole('button'));
-    expect(cls).not.toContain('h-11');
-    expect(cls).not.toContain('px-4');
+    expect(cls).not.toContain('h-12');
+    expect(cls).not.toContain('px-5');
   });
 
-  it('leaves the default layout exactly as it was', () => {
+  it('draws the default layout at 48px in Inter 15/600', () => {
     render(<Button>Go</Button>);
     const cls = tokens(screen.getByRole('button'));
-    for (const c of ['inline-flex', 'items-center', 'justify-center', 'font-medium', 'h-11', 'px-4']) {
+    for (const c of ['inline-flex', 'items-center', 'justify-center', 'font-sans', 'font-semibold', 'text-[15px]', 'h-12', 'px-5', 'rounded-md']) {
       expect(cls).toContain(c);
     }
-    expect(cls).not.toContain('min-h-11');
+    expect(cls).not.toContain('min-h-12');
   });
 });
 
@@ -82,7 +82,7 @@ describe('Button variant="link"', () => {
     expect(cls).toContain('bg-transparent');
     expect(cls.filter((c) => /^(?:hover:)?bg-(?!transparent)/.test(c))).toEqual([]);
     expect(cls.filter((c) => /^(?:h|min-h|px|py|p)-/.test(c))).toEqual([]);
-    expect(cls).toContain('text-[13px]');
+    expect(cls).toContain('text-[15px]');
   });
 
   it("sets no font weight, so the caller's `font-bold` has nothing to fight", () => {
@@ -99,7 +99,7 @@ describe('Button variant="link"', () => {
   it('meets the touch floor with a hit area that does not move the layout', () => {
     const { unmount } = render(<Button variant="link">Install app</Button>);
     const cls = tokens(screen.getByRole('button'));
-    expect(cls).toContain('before:h-11');
+    expect(cls).toContain('before:h-12');
     expect(cls).toContain('relative');
     unmount();
 

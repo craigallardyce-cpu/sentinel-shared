@@ -14,17 +14,18 @@ interface FieldChrome {
   fieldClassName?: string;
 }
 
-// h-11 tracks Button's `md`. These sit next to each other in every form and in
-// every modal footer, so the two heights are one decision, not two.
+// h-12 (48px) tracks Button's `md`. These sit next to each other in every form
+// and in every modal footer, so the two heights are one decision, not two.
 const CONTROL =
-  'w-full h-11 px-3 text-sm rounded-lg bg-bg-lowest text-text-primary placeholder:text-text-muted border transition-colors ' +
+  'w-full h-12 px-3 font-sans text-[15px] rounded-md bg-bg-lowest text-text-primary placeholder:text-text-muted border ' +
+  'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)] ' +
   'focus:outline-none focus:ring-2 focus:ring-cyan/40 disabled:opacity-50 disabled:cursor-not-allowed';
 const CONTROL_OK = 'border-border-color focus:border-cyan';
 const CONTROL_ERR = 'border-red focus:border-red focus:ring-red/30';
 
 function Label({ htmlFor, required, children }: { htmlFor: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="block text-xs font-medium text-text-secondary mb-1.5">
+    <label htmlFor={htmlFor} className="block font-sans text-[13px] font-semibold text-text-muted mb-1.5">
       {children}
       {required && <span className="text-red ml-0.5" aria-hidden>*</span>}
     </label>
@@ -34,7 +35,7 @@ function Label({ htmlFor, required, children }: { htmlFor: string; required?: bo
 function Below({ id, hint, error }: { id: string; hint?: React.ReactNode; error?: React.ReactNode }) {
   if (!hint && !error) return null;
   return (
-    <p id={id} className={cn('mt-1.5 text-xs', error ? 'text-red' : 'text-text-muted')} role={error ? 'alert' : undefined}>
+    <p id={id} className={cn('mt-1.5 text-[13px]', error ? 'text-red' : 'text-text-muted')} role={error ? 'alert' : undefined}>
       {error || hint}
     </p>
   );
@@ -68,7 +69,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
           className={cn(CONTROL, error ? CONTROL_ERR : CONTROL_OK, leading && 'pl-9', trailing && 'pr-10', className)}
           {...rest}
         />
-        {trailing && <span className="absolute inset-y-0 right-3 flex items-center text-text-muted text-xs pointer-events-none">{trailing}</span>}
+        {trailing && <span className="absolute inset-y-0 right-3 flex items-center text-text-muted text-[13px] pointer-events-none">{trailing}</span>}
       </div>
       <Below id={descId} hint={hint} error={error} />
     </div>

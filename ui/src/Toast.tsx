@@ -165,8 +165,8 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       onMouseEnter={stop}
       onMouseLeave={start}
       className={cn(
-        'pointer-events-auto flex items-start gap-3 w-full max-w-sm rounded-xl border px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]',
-        'bg-bg-panel/95 backdrop-blur-md text-text-primary animate-[sentinel-rise_200ms_cubic-bezier(0.16,1,0.3,1)]',
+        'pointer-events-auto flex items-start gap-3 w-full max-w-sm rounded-xl border px-4 py-3 [box-shadow:var(--panel-shadow)]',
+        'bg-bg-panel/95 backdrop-blur-md text-text-primary animate-[sentinel-rise_200ms_cubic-bezier(0.2,0,0,1)]',
         k.ring
       )}
     >
@@ -174,8 +174,8 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         {k.icon}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm leading-snug">{item.message}</p>
-        {item.detail && <p className="text-xs text-text-muted mt-1 leading-snug break-words">{item.detail}</p>}
+        <p className="text-[15px] leading-snug">{item.message}</p>
+        {item.detail && <p className="text-[13px] text-text-muted mt-1 leading-snug break-words">{item.detail}</p>}
         {item.action && (
           <button
             type="button"
@@ -183,7 +183,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
               item.action?.onClick();
               onDismiss();
             }}
-            className={cn('mt-2 text-xs font-medium underline-offset-2 hover:underline', k.fg)}
+            className={cn('mt-2 text-[13px] font-semibold underline-offset-2 hover:underline', k.fg)}
           >
             {item.action.label}
           </button>

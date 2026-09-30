@@ -25,7 +25,7 @@ Projects/
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
-| `@sentinel/ui` | UI primitives built on the theme: `Button` (with a lit `active` state, a `dense` size, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField` for instrument cells, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `openExternal(url)` and `openUserGuide(section)` | all three |
+| `@sentinel/ui` | UI primitives built on the theme: `Button` (48/40 px, a lit `active` state, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField`, `InstrumentCell`, `Tabs`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `AppShell`, `SettingsShell`, `openExternal(url)` and `openUserGuide(section)` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
 | `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
@@ -74,18 +74,21 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 
 | Primitive | Replaces |
 |---|---|
-| `Button` — variants below; `dense` / `sm` / `md`, `icon`, `loading`, `block`, `active`, `layout`, `touchFloor` | bespoke Tailwind buttons; ALL-CAPS labels — use sentence case |
-| `Input`, `Select`, `Textarea` (`label`, `hint`, `error`, `required`) | 20+ hand-assembled input class strings; toast-as-validation |
-| `Toggle` | copy-pasted iOS switches |
+| `Button` — variants below; `md` (48 px, default) / `sm` (40 px, dense tables), `icon`, `loading`, `block`, `active`, `layout`, `touchFloor` | bespoke Tailwind buttons; ALL-CAPS labels — use sentence case |
+| `Input`, `Select`, `Textarea` (`label`, `hint`, `error`, `required`) — 48 px, labels 13/600 sentence case | 20+ hand-assembled input class strings; toast-as-validation |
+| `UnitField` — a number with its unit inside a 48 px box, for limits and thresholds | hand-rolled bare `<input>`s in styled `<div>`s |
+| `InstrumentCell` — `label` / `value` / `unit` / `sub`, `size` (`readout` 40 px or `instrument` 24 px), `tone` (`normal` / `warning` / `alarm`), `align`. No box of its own; the caller lays a strip out with hairline dividers | HarborSentinel's instrument strip and OceanSentinel's HUD, which drew the same reading two ways (fit-and-finish X7) |
+| `Tabs` — `items` (`{ id, label, count? }`), `value`, `onChange`, optional `onAdd`/`addLabel`, `idPrefix`. Sentence case, 48 px targets, a 2 px accent stroke under the selected tab, arrow-key navigation | each app's own tab strip, several ways to add a tab (V9) |
+| `Toggle` — 56 × 32 | copy-pasted iOS switches |
 | `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
 | `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
-| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) | ad-hoc emerald/amber/rose/cyan status dots |
+| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) — a dot and a word, no box; only `alarm` pulses | ad-hoc emerald/amber/rose/cyan status dots |
 | `PlanPill` — the plan or trial in the header, built from `StatusPill`, with a `Button` to convert during a trial. Presentational: it takes `planLabel`/`trial`/`daysLeft` and two callbacks, and renders nothing until the plan is known | nothing — the apps showed no plan state at all, so a customer had to leave to find out what they were on |
 | `EmptyState` (`panel` / `inline`) | bare italic sentences in one place, illustrated blocks in another |
 | `Stepper` (moved here from `auth-ui`; token defaults, so wrappers are no longer needed) | three per-app 14-line wrappers |
 | `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |
-| `<SettingsShell>` + `SettingsSection`/`SettingsRow` — Display (night, brightness, keep-awake) → app sections → Updates → About | three differently-organised settings modals; no About surface existed |
-| `<AppShell>` + `HeaderButton`/`HeaderGroup` — glass header, left dock ≥ lg, bottom bar < lg, safe-area aware, night-mode + brightness applied on `<html>` so portals follow | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
+| `<SettingsShell>` + `SettingsSection`/`SettingsRow` — titled "Settings"; Display (night, brightness, keep-awake) → app sections → Updates → About; flat rows on hairlines; `ScopeBadge` is a dot, explained once by `scopeLegend`; `onSave` puts Save and apply on the right as the primary action | three differently-organised settings modals; no About surface existed |
+| `<AppShell>` + `HeaderButton`/`HeaderGroup` — 56 px header, 72 px rail (icon over full label) ≥ lg, tab bar with full labels < lg (`tabLabelPx` 13, or 12), safe-area aware, night-mode + brightness applied on `<html>` so portals follow. `surface` (`chart` / `page`, also per `ShellTab`) decides the frame: glass floating 16 px in over a chart, opaque and attached for a page; the default is `chart` when a `background` is rendered and `page` otherwise | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
 
 ### `Button` variants and layout
 
@@ -93,14 +96,17 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 |---|---|
 | `primary` | the one main action on a surface |
 | `secondary` (default) | any other action |
-| `accent` | a notable action that is not *the* action |
-| `success` | a completion: mark done, apply |
 | `alarm` | acknowledging or silencing an alarm (not `danger`) |
 | `danger` | a destructive action, drawn to be resistible |
 | `ghost` | a quiet action that fills on hover |
 | `link` | an action that reads as text: cyan, no fill at rest or on hover, no padding, no height, no font weight of its own; underlines on hover; focus ring kept. Takes only the type size and icon gap from `size` |
 
 `active` draws any variant lit and sets `aria-pressed`, for a control that is *on*.
+
+Every label is Inter 15/600 in sentence case, radius 8, with no glow. Deprecated
+(fit-and-finish, 2026-09-30), kept so the apps compile until they move off:
+`variant="success"` draws as `primary` (green is not an action), `variant="accent"`
+as `secondary`, and `size="dense"` (was 32 px) as `sm` (40 px).
 
 **`cn` concatenates; it does not merge Tailwind.** Two classes setting the same
 property resolve by their order in the stylesheet, not in the `class`
@@ -114,10 +120,10 @@ over by not emitting them, never by hoping the caller's class wins:
   keeps its colours, border, hover, focus ring and disabled state. A row with a
   label left and a count right:
   `<Button layout="bare" className="w-full flex justify-between items-center px-3 py-2 rounded-lg">`.
-- **`touchFloor`** (default `true`) keeps the 44px Android minimum where the
-  caller owns the shape: `min-h-11` under `bare`, and for `link` an invisible
-  44px-tall `::before` hit area that moves nothing. `layout="default"` ignores
-  it (`size` sets the height there, and `dense` is under the floor on purpose).
+- **`touchFloor`** (default `true`) keeps the 48px touch floor where the
+  caller owns the shape: `min-h-12` under `bare`, and for `link` an invisible
+  48px-tall `::before` hit area that moves nothing. `layout="default"` ignores
+  it (`size` sets the height there).
   Pass `touchFloor={false}` for a control a mouse drives or one whose geometry
   is fixed by its surroundings; a `link` positioned `absolute`/`fixed` needs it
   too, because the hit area relies on the link being `relative`.
@@ -129,6 +135,19 @@ over by not emitting them, never by hoping the caller's class wins:
 There is no night-mode prop. Night follows the theme tokens, as it does for
 every other component; a surface that wants a different night treatment from
 the one the tokens give is asking for a theme change, not a Button option.
+
+### Deprecated in `@sentinel/ui` (fit-and-finish, 2026-09-30)
+
+Still accepted so every app compiles; delete after the apps have moved off them.
+
+| Deprecated | What it does now |
+|---|---|
+| `Button` `variant="success"` / `"accent"` | draws as `primary` / `secondary` |
+| `Button` `size="dense"` | draws at 40 px, as `sm` |
+| `AppShell` `dockFooter` | not rendered; the version lives in Settings > About |
+| `ShellTab.shortLabel` | ignored; the tab bar shows the full `label` |
+| `SettingsTab.icon`, `SettingsSection` `icon` | not drawn |
+| `StatusPill` `pulse` on anything but `alarm` | ignored; only alarms pulse |
 
 ### `openExternal(url)`
 

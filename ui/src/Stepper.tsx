@@ -64,7 +64,9 @@ export function Stepper({
     adjust(delta);
   };
 
-  const buttonClass = `flex items-center justify-center w-11 h-11 rounded-lg border ${surfaceClassName} ${colorClass} disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all cursor-pointer shrink-0 touch-manipulation`;
+  // 48px, the fleet's control size, at the control radius (8px). A state change
+  // animates colour only, at the state-change speed.
+  const buttonClass = `flex items-center justify-center w-12 h-12 rounded-md border ${surfaceClassName} ${colorClass} disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)] cursor-pointer shrink-0 touch-manipulation`;
 
   return (
     <div className="flex items-center gap-2">
@@ -80,7 +82,7 @@ export function Stepper({
         onTouchEnd={stopHold}
         className={buttonClass}
       >
-        <Minus className="w-4 h-4" />
+        <Minus className="w-5 h-5" />
       </button>
       <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${trackClassName}`}>
         <div
@@ -100,7 +102,7 @@ export function Stepper({
         onTouchEnd={stopHold}
         className={buttonClass}
       >
-        <Plus className="w-4 h-4" />
+        <Plus className="w-5 h-5" />
       </button>
     </div>
   );
