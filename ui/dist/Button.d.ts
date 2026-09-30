@@ -1,6 +1,24 @@
 import React from 'react';
-export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'success' | 'alarm' | 'danger' | 'ghost' | 'link';
-export type ButtonSize = 'dense' | 'sm' | 'md';
+/**
+ * `primary`, `secondary`, `ghost`, `link`, `danger` and `alarm`.
+ *
+ * `success` and `accent` are deprecated aliases: `success` draws as `primary`
+ * (green is not an action) and `accent` as `secondary`. Both still type-check
+ * so no app breaks before it has moved off them.
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'danger' | 'alarm'
+/** @deprecated Draws as `primary`. Green is not an action (fit-and-finish X2). */
+ | 'success'
+/** @deprecated Draws as `secondary`. Use `active` for a control that is on. */
+ | 'accent';
+/**
+ * `md` is 48px (the default and the touch floor); `sm` is 40px, for dense
+ * tables a pointer drives. `dense` is a deprecated alias of `sm`: the 32px
+ * size it named is retired, so it renders at 40.
+ */
+export type ButtonSize = 'sm' | 'md'
+/** @deprecated The 32px size is retired; renders as `sm` (40px). */
+ | 'dense';
 /**
  * `default` is the fleet button's own shape. `bare` hands layout to the
  * caller's `className` -- see LAYOUT below for exactly what that means.
@@ -34,24 +52,22 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
      */
     layout?: ButtonLayout;
     /**
-     * The 44px Android touch minimum, where the caller has taken over the shape.
-     * Defaults to on. It applies to `layout="bare"` (as `min-h-11`) and to the
-     * `link` variant (as an invisible 44px-tall hit area that does not move
-     * anything). `layout="default"` ignores it: there `size` sets the height,
-     * and `dense` is under the floor on purpose. Pass `false` only for a control
-     * a mouse drives, or one that already has a 44px-tall parent that is itself
-     * the target.
+     * The 48px touch floor, where the caller has taken over the shape.
+     * Defaults to on. It applies to `layout="bare"` (as `min-h-12`) and to the
+     * `link` variant (as an invisible 48px-tall hit area that does not move
+     * anything). `layout="default"` ignores it: there `size` sets the height.
+     * Pass `false` only for a control a mouse drives, or one that already has a
+     * 48px-tall parent that is itself the target.
      */
     touchFloor?: boolean;
 }
 /**
- * The fleet button. Labels are sentence case ("Save changes", not "SAVE & APPLY"),
- * with one exception: `alarm` labels are the shout they already are on the
- * screens that raise them.
+ * The fleet button. Labels are sentence case ("Save and apply", not "SAVE AND
+ * APPLY"), Inter 15/600, on every variant.
  *
- * `primary` is the one main action on a surface; `accent` a notable secondary
- * one; `success` a completion; `alarm` acknowledging an alarm; `danger` a
- * destructive action; `link` an action that reads as text; everything else
- * `secondary` or `ghost`. `layout="bare"` hands the shape to `className`.
+ * `primary` is the one main action on a surface; `alarm` acknowledging an
+ * alarm; `danger` a destructive action; `link` an action that reads as text;
+ * everything else `secondary` or `ghost`. `layout="bare"` hands the shape to
+ * `className`.
  */
 export declare const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttributes<HTMLButtonElement>>;

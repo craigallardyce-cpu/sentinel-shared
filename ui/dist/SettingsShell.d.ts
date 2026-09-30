@@ -4,6 +4,10 @@ import type { SettingSource } from './ScopeBadge';
 import type { AppUpdater } from './useAppUpdater';
 export interface SettingsSectionProps {
     title: React.ReactNode;
+    /**
+     * @deprecated Accepted and not drawn. An icon beside a word belongs only to
+     * primary navigation (fit-and-finish, "Icons"); a group heading is a word.
+     */
     icon?: React.ReactNode;
     description?: React.ReactNode;
     children?: React.ReactNode;
@@ -20,18 +24,19 @@ export interface SettingsSectionProps {
     hideTitle?: boolean;
 }
 /**
- * One settings group: eyebrow title with icon, optional one-line description, then rows.
+ * One settings group: a quiet sentence-case heading, an optional one-line
+ * description, then rows.
  *
- * Scope badges throughout this dialog are drawn only where a value actually
- * departs from its default. Showing "DEFAULT" beside every untouched field put a
- * chip on nearly every row, which made a genuinely interesting one — "THIS
- * DEVICE" on a value that is not shared with the boat — read as more of the same
- * noise. The dialog's summary line carries the legend for all of them.
+ * Scope dots are drawn only where a value actually departs from its default.
+ * The dialog's header carries the legend for all of them.
  */
-export declare function SettingsSection({ title, icon, description, children, className, hideTitle }: SettingsSectionProps): React.JSX.Element;
+export declare function SettingsSection({ title, description, children, className, hideTitle }: SettingsSectionProps): React.JSX.Element;
 /**
- * One settings row: label and description on the left, control on the right, and
- * — when the caller knows it — a chip saying which layer the value came from.
+ * One settings row: label and description on the left, control on the right,
+ * and -- when the caller knows it -- a dot saying which layer the value came from.
+ *
+ * Flat: no box of its own. Rows are separated by a hairline, and the last row
+ * in a group has none.
  */
 export declare function SettingsRow({ label, description, source, action, children, className, }: {
     label: React.ReactNode;
@@ -46,6 +51,7 @@ export declare function SettingsRow({ label, description, source, action, childr
 export interface SettingsTab {
     id: string;
     label: string;
+    /** @deprecated Accepted and not drawn: tabs are words (fit-and-finish V9). */
     icon?: React.ReactNode;
     content: React.ReactNode;
 }
@@ -91,17 +97,29 @@ export interface SettingsShellProps {
      * About -- which is a scroll you have to remember your way down.
      */
     tabs?: SettingsTab[];
-    /** Usually Cancel / Save buttons. */
+    /**
+     * Footer content. With `onSave`, it sits on the left and Save and apply on the
+     * right; without it, it is the whole footer, right-aligned.
+     */
     footer?: React.ReactNode;
+    /**
+     * Draws Save and apply as the footer's primary action, on the right. The one
+     * shape for the dialog's commit button in every app (fit-and-finish X5);
+     * prefer it to a hand-built button in `footer`.
+     */
+    onSave?: () => void;
+    /** The Save button's label. Default "Save and apply". */
+    saveLabel?: string;
+    /** Shows a spinner on Save and disables it. */
+    saving?: boolean;
+    /** Disables Save (nothing to save, or the form is invalid). */
+    saveDisabled?: boolean;
     size?: ModalSize;
     /** Extra lines for About (licence, support link…). */
     about?: React.ReactNode;
     /**
-     * The dialog's own title. Defaults to "Settings".
-     *
-     * HarborSentinel names it "Device & account", because it also has a phone tab
-     * of watch limits and two things called Settings was the whole of that app's
-     * navigation confusion.
+     * The dialog's own title. Defaults to "Settings", which is what every app's
+     * dialog is called (fit-and-finish X5); leave it unset.
      */
     title?: string;
     /**
@@ -109,6 +127,12 @@ export interface SettingsShellProps {
      * how many values are set on this device rather than inherited.
      */
     summary?: React.ReactNode;
+    /**
+     * Explain the scope dot once, in the header: "● Set on this device.
+     * Everything else comes from your account, this boat or a default." Drawn
+     * before `summary` when both are set.
+     */
+    scopeLegend?: boolean;
     /**
      * Which layer each built-in Display setting came from.
      *
@@ -130,4 +154,4 @@ export interface SettingsShellProps {
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;
+export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel, saving, saveDisabled, size, about, summary, scopeLegend, sources, title, }: SettingsShellProps): React.JSX.Element;

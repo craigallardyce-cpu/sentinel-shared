@@ -25,12 +25,15 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * because inheritance is the ordinary case and the thing worth noticing is the
  * value that departs from it.
  *
- * Quiet means quiet. This was a bordered chip in bold uppercase mono, and on a
- * settings tab where several values are device-set it drew a row of small cyan
- * boxes that pulled the eye harder than the settings themselves -- a caption
- * shouting over its own subject. It is a caption now: small, muted, sentence
- * case, no border and no fill. An override keeps the accent, because that is the
- * one this exists to point at, but as ink rather than as a box.
+ * Quiet means quiet. This was a bordered chip in bold uppercase mono, then a
+ * muted word, and on a tab where several values are device-set it still put
+ * "This device" on row after row (fit-and-finish X5). It is a 6px dot now,
+ * beside the label: filled for an override (this device, this PC), hollow for
+ * an inherited layer, and only an override takes the accent. The layer's name
+ * is still in the element as visually hidden text (`sr-only`), so a screen
+ * reader announces it and a caller can still find the badge by its text, and
+ * it is in the tooltip. The dialog explains the dot once, in its header
+ * (SettingsShell's `scopeLegend`).
  */
 export interface ScopeBadgeProps {
   source: SettingSource;
@@ -63,16 +66,26 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }: ScopeBa
   // Narrower than the layers beneath it, so it is the one worth pointing at.
   const isOverride = source === 'device' || source === 'host';
 
+  // Only the dot is drawn. The word is visually hidden, not removed: it is the
+  // badge's accessible name, and it carries the tooltip too, so hovering or
+  // finding the badge by its text reaches the same explanation.
   return (
     <span
       title={DESCRIPTION[source]}
+      data-source={source}
       className={cn(
-        'shrink-0 text-[12px] font-medium leading-none',
-        isOverride ? 'text-cyan/80' : 'text-text-muted',
+        'inline-flex items-center shrink-0 align-middle leading-none',
+        isOverride ? 'text-cyan' : 'text-text-muted',
         className
       )}
     >
-      {LABEL[source]}
+      <span
+        aria-hidden
+        className={cn('inline-block h-1.5 w-1.5 rounded-full', isOverride ? 'bg-current' : 'border border-current')}
+      />
+      <span className="sr-only" title={DESCRIPTION[source]}>
+        {LABEL[source]}
+      </span>
     </span>
   );
 }
@@ -100,7 +113,7 @@ export function ClearOverride({ fallsBackTo, onClear, disabled, className }: Cle
       disabled={disabled}
       title={`Remove this device's value and use the ${LABEL[fallsBackTo].toLowerCase()} one instead.`}
       className={cn(
-        'shrink-0 h-8 px-3 rounded-md text-xs text-text-secondary',
+        'shrink-0 h-10 px-3 rounded-md text-[13px] font-semibold text-text-secondary',
         'hover:text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
         className
       )}

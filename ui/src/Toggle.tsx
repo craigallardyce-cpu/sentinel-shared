@@ -34,10 +34,11 @@ export function Toggle({ checked, onChange, label, description, disabled, switch
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        // 52x30 rather than the conventional 44x24: this is the control a
-        // watchkeeper flips on a phone at anchor, and 24px was under every
-        // touch-target guideline going. The knob geometry below follows from it.
-        'relative inline-flex h-[30px] w-[52px] shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200',
+        // 56x32 (fit-and-finish control sizes), up from 52x30 and from the
+        // conventional 44x24 before that: this is the control a watchkeeper
+        // flips on a phone at anchor. The knob geometry below follows from it.
+        'relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border-[3px] border-transparent',
+        'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-app',
         'disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer',
         checked ? 'bg-cyan' : 'bg-bg-highest'
@@ -46,10 +47,12 @@ export function Toggle({ checked, onChange, label, description, disabled, switch
       <span
         aria-hidden
         className={cn(
-          // 26px knob inside a 48x26 content box (52x30 less the 2px border),
-          // so the travel is 48 - 26 = 22px.
-          'pointer-events-none inline-block h-[26px] w-[26px] rounded-full shadow transition-transform duration-200',
-          checked ? 'translate-x-[22px] bg-bg-app' : 'translate-x-0 bg-text-secondary'
+          // 26px knob inside a 50x26 content box (56x32 less the 3px border),
+          // so it sits 3px in from every edge and travels 50 - 26 = 24px.
+          // No shadow: the knob is told apart by its fill.
+          'pointer-events-none inline-block h-[26px] w-[26px] rounded-full',
+          'transition-transform duration-[var(--motion-state)] ease-[var(--motion-ease)]',
+          checked ? 'translate-x-6 bg-bg-app' : 'translate-x-0 bg-text-secondary'
         )}
       />
     </button>
@@ -60,8 +63,8 @@ export function Toggle({ checked, onChange, label, description, disabled, switch
   return (
     <div className={cn('flex items-center justify-between gap-4', switchFirst && 'flex-row-reverse justify-end', className)}>
       <label htmlFor={id} className={cn('min-w-0 cursor-pointer', disabled && 'cursor-not-allowed opacity-60')}>
-        {label && <span className="block text-sm text-text-primary">{label}</span>}
-        {description && <span className="block text-xs text-text-muted mt-0.5">{description}</span>}
+        {label && <span className="block text-[15px] text-text-primary">{label}</span>}
+        {description && <span className="block text-[13px] text-text-muted mt-1">{description}</span>}
       </label>
       {control}
     </div>

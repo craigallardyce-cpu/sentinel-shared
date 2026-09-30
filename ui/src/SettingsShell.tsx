@@ -1,5 +1,4 @@
 import React from 'react';
-import { Download, Info, Monitor, Settings as SettingsIcon } from 'lucide-react';
 import { cn } from './cn';
 import { Modal, type ModalSize } from './Modal';
 import { Toggle } from './Toggle';
@@ -7,10 +6,29 @@ import { Stepper } from './Stepper';
 import { UpdatePanel } from './UpdatePanel';
 import { ScopeBadge } from './ScopeBadge';
 import type { SettingSource } from './ScopeBadge';
+import { Tabs } from './Tabs';
+import { Button } from './Button';
 import type { AppUpdater } from './useAppUpdater';
+
+/*
+  The Settings dialog (fit-and-finish X5; SettingsDayAfter / SettingsNightAfter).
+
+  One layout in all three apps: titled "Settings", a sentence-case tab strip
+  with a 2px accent stroke, rows that are flat and separated by hairlines rather
+  than each drawn in its own box, a 6px dot beside a value set on this device
+  (explained once, in the header), and Save and apply on the right of the
+  footer as the primary action.
+*/
+
+/** The hairline between rows. One colour, used for every divider in the dialog. */
+const ROW_DIVIDER = 'border-b border-bg-highest last:border-b-0';
 
 export interface SettingsSectionProps {
   title: React.ReactNode;
+  /**
+   * @deprecated Accepted and not drawn. An icon beside a word belongs only to
+   * primary navigation (fit-and-finish, "Icons"); a group heading is a word.
+   */
   icon?: React.ReactNode;
   description?: React.ReactNode;
   children?: React.ReactNode;
@@ -28,36 +46,32 @@ export interface SettingsSectionProps {
 }
 
 /**
- * One settings group: eyebrow title with icon, optional one-line description, then rows.
+ * One settings group: a quiet sentence-case heading, an optional one-line
+ * description, then rows.
  *
- * Scope badges throughout this dialog are drawn only where a value actually
- * departs from its default. Showing "DEFAULT" beside every untouched field put a
- * chip on nearly every row, which made a genuinely interesting one — "THIS
- * DEVICE" on a value that is not shared with the boat — read as more of the same
- * noise. The dialog's summary line carries the legend for all of them.
+ * Scope dots are drawn only where a value actually departs from its default.
+ * The dialog's header carries the legend for all of them.
  */
-export function SettingsSection({ title, icon, description, children, className, hideTitle = false }: SettingsSectionProps) {
+export function SettingsSection({ title, description, children, className, hideTitle = false }: SettingsSectionProps) {
   return (
-    <section className={cn('space-y-3', className)} aria-label={hideTitle && typeof title === 'string' ? title : undefined}>
+    <section className={cn('flex flex-col', className)} aria-label={hideTitle && typeof title === 'string' ? title : undefined}>
       {(!hideTitle || description) && (
-        <header>
-          {!hideTitle && (
-            <h3 className="flex items-center gap-2 text-[13px] font-mono font-bold uppercase tracking-wider text-cyan">
-              {icon && <span className="shrink-0" aria-hidden>{icon}</span>}
-              {title}
-            </h3>
-          )}
-          {description && <p className={cn('text-xs text-text-muted', !hideTitle && 'mt-1')}>{description}</p>}
+        <header className="pb-1">
+          {!hideTitle && <h3 className="font-sans text-[13px] font-semibold leading-[18px] text-text-muted">{title}</h3>}
+          {description && <p className={cn('text-[13px] text-text-muted', !hideTitle && 'mt-1')}>{description}</p>}
         </header>
       )}
-      <div className="space-y-3">{children}</div>
+      <div className="flex flex-col">{children}</div>
     </section>
   );
 }
 
 /**
- * One settings row: label and description on the left, control on the right, and
- * — when the caller knows it — a chip saying which layer the value came from.
+ * One settings row: label and description on the left, control on the right,
+ * and -- when the caller knows it -- a dot saying which layer the value came from.
+ *
+ * Flat: no box of its own. Rows are separated by a hairline, and the last row
+ * in a group has none.
  */
 export function SettingsRow({
   label,
@@ -77,13 +91,13 @@ export function SettingsRow({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-center justify-between gap-4 p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl', className)}>
+    <div className={cn('flex items-center justify-between gap-6 py-4', ROW_DIVIDER, className)}>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-text-primary">{label}</span>
+          <span className="font-sans text-[15px] font-semibold text-text-primary">{label}</span>
           {source && <ScopeBadge source={source} hideWhenUnset />}
         </div>
-        {description && <div className="text-xs text-text-muted mt-0.5">{description}</div>}
+        {description && <div className="text-[13px] text-text-muted mt-1">{description}</div>}
       </div>
       <div className="shrink-0 flex items-center gap-2">
         {action}
@@ -96,6 +110,7 @@ export function SettingsRow({
 export interface SettingsTab {
   id: string;
   label: string;
+  /** @deprecated Accepted and not drawn: tabs are words (fit-and-finish V9). */
   icon?: React.ReactNode;
   content: React.ReactNode;
 }
@@ -142,17 +157,29 @@ export interface SettingsShellProps {
    * About -- which is a scroll you have to remember your way down.
    */
   tabs?: SettingsTab[];
-  /** Usually Cancel / Save buttons. */
+  /**
+   * Footer content. With `onSave`, it sits on the left and Save and apply on the
+   * right; without it, it is the whole footer, right-aligned.
+   */
   footer?: React.ReactNode;
+  /**
+   * Draws Save and apply as the footer's primary action, on the right. The one
+   * shape for the dialog's commit button in every app (fit-and-finish X5);
+   * prefer it to a hand-built button in `footer`.
+   */
+  onSave?: () => void;
+  /** The Save button's label. Default "Save and apply". */
+  saveLabel?: string;
+  /** Shows a spinner on Save and disables it. */
+  saving?: boolean;
+  /** Disables Save (nothing to save, or the form is invalid). */
+  saveDisabled?: boolean;
   size?: ModalSize;
   /** Extra lines for About (licence, support link…). */
   about?: React.ReactNode;
   /**
-   * The dialog's own title. Defaults to "Settings".
-   *
-   * HarborSentinel names it "Device & account", because it also has a phone tab
-   * of watch limits and two things called Settings was the whole of that app's
-   * navigation confusion.
+   * The dialog's own title. Defaults to "Settings", which is what every app's
+   * dialog is called (fit-and-finish X5); leave it unset.
    */
   title?: string;
   /**
@@ -160,6 +187,12 @@ export interface SettingsShellProps {
    * how many values are set on this device rather than inherited.
    */
   summary?: React.ReactNode;
+  /**
+   * Explain the scope dot once, in the header: "● Set on this device.
+   * Everything else comes from your account, this boat or a default." Drawn
+   * before `summary` when both are set.
+   */
+  scopeLegend?: boolean;
   /**
    * Which layer each built-in Display setting came from.
    *
@@ -201,9 +234,14 @@ export function SettingsShell({
   tabs,
   displayExtra,
   footer,
+  onSave,
+  saveLabel = 'Save and apply',
+  saving = false,
+  saveDisabled = false,
   size = 'lg',
   about,
   summary,
+  scopeLegend = false,
   sources,
   title = 'Settings',
 }: SettingsShellProps) {
@@ -222,8 +260,8 @@ export function SettingsShell({
   }, inTabs) : null;
 
   const updatesSection = updater ? (
-    <SettingsSection title="Updates" icon={<Download size={12} />}>
-      <UpdatePanel updater={updater} className="p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl" />
+    <SettingsSection title="Updates">
+      <UpdatePanel updater={updater} className={cn('py-4', ROW_DIVIDER)} />
     </SettingsSection>
   ) : null;
 
@@ -242,7 +280,7 @@ export function SettingsShell({
      The scrolling layout leaves them as two adjacent sections, unchanged. There
      the duplication costs a line; here it cost a click and a tab. */
   const combinedAbout = updatesSection ? (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {renderAbout({ appName, appIcon, shownVersion: undefined, about }, inTabs)}
       {updatesSection}
     </div>
@@ -250,40 +288,40 @@ export function SettingsShell({
 
   const allTabs: SettingsTab[] = tabs
     ? [
-        ...(displaySection ? [{ id: '__display', label: 'Display', icon: <Monitor size={12} />, content: displaySection }] : []),
+        ...(displaySection ? [{ id: '__display', label: 'Display', content: displaySection }] : []),
         ...tabs,
-        { id: '__about', label: 'About', icon: <Info size={12} />, content: combinedAbout },
+        { id: '__about', label: 'About', content: combinedAbout },
       ]
     : [];
 
   const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
-  const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id;
+  const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id ?? '';
 
-  /* Keep the selected tab inside the scroll window.
-   *
-   * The strip scrolls once the tabs outrun the dialog, and nothing was putting
-   * the selected one back in view — so it could sit half out of the left edge,
-   * showing the tail of its own label ("…AY" for Display) while reading as
-   * selected. Adjusting this element's own scrollLeft rather than calling
-   * scrollIntoView, which would also scroll the dialog body and the page behind
-   * it.
-   */
-  const stripRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    const strip = stripRef.current;
-    if (!strip || !activeId) return;
-    const tab = strip.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeId)}"]`);
-    if (!tab) return;
+  const description =
+    scopeLegend || summary ? (
+      <>
+        {scopeLegend && (
+          <span className="block">
+            <span aria-hidden>
+              <ScopeBadge source="device" className="mr-1.5" />
+            </span>
+            Set on this device. Everything else comes from your account, this boat or a default.
+          </span>
+        )}
+        {summary && <span className={cn('block', scopeLegend && 'mt-1')}>{summary}</span>}
+      </>
+    ) : undefined;
 
-    /* Measured with getBoundingClientRect rather than offsetLeft: offsetLeft is
-       relative to the nearest positioned ancestor, which is not this strip, so it
-       left the tab a padding's width short of actually being in view. */
-    const t = tab.getBoundingClientRect();
-    const r = strip.getBoundingClientRect();
-    const pad = 8;
-    if (t.left < r.left + pad) strip.scrollLeft -= r.left + pad - t.left;
-    else if (t.right > r.right - pad) strip.scrollLeft += t.right - (r.right - pad);
-  }, [activeId]);
+  /* Save and apply is the primary action, on the right. Anything else the app
+     puts in the footer sits on the left, away from it. */
+  const footerContent = onSave ? (
+    <>
+      {footer && <div className="mr-auto flex flex-wrap items-center gap-2">{footer}</div>}
+      <Button variant="primary" onClick={onSave} loading={saving} disabled={saveDisabled}>
+        {saveLabel}
+      </Button>
+    </>
+  ) : footer;
 
   if (tabs) {
     return (
@@ -291,39 +329,30 @@ export function SettingsShell({
         open={open}
         onClose={onClose}
         title={title}
-        description={summary}
-        icon={<SettingsIcon size={18} />}
+        description={description}
         size={size}
-        footer={footer}
-        bodyClassName="space-y-5"
+        footer={footerContent}
+        subheader={
+          <Tabs
+            items={allTabs.map((t) => ({ id: t.id, label: t.label }))}
+            value={activeId}
+            onChange={setActiveTab}
+            aria-label="Settings sections"
+            idPrefix="settings"
+            className="px-4"
+          />
+        }
       >
-        <div ref={stripRef} role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-border-color/40">
-          {allTabs.map((t) => (
-            <button
-              key={t.id}
-              data-tab-id={t.id}
-              role="tab"
-              type="button"
-              aria-selected={t.id === activeId}
-              aria-controls={`settings-panel-${t.id}`}
-              onClick={() => setActiveTab(t.id)}
-              className={cn(
-                'flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-t-lg text-[13px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 -mb-px',
-                t.id === activeId
-                  ? 'border-cyan text-cyan'
-                  : 'border-transparent text-text-muted hover:text-text-secondary'
-              )}
-            >
-              {t.icon && <span className="shrink-0" aria-hidden>{t.icon}</span>}
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {/* Panels stay mounted. A tab holding a half-filled Telegram token must
             not lose it because someone looked at Units. */}
         {allTabs.map((t) => (
-          <div key={t.id} id={`settings-panel-${t.id}`} role="tabpanel" hidden={t.id !== activeId}>
+          <div
+            key={t.id}
+            id={`settings-panel-${t.id}`}
+            role="tabpanel"
+            aria-labelledby={`settings-tab-${t.id}`}
+            hidden={t.id !== activeId}
+          >
             {t.content}
           </div>
         ))}
@@ -336,10 +365,9 @@ export function SettingsShell({
       open={open}
       onClose={onClose}
       title={title}
-      description={summary}
-      icon={<SettingsIcon size={18} />}
+      description={description}
       size={size}
-      footer={footer}
+      footer={footerContent}
       bodyClassName="space-y-8"
     >
       {displaySection}
@@ -353,6 +381,16 @@ export function SettingsShell({
   );
 }
 
+/** A label with its scope dot, as the brightness pair draws it. */
+function BrightnessLabel({ children, source }: { children: React.ReactNode; source?: SettingSource }) {
+  return (
+    <span className="flex items-center gap-2 font-sans text-[15px] font-semibold text-text-primary">
+      {children}
+      {source && <ScopeBadge source={source} hideWhenUnset />}
+    </span>
+  );
+}
+
 /** The fleet's standard Display group, shared by both layouts. */
 function renderDisplay({
   appName, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange,
@@ -361,37 +399,51 @@ function renderDisplay({
   'appName' | 'nightMode' | 'onNightModeChange' | 'dayBrightness' | 'onDayBrightnessChange' |
   'nightBrightness' | 'onNightBrightnessChange' | 'keepAwake' | 'onKeepAwakeChange' | 'sources' |
   'displayExtra'>, hideTitle = false) {
+  /* Both brightness steppers are drawn in the accent. Night brightness used to
+     be red, which is the alarm colour doing a slider's job in day mode (X2);
+     at night the accent is red-shifted anyway. */
+  const stepperSurface = 'border-border-color bg-transparent hover:bg-bg-card-hover';
   return (
-    <SettingsSection title="Display" icon={<Monitor size={12} />} hideTitle={hideTitle}>
+    <SettingsSection title="Display" hideTitle={hideTitle}>
       {onNightModeChange && (
         <SettingsRow label="Night mode" description="Red-shifted palette that preserves night vision." source={sources?.nightMode}>
           <Toggle checked={!!nightMode} onChange={onNightModeChange} aria-label="Night mode" />
         </SettingsRow>
       )}
       {(onDayBrightnessChange || onNightBrightnessChange) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={cn('grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5 py-4', ROW_DIVIDER)}>
           {onDayBrightnessChange && (
-            <div className="p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl space-y-2">
-              <div className="flex justify-between items-center text-xs gap-2">
-                <span className="text-text-secondary flex items-center gap-2">
-                  Day brightness
-                  {sources?.dayBrightness && <ScopeBadge source={sources.dayBrightness} hideWhenUnset />}
-                </span>
-                <span className="font-mono font-bold text-cyan">{dayBrightness ?? 100}%</span>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between items-baseline gap-2">
+                <BrightnessLabel source={sources?.dayBrightness}>Day brightness</BrightnessLabel>
+                <span className="font-mono text-[15px] font-medium text-text-primary tabular-nums">{dayBrightness ?? 100}%</span>
               </div>
-              <Stepper min={20} max={100} step={5} value={dayBrightness ?? 100} onChange={onDayBrightnessChange} />
+              <Stepper
+                min={20}
+                max={100}
+                step={5}
+                value={dayBrightness ?? 100}
+                onChange={onDayBrightnessChange}
+                surfaceClassName={stepperSurface}
+                trackClassName="bg-bg-highest"
+              />
             </div>
           )}
           {onNightBrightnessChange && (
-            <div className="p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl space-y-2">
-              <div className="flex justify-between items-center text-xs gap-2">
-                <span className="text-text-secondary flex items-center gap-2">
-                  Night brightness
-                  {sources?.nightBrightness && <ScopeBadge source={sources.nightBrightness} hideWhenUnset />}
-                </span>
-                <span className="font-mono font-bold text-red">{nightBrightness ?? 100}%</span>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between items-baseline gap-2">
+                <BrightnessLabel source={sources?.nightBrightness}>Night brightness</BrightnessLabel>
+                <span className="font-mono text-[15px] font-medium text-text-primary tabular-nums">{nightBrightness ?? 100}%</span>
               </div>
-              <Stepper min={10} max={100} step={5} value={nightBrightness ?? 100} onChange={onNightBrightnessChange} colorClass="text-red" />
+              <Stepper
+                min={10}
+                max={100}
+                step={5}
+                value={nightBrightness ?? 100}
+                onChange={onNightBrightnessChange}
+                surfaceClassName={stepperSurface}
+                trackClassName="bg-bg-highest"
+              />
             </div>
           )}
         </div>
@@ -417,14 +469,14 @@ function renderAbout({
 }: { appName: string; appIcon?: React.ReactNode; shownVersion?: string; about?: React.ReactNode },
   hideTitle = false) {
   return (
-    <SettingsSection title="About" icon={<Info size={12} />} hideTitle={hideTitle}>
-      <div className="flex items-center gap-3 p-3.5 bg-bg-panel/40 border border-border-color/30 rounded-xl">
-        {appIcon && <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan/10 text-cyan shrink-0">{appIcon}</span>}
-        <div className="min-w-0 text-xs">
-          <p className="text-sm font-heading font-semibold text-text-primary">
-            {appName} {shownVersion && <span className="font-mono font-normal text-text-muted">v{shownVersion}</span>}
+    <SettingsSection title="About" hideTitle={hideTitle}>
+      <div className={cn('flex items-start gap-3 py-4', ROW_DIVIDER)}>
+        {appIcon && <span className="flex h-10 w-10 items-center justify-center rounded-md bg-cyan-dim text-cyan shrink-0">{appIcon}</span>}
+        <div className="min-w-0 text-[13px]">
+          <p className="font-sans text-[15px] font-semibold text-text-primary">
+            {appName} {shownVersion && <span className="font-mono font-medium text-text-muted">v{shownVersion}</span>}
           </p>
-          <p className="text-text-muted mt-0.5">
+          <p className="text-text-muted mt-1">
             Part of the MarinerSentinel fleet ·{' '}
             <a href="https://marinersentinel.com" target="_blank" rel="noreferrer" className="text-cyan hover:underline">
               marinersentinel.com

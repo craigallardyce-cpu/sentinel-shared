@@ -20,6 +20,10 @@ export { UnitField } from './UnitField';
 export type { UnitFieldProps } from './UnitField';
 export { Stepper } from './Stepper';
 export type { StepperProps } from './Stepper';
+export { InstrumentCell } from './InstrumentCell';
+export type { InstrumentCellProps, InstrumentTone } from './InstrumentCell';
+export { Tabs } from './Tabs';
+export type { TabsProps, TabItem } from './Tabs';
 export { useAppUpdater } from './useAppUpdater';
 export type { AppUpdater, UpdateState, UpdateStatus, UseAppUpdaterOptions, AppUpdaterApi } from './useAppUpdater';
 export { UpdatePanel } from './UpdatePanel';
@@ -29,6 +33,6 @@ export type { ScopeBadgeProps, ClearOverrideProps, SettingSource } from './Scope
 export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
 export type { SettingsShellProps, SettingsSectionProps, SettingsTab } from './SettingsShell';
 export { AppShell, HeaderButton, HeaderGroup } from './AppShell';
-export type { AppShellProps, ShellTab, HeaderButtonProps } from './AppShell';
+export type { AppShellProps, ShellTab, ShellSurface, HeaderButtonProps } from './AppShell';
 export { USER_GUIDE_URL, USER_GUIDE_ANCHORS, USER_GUIDE_APP_SECTION, userGuideUrl, openUserGuide } from './userGuide';
 export type { UserGuideSection, UserGuideApp } from './userGuide';

@@ -46,7 +46,7 @@ export function UpdatePanel({ updater, className }: UpdatePanelProps) {
           <p className="text-sm text-text-primary">
             Version <span className="font-mono">{state.currentVersion || '—'}</span>
           </p>
-          <p className="text-xs text-text-muted mt-0.5">
+          <p className="text-[13px] text-text-muted mt-0.5">
             {state.status === 'idle' && 'Check for a newer release.'}
             {state.status === 'checking' && 'Checking…'}
             {state.status === 'uptodate' && 'Up to date.'}
@@ -78,11 +78,11 @@ export function UpdatePanel({ updater, className }: UpdatePanelProps) {
       )}
 
       {state.status === 'available' && state.changelog && (
-        <p className="mt-3 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">{state.changelog}</p>
+        <p className="mt-3 text-[13px] text-text-secondary whitespace-pre-wrap leading-relaxed">{state.changelog}</p>
       )}
 
       {!isElectron && state.status === 'available' && (
-        <p className="mt-2 text-xs text-text-muted flex items-center gap-1.5">
+        <p className="mt-2 text-[13px] text-text-muted flex items-center gap-1.5">
           <OctagonAlert size={12} aria-hidden /> Install from the desktop app or your app store.
         </p>
       )}
