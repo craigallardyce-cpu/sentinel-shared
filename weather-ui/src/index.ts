@@ -4,6 +4,14 @@ export type { WeatherAlert, WeatherData, AlertsPanelProps } from './AlertsPanel'
 export { default as ForecastTimeline } from './ForecastTimeline';
 export type { ForecastPeriod, ForecastTimelineProps } from './ForecastTimeline';
 
+/*
+  The marine-warnings banner over the chart (fit-and-finish X4). Renders nothing
+  when no warning is in force; see the component's header for the non-answer
+  states it still states quietly.
+*/
+export { WarningsBanner, warningLevel, sortWarnings, sentenceCase, formatCheckAge } from './WarningsBanner';
+export type { WarningsBannerProps, BannerWarning, WarningLevel, WarningsNotice } from './WarningsBanner';
+
 export * from './weatherUtils';
 
 export { WIND_BANDS, windBandRgb, windBandColor, windScaleGradient, windBandEdges } from './windScale';

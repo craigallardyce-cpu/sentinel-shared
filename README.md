@@ -21,7 +21,7 @@ Projects/
 |---|---|---|
 | `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing (including how old a position fix may be and still count as live), AIS/AIVDM decoding, the NMEA gateway rule and the gateway connection pool over either TCP or UDP | all three |
 | `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global model used everywhere NWS has no data | OceanSentinel (server + client) |
-| `@sentinel/weather-ui` | NWS alert/forecast React components and helpers | OceanSentinel, HarborSentinel |
+| `@sentinel/weather-ui` | NWS alert/forecast React components and helpers, the chart's wind and radar layers, and `WarningsBanner`, the marine-warnings banner over the chart | OceanSentinel, HarborSentinel |
 | `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
@@ -218,6 +218,49 @@ Column grants decide who may write what (migrations `002` and `007` in the
 MarinerSentinel Website repo): `anon` reads the identity columns and may update
 only `mmsi`/`updated_at`; `authenticated` may also update `name`/`vessel_type`;
 the site secrets are not client-readable at all.
+
+## `@sentinel/weather-ui`: `WarningsBanner`
+
+The marine-warnings banner over the chart, one component for HarborSentinel and
+OceanSentinel (fit-and-finish X4; it replaces Harbor's `MarineWarningStrip` and
+Ocean's `WarningsStrip`). **With no warning in force it renders nothing**: the
+calm chart carries no bar restating SAFE (findings H4, O2).
+
+```tsx
+import { WarningsBanner } from '@sentinel/weather-ui';
+
+<WarningsBanner
+  warnings={alerts}                 // WeatherAlert[] or anything with `event`
+  notice={outside ? 'no-coverage' : failed ? 'not-checked' : null}
+  area={place}                      // expanded list only
+  onOpen={openMyModal}              // optional: host-owned detail instead of inline expand
+/>
+```
+
+- **Most severe first.** Alarm before warning, then NWS severity (Extreme,
+  Severe, Moderate, Minor), then the host's order. The band shows the top one
+  with a `+N more` count; a click expands every warning in place (event,
+  headline, effective and end times in mono, instruction, issuing office), or
+  calls `onOpen` when the host has its own detail view.
+- **Severity colour** (`warningLevel`): red for Severe or Extreme, for anything
+  named a *Warning*, and for anything ungraded; amber for Moderate or Minor
+  advisories, watches and statements. A host can set `level` on an item to
+  override it.
+- **No warnings is not the same as no answer.** `notice` states the non-answers
+  quietly (neutral hairline, secondary text): `no-coverage` (NWS stops at the
+  US border), `no-position` and `not-checked`. The host chooses; the banner
+  never infers one from an empty list, and a warning in force always wins.
+- Ocean's extras are props: `detail` (the forecast hazard clause), `stale` +
+  `checkedAt` (warnings from the last good check, with their age), `partial`
+  (read from forecast wording), `onOpenForecast`. Harbor's `usingChartCentre`
+  adds the "Chart centre" qualifier.
+- Drawn as the approved board (`OceanNightAfter`) draws it: a glass surface
+  (`--bg-panel-glass` behind a 16px backdrop blur, `-webkit-` form included),
+  `--radius-xl`, 48px tall, no shadow, a 1px border of the severity colour at
+  40%, the event name in the severity colour. Tokens only, so night mode needs
+  nothing. Tailwind classes, so an app must `@source` this package's
+  `dist` (both consumers already do). No new runtime imports: `react` and
+  `lucide-react` only.
 
 ## `@sentinel/settings`
 
