@@ -21,7 +21,14 @@ export interface ModalProps {
     bodyClassName?: string;
     /** Class for the panel. */
     className?: string;
-    /** Draws the panel with the alarm treatment (red border + glow). */
+    /**
+     * A strip between the header and the scrolling body that does not scroll
+     * with it -- a tab strip, typically (SettingsShell's). When set, the header
+     * drops its own bottom hairline, so the strip's is the only line between the
+     * title and the content.
+     */
+    subheader?: React.ReactNode;
+    /** Draws the panel with the alarm treatment (red border). */
     tone?: 'default' | 'danger';
     children?: React.ReactNode;
 }
@@ -32,7 +39,7 @@ export declare const MODAL_Z = 1100;
  * closes. Use it for every overlay that blocks the page — settings, editors,
  * confirmations — instead of a hand-rolled fixed div.
  */
-export declare function Modal({ open, onClose, title, description, icon, size, footer, closeOnBackdrop, closeOnEscape, hideClose, bodyClassName, className, tone, children, }: ModalProps): React.ReactPortal | null;
+export declare function Modal({ open, onClose, title, description, icon, size, footer, closeOnBackdrop, closeOnEscape, hideClose, bodyClassName, className, subheader, tone, children, }: ModalProps): React.ReactPortal | null;
 export interface ConfirmDialogProps {
     open: boolean;
     title: React.ReactNode;

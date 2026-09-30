@@ -2,42 +2,63 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect } from 'react';
 import { Moon, Settings, Sun } from 'lucide-react';
 import { cn } from './cn';
-/** Quiet mono text button used in the header (Night / Settings / Install…). */
+/**
+ * A header control (Night, Settings, Guide, End watch…): Inter 15/600 in
+ * sentence case, 48px tall.
+ *
+ * An icon or a word, never both: the word from `sm` up, where there is room for
+ * it, and the icon below, where there is not (fit-and-finish, "Icons": icon and
+ * word together belong only to primary navigation). It was mono, letter-spaced
+ * and always iconned, which put a third typeface in every header (X1).
+ */
 export function HeaderButton({ icon, active = false, label, className, ...rest }) {
-    return (_jsxs("button", { type: "button", className: cn(
-        // min-h-11 (44px): these are the most-tapped controls in the app and they
-        // sit in a 56px header, so the target can be full-height for free.
-        'flex items-center gap-1.5 font-mono text-[13px] font-bold tracking-widest transition-colors duration-150 cursor-pointer min-h-11', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60 rounded-md px-1', active ? 'text-cyan drop-shadow-[0_0_8px_var(--color-cyan-glow)]' : 'text-text-muted hover:text-text-primary', className), "aria-pressed": active, ...rest, children: [_jsx("span", { className: "shrink-0", "aria-hidden": true, children: icon }), label && _jsx("span", { className: "hidden sm:inline", children: label })] }));
+    return (_jsxs("button", { type: "button", className: cn('inline-flex items-center justify-center gap-2 h-12 min-w-12 px-3 sm:px-4 rounded-md cursor-pointer', 'font-sans text-[15px] font-semibold whitespace-nowrap', 'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60', active ? 'text-cyan' : 'text-text-secondary hover:text-text-primary hover:bg-bg-card-hover', className), "aria-pressed": active, ...rest, children: [_jsx("span", { className: cn('shrink-0 [&>svg]:w-5 [&>svg]:h-5', label ? 'sm:hidden' : undefined), "aria-hidden": true, children: icon }), label && _jsx("span", { className: "hidden sm:inline", children: label })] }));
 }
 /**
- * Bordered container for a group of status pills in the header.
+ * Groups the header's status items. It draws nothing of its own any more: a
+ * status is a dot and a word, and the bordered box this used to draw around
+ * the pills was a box around a box (fit-and-finish X3). Kept so no app has to
+ * change; an app can drop it and pass its StatusPills straight to `headerStatus`.
  *
  * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
  * status band actually holds, so a group that will not shrink makes the band's
  * own `min-w-0` a lie: the band never gets narrower than the pills, and its
- * `overflow-hidden` guillotines them instead — a pill sliced mid-word with a
- * border drawn through the letters, which is what a phone header showed.
- * Dropping `shrink-0` is not enough on its own, either: a flex item will not go
- * below its min-content size, and a pill's min-content is its whole label
- * because the label does not wrap. `min-w-0` is what overrides that.
- *
- * Shrinking then has to stop somewhere sensible, and that is each child's job
- * rather than this one's: `StatusPill` carries a min-width of its own chrome,
- * so it ellipsises down to a dot and stops. A child that can neither truncate
- * nor floor itself will hold this group open and be clipped by the band, as
- * before.
+ * `overflow-hidden` guillotines them instead. A flex item will not go below its
+ * min-content size either, and a pill's min-content is its whole label because
+ * the label does not wrap; `min-w-0` is what overrides that. Shrinking then
+ * stops at each child's own floor: `StatusPill` carries a min-width of its dot
+ * and padding, so it ellipsises down to a dot and stops.
  */
 export function HeaderGroup({ children, className }) {
-    return (_jsx("div", { className: cn('flex items-center gap-2 px-2 py-1 rounded-lg border border-border-color/60 bg-bg-card/50 shadow-inner select-none min-w-0', className), children: children }));
+    return _jsx("div", { className: cn('flex items-center gap-4 select-none min-w-0', className), children: children });
 }
+/* Bottom padding of the content area, as a variable the inline style reads.
+   The value differs either side of `lg` (the tab bar shows only below it), and
+   an inline style cannot hold a breakpoint -- while theme/shell.css's own
+   padding is unlayered, so no utility class could override it. Literal strings,
+   so each app's Tailwind finds them when it scans this package. */
+const CONTENT_PB = {
+    chartTabs: '[--sentinel-shell-pb:calc(var(--shell-bottom-nav)_+_0.5rem_+_var(--safe-area-bottom,0px))] lg:[--sentinel-shell-pb:calc(1rem_+_var(--safe-area-bottom,0px))]',
+    chartNoTabs: '[--sentinel-shell-pb:calc(1rem_+_var(--safe-area-bottom,0px))]',
+    pageTabs: '[--sentinel-shell-pb:calc(var(--shell-bottom-nav)_+_var(--safe-area-bottom,0px))] lg:[--sentinel-shell-pb:var(--safe-area-bottom,0px)]',
+    pageNoTabs: '[--sentinel-shell-pb:var(--safe-area-bottom,0px)]',
+};
+/** The one hairline a page draws between the window's chrome and its content. */
+const PAGE_HAIRLINE = 'border-bg-highest';
 /**
- * The fleet application frame: floating glass header, left dock from `lg`
- * (1024px) up, bottom bar below it, safe-area aware on every edge. The dock
- * breakpoint is deliberately `lg`, not `2xl` — tablets are the likeliest
- * plotter form factor and should get the desktop layout.
+ * The fleet application frame: a 56px header, a 72px rail from `lg` (1024px)
+ * up, a tab bar below it, safe-area aware on every edge. The rail breakpoint is
+ * deliberately `lg`, not `2xl` — tablets are the likeliest plotter form factor
+ * and should get the desktop layout.
+ *
+ * How the frame is drawn depends on `surface`: floating glass over a chart,
+ * opaque and attached for a page.
  */
-export function AppShell({ appName, brandIcon, tabs, activeTab, onTabChange, nightMode = false, onToggleNightMode, brightness, settingsOpen = false, onOpenSettings, headerCenter, headerStatus, headerActions, dockFooter, background, passThrough = false, mainClassName, bareMain = false, children, className, }) {
+export function AppShell({ appName, brandIcon, tabs, activeTab, onTabChange, nightMode = false, onToggleNightMode, brightness, settingsOpen = false, onOpenSettings, headerCenter, headerStatus, headerActions, background, passThrough = false, mainClassName, bareMain = false, surface, tabLabelPx = 13, children, className, }) {
     const hasTabs = tabs.length > 0;
+    const activeSurface = tabs.find((t) => t.id === activeTab)?.surface;
+    const resolved = activeSurface ?? surface ?? (background ? 'chart' : 'page');
+    const chart = resolved === 'chart';
     // Night mode and brightness go on <html>, not this div, so portalled dialogs and
     // toasts (rendered into document.body) are themed and dimmed too. On desktop
     // the OS window-controls cluster (electron-shell's hidden title bar) is told as
@@ -53,17 +74,37 @@ export function AppShell({ appName, brandIcon, tabs, activeTab, onTabChange, nig
             window.appShell?.setNightMode?.(false);
         };
     }, [nightMode, brightness]);
-    return (_jsx("div", { className: cn('sentinel-shell flex flex-col h-dvh w-screen bg-bg-app text-text-primary overflow-hidden font-sans', className), children: _jsxs("div", { className: "flex-grow flex flex-col min-h-0 overflow-hidden relative", children: [background && _jsx("div", { className: "absolute inset-0 z-0", children: background }), _jsxs("header", { className: "sentinel-header fixed left-2 right-2 sm:left-6 sm:right-6 h-14 rounded-lg sm:rounded-xl glass-panel shadow-2xl flex items-center gap-2 z-50 select-none px-4 sm:px-5", style: {
+    /* theme/shell.css lays the content out from three variables. Set here, on the
+       same element, an inline value beats its class and media rules, so the
+       shell's geometry lives in one place:
+         chart  16px from every edge (clear of the OS window controls), 16px
+                between the header and what is under it;
+         page   flush with the window, directly under the title-bar strip.
+       The tab bar is 72px in both. */
+    const shellVars = {
+        '--shell-edge': chart ? 'max(1rem, calc(env(titlebar-area-height, 0px) + 0.5rem))' : 'env(titlebar-area-height, 0px)',
+        '--shell-gap': chart ? '1rem' : '0px',
+        '--shell-bottom-nav': '4.5rem',
+    };
+    const sideInset = chart ? '1rem' : '0px';
+    return (_jsx("div", { className: cn('sentinel-shell flex flex-col h-dvh w-screen bg-bg-app text-text-primary overflow-hidden font-sans', className), style: shellVars, "data-surface": resolved, children: _jsxs("div", { className: "flex-grow flex flex-col min-h-0 overflow-hidden relative", children: [background && _jsx("div", { className: "absolute inset-0 z-0", children: background }), _jsxs("header", { className: cn('sentinel-header fixed h-14 flex items-center gap-1 z-50 select-none pr-2', chart
+                        ? 'left-4 right-4 rounded-xl glass-panel pl-4 sm:pl-5'
+                        : cn('left-0 right-0 bg-bg-app border-b pl-4 sm:pl-6', PAGE_HAIRLINE)), style: {
                         top: 'calc(var(--shell-edge) + var(--safe-area-top, 0px))',
                         marginLeft: 'var(--safe-area-left, 0px)',
                         marginRight: 'var(--safe-area-right, 0px)',
-                    }, children: [_jsxs("div", { className: "flex items-center gap-2 shrink-0 min-w-0", children: [brandIcon && _jsx("span", { className: "text-cyan shrink-0", "aria-hidden": true, children: brandIcon }), _jsx("span", { className: "hidden sm:inline font-heading font-semibold tracking-wide text-sm text-cyan truncate", children: appName })] }), _jsx("div", { className: "flex-auto min-w-0 flex items-center justify-center overflow-hidden", children: headerCenter }), _jsxs("div", { className: "flex items-center gap-3 sm:gap-4 min-w-0", children: [headerStatus && (_jsx("div", { className: "flex items-center gap-3 sm:gap-4 min-w-0 overflow-hidden", children: headerStatus })), _jsxs("div", { className: "flex items-center gap-3 sm:gap-4 shrink-0", children: [onToggleNightMode && (_jsx(HeaderButton, { icon: nightMode ? _jsx(Sun, { size: 13 }) : _jsx(Moon, { size: 13 }), active: nightMode, label: nightMode ? 'Day' : 'Night', onClick: onToggleNightMode, "aria-label": nightMode ? 'Switch to day mode' : 'Switch to night mode' })), onOpenSettings && (_jsx(HeaderButton, { icon: _jsx(Settings, { size: 13 }), active: settingsOpen, label: "Settings", onClick: onOpenSettings, "aria-label": "Settings" })), headerActions] })] })] }), _jsxs("div", { className: cn('sentinel-shell-content flex-grow flex flex-row min-h-0 overflow-hidden relative z-10 gap-4 transition-[padding] duration-300', !hasTabs && 'sentinel-shell-content--no-tabs', passThrough && 'pointer-events-none'), children: [hasTabs && (_jsx("aside", { className: "hidden lg:flex flex-col shrink-0 select-none h-full pointer-events-auto", children: _jsxs("div", { className: "glass-panel rounded-xl w-48 h-full flex flex-col py-5 px-3 shadow-2xl justify-between", children: [_jsx("nav", { className: "flex flex-col gap-1.5 w-full", "aria-label": "Primary", children: tabs.map((tab) => {
-                                            const active = tab.id === activeTab;
-                                            return (_jsxs("button", { type: "button", onClick: () => onTabChange(tab.id), "aria-current": active ? 'page' : undefined, className: cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer w-full text-left border', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60', active
-                                                    ? 'bg-cyan/5 text-cyan border-cyan/70 shadow-[0_0_12px_var(--color-cyan-glow)]'
-                                                    : 'text-text-secondary hover:bg-bg-card-hover hover:text-text-primary border-transparent'), children: [_jsx("span", { className: "shrink-0 [&>svg]:w-4 [&>svg]:h-4", "aria-hidden": true, children: tab.icon }), _jsx("span", { className: "truncate", children: tab.label }), tab.badge !== undefined && tab.badge > 0 && (_jsx("span", { className: "ml-auto bg-warning text-bg-app text-[12px] font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center font-mono", children: tab.badge }))] }, tab.id));
-                                        }) }), dockFooter && _jsx("div", { className: "px-3 text-[13px] font-mono text-text-muted leading-tight", children: dockFooter })] }) })), _jsx("main", { className: cn('flex-1 flex flex-col min-h-0 min-w-0 relative', !bareMain && 'glass-panel rounded-2xl shadow-2xl p-4 sm:p-5 overflow-y-auto custom-scrollbar', mainClassName), children: children })] }), hasTabs && (_jsx("nav", { className: "fixed bottom-0 left-0 right-0 bg-bg-panel/90 backdrop-blur-md border-t border-border-color flex lg:hidden justify-around items-center z-40 select-none px-2", style: { height: 'calc(var(--shell-bottom-nav) + var(--safe-area-bottom, 0px))', paddingBottom: 'var(--safe-area-bottom, 0px)' }, "aria-label": "Primary", children: tabs.map((tab) => {
+                    }, children: [_jsxs("div", { className: "flex items-center gap-2.5 shrink-0 min-w-0", children: [brandIcon && _jsx("span", { className: "text-cyan shrink-0 [&>svg]:w-5 [&>svg]:h-5", "aria-hidden": true, children: brandIcon }), _jsx("span", { className: "hidden sm:inline font-wordmark font-semibold text-[17px] text-cyan truncate", children: appName })] }), _jsx("div", { className: "flex-auto min-w-0 flex items-center justify-center overflow-hidden", children: headerCenter }), _jsxs("div", { className: "flex items-center gap-2 sm:gap-3 min-w-0", children: [headerStatus && (_jsx("div", { className: "flex items-center gap-4 min-w-0 overflow-hidden sm:px-2", children: headerStatus })), _jsxs("div", { className: "flex items-center gap-1 shrink-0", children: [onToggleNightMode && (_jsx(HeaderButton, { icon: nightMode ? _jsx(Sun, { size: 20 }) : _jsx(Moon, { size: 20 }), active: nightMode, label: nightMode ? 'Day' : 'Night', onClick: onToggleNightMode, "aria-label": nightMode ? 'Switch to day mode' : 'Switch to night mode' })), onOpenSettings && (_jsx(HeaderButton, { icon: _jsx(Settings, { size: 20 }), active: settingsOpen, label: "Settings", onClick: onOpenSettings, "aria-label": "Settings" })), headerActions] })] })] }), _jsxs("div", { className: cn('sentinel-shell-content flex-grow flex flex-row min-h-0 overflow-hidden relative z-10', chart ? 'gap-4' : 'gap-0', !hasTabs && 'sentinel-shell-content--no-tabs', hasTabs ? (chart ? CONTENT_PB.chartTabs : CONTENT_PB.pageTabs) : chart ? CONTENT_PB.chartNoTabs : CONTENT_PB.pageNoTabs, passThrough && 'pointer-events-none'), style: {
+                        paddingLeft: `calc(${sideInset} + var(--safe-area-left, 0px))`,
+                        paddingRight: `calc(${sideInset} + var(--safe-area-right, 0px))`,
+                        paddingBottom: 'var(--sentinel-shell-pb)',
+                    }, children: [hasTabs && (_jsx("aside", { className: cn('hidden lg:flex flex-col shrink-0 w-18 h-full p-2 select-none pointer-events-auto', chart ? 'glass-panel rounded-xl' : cn('bg-bg-app border-r', PAGE_HAIRLINE)), children: _jsx("nav", { className: "flex flex-col gap-1 w-full", "aria-label": "Primary", children: tabs.map((tab) => {
+                                    const active = tab.id === activeTab;
+                                    return (_jsxs("button", { type: "button", onClick: () => onTabChange(tab.id), "aria-current": active ? 'page' : undefined, title: typeof tab.label === 'string' ? tab.label : undefined, className: cn('relative flex flex-col items-center justify-center gap-1 min-h-16 w-full px-0.5 py-2 rounded-md cursor-pointer text-center', 'font-sans text-[13px] font-semibold leading-4', 'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60', active ? 'bg-cyan-dim text-cyan' : 'text-text-secondary hover:bg-bg-card-hover hover:text-text-primary'), children: [_jsx("span", { className: "shrink-0 [&>svg]:w-5 [&>svg]:h-5", "aria-hidden": true, children: tab.icon }), _jsx("span", { className: "max-w-full break-words hyphens-auto", children: tab.label }), tab.badge !== undefined && tab.badge > 0 && (_jsx("span", { className: "absolute top-1 right-1 bg-warning text-bg-app text-[13px] font-mono font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center", children: tab.badge }))] }, tab.id));
+                                }) }) })), _jsx("main", { className: cn('flex-1 flex flex-col min-h-0 min-w-0 relative', !bareMain &&
+                                (chart
+                                    ? 'glass-panel rounded-xl p-4 sm:p-5 overflow-y-auto custom-scrollbar'
+                                    : 'bg-bg-app p-4 sm:p-6 overflow-y-auto custom-scrollbar'), mainClassName), children: children })] }), hasTabs && (_jsx("nav", { className: cn('fixed bottom-0 left-0 right-0 grid grid-flow-col auto-cols-fr lg:hidden z-40 select-none px-1 border-t', chart ? 'bg-bg-panel/90 backdrop-blur-md border-border-color' : cn('bg-bg-app', PAGE_HAIRLINE)), style: { height: 'calc(var(--shell-bottom-nav) + var(--safe-area-bottom, 0px))', paddingBottom: 'var(--safe-area-bottom, 0px)' }, "aria-label": "Primary", children: tabs.map((tab) => {
                         const active = tab.id === activeTab;
-                        return (_jsxs("button", { type: "button", onClick: () => onTabChange(tab.id), "aria-current": active ? 'page' : undefined, className: cn('flex flex-col items-center justify-center relative cursor-pointer px-3 py-1.5 min-w-14 transition-colors', active ? 'text-cyan' : 'text-text-secondary hover:text-text-primary'), children: [_jsx("span", { className: "[&>svg]:w-5 [&>svg]:h-5", "aria-hidden": true, children: tab.icon }), _jsx("span", { className: "text-[12px] mt-1 font-medium", children: tab.shortLabel ?? tab.label }), tab.badge !== undefined && tab.badge > 0 && (_jsx("span", { className: "absolute top-0 right-1 bg-warning text-bg-app text-[12px] font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center font-mono", children: tab.badge }))] }, tab.id));
+                        return (_jsxs("button", { type: "button", onClick: () => onTabChange(tab.id), "aria-current": active ? 'page' : undefined, className: cn('relative flex flex-col items-center justify-center gap-1 min-w-0 px-1 cursor-pointer text-center', 'font-sans font-semibold leading-tight', tabLabelPx === 12 ? 'text-[12px]' : 'text-[13px]', 'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan/60', active ? 'text-cyan' : 'text-text-secondary hover:text-text-primary'), children: [_jsx("span", { className: "shrink-0 [&>svg]:w-5 [&>svg]:h-5", "aria-hidden": true, children: tab.icon }), _jsx("span", { className: "max-w-full break-words hyphens-auto", "data-slot": "tab-label", children: tab.label }), tab.badge !== undefined && tab.badge > 0 && (_jsx("span", { className: "absolute top-1 right-1 bg-warning text-bg-app text-[13px] font-mono font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center", children: tab.badge }))] }, tab.id));
                     }) }))] }) }));
 }

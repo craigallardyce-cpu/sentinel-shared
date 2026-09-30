@@ -11,8 +11,8 @@ import React from 'react';
  * `<input>` inside a styled `<div>` instead, and why the fleet has several
  * slightly different versions of the same cell.
  *
- * The control is still 44px, because these are touched at anchor. The saving
- * against `Input` is the chrome around it, not the target itself.
+ * The control is 48px, the fleet's input height, because these are touched at
+ * anchor. The saving against `Input` is the chrome around it, not the target.
  *
  * ```tsx
  * <UnitField label="Scope" icon={<Ruler size={14} />} unit=":1"

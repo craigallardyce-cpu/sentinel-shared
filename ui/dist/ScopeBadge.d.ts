@@ -22,12 +22,15 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * because inheritance is the ordinary case and the thing worth noticing is the
  * value that departs from it.
  *
- * Quiet means quiet. This was a bordered chip in bold uppercase mono, and on a
- * settings tab where several values are device-set it drew a row of small cyan
- * boxes that pulled the eye harder than the settings themselves -- a caption
- * shouting over its own subject. It is a caption now: small, muted, sentence
- * case, no border and no fill. An override keeps the accent, because that is the
- * one this exists to point at, but as ink rather than as a box.
+ * Quiet means quiet. This was a bordered chip in bold uppercase mono, then a
+ * muted word, and on a tab where several values are device-set it still put
+ * "This device" on row after row (fit-and-finish X5). It is a 6px dot now,
+ * beside the label: filled for an override (this device, this PC), hollow for
+ * an inherited layer, and only an override takes the accent. The layer's name
+ * is still in the element as visually hidden text (`sr-only`), so a screen
+ * reader announces it and a caller can still find the badge by its text, and
+ * it is in the tooltip. The dialog explains the dot once, in its header
+ * (SettingsShell's `scopeLegend`).
  */
 export interface ScopeBadgeProps {
     source: SettingSource;
