@@ -63,6 +63,24 @@ describe('AppShell rail', () => {
     expect(item).toHaveAttribute('aria-current', 'page');
   });
 
+  it('breaks a label only at a soft hyphen or a space, never mid-word', () => {
+    const { container } = shell();
+    const rail = container.querySelector('aside')!;
+    const labels = rail.querySelectorAll('[data-slot="rail-label"]');
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label.className).toContain('hyphens-manual');
+      expect(label.className).toContain('[overflow-wrap:normal]');
+      expect(label.className).not.toMatch(/hyphens-auto|break-words|break-all|wrap-anywhere|wrap-break-word/);
+    }
+  });
+
+  it('leaves the phone tab bar wrapping as it did', () => {
+    shell();
+    const label = within(phoneBar()).getByText('Maintenance');
+    expect(label.className).toContain('break-words');
+  });
+
   it('no longer renders the version footer, though the prop is still accepted', () => {
     shell({ dockFooter: <>VesselKeeper v2.13.0</> });
     expect(screen.queryByText(/v2\.13\.0/)).toBeNull();
@@ -120,15 +138,15 @@ describe('StatusPill', () => {
     expect(screen.getByText('Instruments')).toBeInTheDocument();
   });
 
-  it('pulses only for a state that wants attention (alarm, and warning until Wave 2)', () => {
-    for (const status of ['ok', 'offline', 'info'] as const) {
+  it('pulses only for an alarm, never for a warning', () => {
+    for (const status of ['ok', 'offline', 'info', 'warning'] as const) {
       const { container, unmount } = render(<StatusPill status={status} pulse>x</StatusPill>);
       expect(container.querySelector('.animate-ping'), status).toBeNull();
       unmount();
     }
-    for (const status of ['alarm', 'warning'] as const) {
-      const { container, unmount } = render(<StatusPill status={status} pulse>x</StatusPill>);
-      expect(container.querySelector('.animate-ping'), status).not.toBeNull();
+    {
+      const { container, unmount } = render(<StatusPill status="alarm" pulse>x</StatusPill>);
+      expect(container.querySelector('.animate-ping')).not.toBeNull();
       unmount();
     }
     const { container } = render(<StatusPill status="alarm">No pulse asked</StatusPill>);
@@ -161,6 +179,17 @@ describe('ScopeBadge', () => {
     const { container: vessel } = render(<ScopeBadge source="vessel" />);
     expect(vessel.querySelector('[aria-hidden]')!.className).toContain('border');
     expect(vessel.querySelector('[aria-hidden]')!.className).not.toContain('bg-current');
+  });
+
+  it('draws an override in neutral grey, not the accent, and an inherited layer muted', () => {
+    const { container: device } = render(<ScopeBadge source="device" />);
+    const deviceBadge = device.firstElementChild as HTMLElement;
+    expect(deviceBadge.className).toContain('text-text-secondary');
+    expect(deviceBadge.className).not.toMatch(/text-cyan/);
+    const { container: host } = render(<ScopeBadge source="host" />);
+    expect((host.firstElementChild as HTMLElement).className).toContain('text-text-secondary');
+    const { container: account } = render(<ScopeBadge source="account" />);
+    expect((account.firstElementChild as HTMLElement).className).toContain('text-text-muted');
   });
 
   it('still hides for an untouched value', () => {

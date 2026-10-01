@@ -28,6 +28,10 @@ import { builtinModules } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findCheckoutRef } from './lib/yaml-scan.mjs';
 import { declarationsIn, rangesByDep, compareWithPublished, unknownEntries, canonicalFrom } from './lib/aligned-deps.mjs';
+import {
+  jsxTagEnd, buttonLabel, glowsIn, arbitraryShadowValue, shadowDeclarations,
+  smallTypeClasses, isPhoneOnlyTwelve, TYPE_FLOOR,
+} from './lib/style-scan.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(SHARED_ROOT, '..');
@@ -1224,6 +1228,12 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 //        so v2.9.0 and v2.10.0 of OceanSentinel both shipped letting anyone in
 //        without an account.
 //    Two are burndown counters rather than rules.
+//
+//    Fit-and-finish (2026-09-30) tightened it once the three apps had moved:
+//    the floor is 13px, not 12; a status colour on a labelled button and a glow
+//    shadow are failures, not advice; and the names the system deprecated warn
+//    wherever an app still writes them, so deleting them after the first weekly
+//    release that carries fit-and-finish breaks nothing.
 // ---------------------------------------------------------------------------
 const APP_SRC = {
   OceanSentinel: 'frontend/src',
@@ -1242,9 +1252,18 @@ const NEUTRAL_SHADOW = /^(?:rgba?\(\s*(?:0\s*,\s*0\s*,\s*0|255\s*,\s*255\s*,\s*2
 const SHADOW_ARBITRARY = /(?:drop-)?shadow-\[[^\]]*\]/g;
 const SHADOW_COLOUR = /(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})/g;
 const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
+// Every opening <button> tag. Where it ends is found by jsxTagEnd, which skips
+// quoted values and {…} expressions whole. This used to be one regex,
+// `<button\b[^>]{0,600}?…`, which stopped at the first `>` -- and in
+// `onClick={() => save()}` that is the arrow, so most of the fleet's buttons
+// were never examined (both fit-and-finish Wave 2 workers found it).
 // A hand-rolled button wearing the fleet's own colours is one @sentinel/ui
 // never got to own. Icon-only affordances are not caught, and should not be.
-const RAW_ACCENT_BUTTON = /<button\b[^>]{0,600}?(?:bg-cyan|bg-primary|text-cyan|bg-bg-card|border-cyan|bg-red|bg-green|bg-warning)/g;
+const BUTTON_OPEN = /<button\b/g;
+// The status colours. On a labelled button these fail outright: green is never
+// an action, and red is only for acknowledging an alarm, which is Button's
+// `alarm` variant, not a raw class. A prefix does not excuse them.
+const STATUS_FILL = /^(?:bg-red|bg-green|bg-warning)\b/;
 // The same colours, with whatever variant prefix they carry, so a hit that only
 // happens on hover can be told from one that is there at rest. Group 1 is the
 // prefix and is empty for a resting colour.
@@ -1273,6 +1292,52 @@ const DEFAULT_ON_ENV = /(?:import\.meta\.env|process\.env)\.([A-Z_][A-Z0-9_]*)\s
 // points at the right place in the original.
 const blankCssComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
 const RAW_FONT_SIZE = /font-size\s*:\s*(\d+(?:\.\d+)?)px/g;
+// The theme's own type steps, every one at or above the floor. Read from the
+// file so a new step is recognised without editing this one.
+const TYPE_CSS = path.join(SHARED_ROOT, 'theme', 'type.css');
+const TYPE_STEPS = new Set(
+  [...(exists(TYPE_CSS) ? readText(TYPE_CSS) : '').matchAll(/@utility\s+(text-[a-z0-9-]+)/g)].map((m) => m[1])
+);
+// Only VesselKeeper may draw 12px, and only below `sm` (see isPhoneOnlyTwelve).
+const PHONE_TWELVE_APPS = new Set(['VesselKeeper']);
+// JS comments blanked to spaces, newlines kept, so an offset still finds its line.
+const blankJsComments = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])(\/\/[^\n]*)/g, (_, a, b) => a + ' '.repeat(b.length));
+const lineOf = (src, index) => src.slice(0, index).split('\n').length;
+
+/*
+  Names fit-and-finish deprecated (2026-09-30). Each still works -- an alias, or
+  an option drawn as its replacement -- so nothing here is a fault yet. They are
+  warned on so the deletion after the first weekly release carrying
+  fit-and-finish is safe: when every count is zero, nothing in an app still
+  names them. Comments are blanked first; prose about a name is not a use.
+*/
+const ROUNDED_USE = 'rounded-md (8px, a control) or rounded-xl (16px, a floating surface)';
+const DEPRECATED_NAMES = [
+  { re: /(?<![\w-])(?:[a-z0-9-]+:)*text-label-caps(?![\w-])/g, name: 'text-label-caps',
+    use: 'text-label (sentence case) or text-instrument-label (uppercase, over an instrument)' },
+  { re: /(?<![\w-])(?:[a-z0-9-]+:)*rounded-sm(?![\w-])/g, name: 'rounded-sm', use: ROUNDED_USE },
+  { re: /(?<![\w-])(?:[a-z0-9-]+:)*rounded-lg(?![\w-])/g, name: 'rounded-lg', use: ROUNDED_USE },
+  { re: /var\(\s*--color-[a-z0-9-]+-glow\b[^)]*\)/g, name: 'var(--color-*-glow)',
+    use: 'nothing: state is fill and stroke, and the token is already transparent' },
+  { re: /--border-color-glass\b/g, name: '--border-color-glass', use: 'var(--border-color)' },
+  { re: /\bshortLabel\s*[:=]/g, name: 'shortLabel', jsOnly: true,
+    use: 'nothing: the tab bar shows the full label; put a soft hyphen (\\u00AD) in the label where the rail may break a word' },
+  { re: /\bdockFooter\s*=/g, name: 'dockFooter', jsOnly: true,
+    use: 'nothing: it is not rendered, and the version lives in Settings > About' },
+];
+// Bare `rounded` is a word as well as a class, so it is only counted inside a
+// string literal that is otherwise a class list.
+const BARE_ROUNDED = /(?<=^|\s)(?:[a-z0-9-]+:)*rounded(?=\s|$)/;
+const LOOKS_LIKE_CLASSES = /(?:^|\s)(?:[a-z0-9-]+:)*-?(?:p[xytblr]?|m[xytblr]?|w|h|min-[wh]|max-[wh]|bg|text|border|flex|grid|gap|items|justify|shadow|font|leading|tracking|overflow|z|inset|opacity|transition|duration|ring|outline|space-[xy]|cursor|select|fill|stroke)-[\w\[\]\/.%:-]+(?=\s|$)/;
+const STRING_LITERAL = /(["'`])((?:\\.|(?!\1)[^\\\n])*)\1/g;
+// Deprecated <Button> options, and what replaces each.
+const DEPRECATED_BUTTON = [
+  { re: /\bvariant\s*=\s*(?:\{\s*)?["'`]success["'`]/, name: 'variant="success"', use: 'variant="primary" (green is never an action)' },
+  { re: /\bvariant\s*=\s*(?:\{\s*)?["'`]accent["'`]/, name: 'variant="accent"', use: 'variant="secondary", or `active` for a control that is on' },
+  { re: /\bsize\s*=\s*(?:\{\s*)?["'`]dense["'`]/, name: 'size="dense"', use: 'size="sm" (40px)' },
+];
 // A rule may sit under the floor if it says why, within 400 characters above it.
 const FLOOR_EXEMPT = 'type-floor-exempt';
 const sample = (list, n = 3) => list.slice(0, n).join(', ') + (list.length > n ? `, +${list.length - n} more` : '');
@@ -1287,6 +1352,13 @@ for (const app of presentApps) {
   const rel = (f) => path.relative(path.join(ROOT, app.name), f).split(path.sep).join('/');
 
   const litShadows = [];
+  const glows = [];
+  const statusButtons = [];
+  const deprecated = new Map(); // name -> { use, hits: [] }
+  const noteDeprecated = (name, use, where) => {
+    if (!deprecated.has(name)) deprecated.set(name, { use, hits: [] });
+    deprecated.get(name).hits.push(where);
+  };
   const smallType = [];
   const localFaces = [];
   const rawButtons = [];
@@ -1297,15 +1369,52 @@ for (const app of presentApps) {
   for (const f of files) {
     const src = readText(f);
 
-    for (const cls of src.match(SHADOW_ARBITRARY) ?? []) {
+    const isCss = path.extname(f) === '.css';
+    // Comments blanked, offsets kept: prose about a shadow or a class is not one.
+    const code = isCss ? blankCssComments(src) : blankJsComments(src);
+
+    for (const m of code.matchAll(SHADOW_ARBITRARY)) {
+      const cls = m[0];
+      const value = arbitraryShadowValue(cls);
+      if (value !== null && glowsIn(value).length) { glows.push(`${rel(f)}:${lineOf(src, m.index)} ${cls}`); continue; }
       for (const colour of cls.match(SHADOW_COLOUR) ?? []) {
         if (!NEUTRAL_SHADOW.test(colour)) litShadows.push(`${rel(f)} ${colour}`);
       }
     }
 
-    for (const m of src.matchAll(ARBITRARY_TEXT)) {
-      arbitraryText++;
-      if (parseFloat(m[1]) < 12) smallType.push(`${rel(f)} ${m[0]}`);
+    // Glows written as CSS rather than as a class: a stylesheet, a style
+    // object, or the HTML string of a map marker. The legibility halos the map
+    // markers draw (black, rgba(0,0,0,…), --bg-app) are neutral and pass.
+    for (const { index, value } of shadowDeclarations(code)) {
+      for (const layer of glowsIn(value)) glows.push(`${rel(f)}:${lineOf(src, index)} ${layer.trim().slice(0, 60)}`);
+    }
+
+    for (const _ of src.matchAll(ARBITRARY_TEXT)) arbitraryText++;
+    for (const hit of smallTypeClasses(code)) {
+      if (PHONE_TWELVE_APPS.has(app.name) && isPhoneOnlyTwelve(code, hit, TYPE_STEPS)) continue;
+      smallType.push(`${rel(f)}:${lineOf(src, hit.index)} ${hit.cls}`);
+    }
+
+    // Deprecated names, for the post-release deletion.
+    for (const d of DEPRECATED_NAMES) {
+      if (d.jsOnly && isCss) continue;
+      for (const m of code.matchAll(d.re)) noteDeprecated(d.name, d.use, `${rel(f)}:${lineOf(src, m.index)}`);
+    }
+    if (!isCss) {
+      for (const m of code.matchAll(STRING_LITERAL)) {
+        const isClassList = LOOKS_LIKE_CLASSES.test(m[2]) || /\bclass(?:Name)?=\{?\s*$/.test(code.slice(Math.max(0, m.index - 16), m.index));
+        if (BARE_ROUNDED.test(m[2]) && isClassList) {
+          noteDeprecated('rounded', ROUNDED_USE, `${rel(f)}:${lineOf(src, m.index)}`);
+        }
+      }
+      for (const m of code.matchAll(/<Button\b/g)) {
+        const end = jsxTagEnd(code, m.index);
+        if (end === -1) continue;
+        const tag = code.slice(m.index, end + 1);
+        for (const d of DEPRECATED_BUTTON) {
+          if (d.re.test(tag)) noteDeprecated(`<Button ${d.name}>`, d.use, `${rel(f)}:${lineOf(src, m.index)}`);
+        }
+      }
     }
 
     /*
@@ -1315,7 +1424,7 @@ for (const app of presentApps) {
       26 were what the warning describes. The other 49 were noise of two kinds,
       and a count inflated threefold is a count nobody works down.
 
-      1. Icon-only affordances. RAW_ACCENT_BUTTON's own comment says these "are
+      1. Icon-only affordances. The rule's own comment says these "are
          not caught, and should not be" -- but 38 of the 75 were, because a
          close X or a chevron picks up `hover:bg-bg-card` in its class list.
          @sentinel/ui's Button takes a label; an icon-only control is a
@@ -1329,22 +1438,36 @@ for (const app of presentApps) {
 
       What is left is a button with a label, painted a fleet colour at rest --
       which is the thing Button should own, and the thing the warning says.
+
+      The status colours are the exception to (2), and fail rather than warn
+      (fit-and-finish Wave 3). A hover that turns green or red is not a neutral
+      affordance: it tells the owner the action is safe or alarming, and that
+      is Button's call (`danger`, `alarm`), never a raw class's. A label is now
+      anything the children can render, an expression's strings included, so
+      `{busy ? 'Saving' : 'Save'}` is a label and an icon alone is not.
     */
-    for (const m of src.matchAll(RAW_ACCENT_BUTTON)) {
-      const tagEnd = src.indexOf('>', m.index);
+    if (!isCss) for (const m of code.matchAll(BUTTON_OPEN)) {
+      const tagEnd = jsxTagEnd(code, m.index);
       if (tagEnd === -1) continue;
-      const tag = src.slice(m.index, tagEnd + 1);
+      const tag = code.slice(m.index, tagEnd + 1);
 
       // Every colour hit in the opening tag, with whatever prefix it carried.
       const hits = [...tag.matchAll(BUTTON_COLOUR_HIT)];
-      if (hits.length && hits.every((h) => h[1])) continue;
+      if (!hits.length) continue;
 
-      const close = src.indexOf('</button>', tagEnd);
-      const body = close === -1 ? '' : src.slice(tagEnd + 1, close);
-      // Strip child elements and JSX expressions; what remains is the label.
-      const label = body.replace(/<[^>]*>/g, '').replace(/\{[^{}]*\}/g, '').trim();
-      if (!label) continue;
+      // A self-closing <button /> has no label.
+      if (tag.endsWith('/>')) continue;
+      const close = code.indexOf('</button>', tagEnd);
+      const body = close === -1 ? '' : code.slice(tagEnd + 1, close);
+      if (!buttonLabel(body)) continue;
 
+      // A status colour fails whether it is there at rest or behind a prefix.
+      const status = hits.filter((h) => STATUS_FILL.test(h[2]));
+      if (status.length) {
+        statusButtons.push(`${rel(f)}:${lineOf(src, m.index)} ${status.map((h) => h[0]).join(' ')}`);
+        continue;
+      }
+      if (hits.every((h) => h[1])) continue;
       rawButtons.push(rel(f));
     }
 
@@ -1376,7 +1499,7 @@ for (const app of presentApps) {
       // the whole of v2.9.0 with nothing to say so.
       const blanked = blankCssComments(src);
       for (const m of blanked.matchAll(RAW_FONT_SIZE)) {
-        if (parseFloat(m[1]) >= 12) continue;
+        if (parseFloat(m[1]) >= TYPE_FLOOR) continue;
         if (src.slice(Math.max(0, m.index - 400), m.index).includes(FLOOR_EXEMPT)) continue;
         smallType.push(`${rel(f)} ${m[0]}`);
       }
@@ -1385,22 +1508,38 @@ for (const app of presentApps) {
 
   if (litShadows.length) {
     fail('theme', `${app.name}: ${litShadows.length} shadow(s) carry a literal colour instead of a token — ` +
-      `the element follows .theme-night and the glow does not, which is how a teal halo ends up on a ` +
-      `red-adapted bridge. Use var(--color-*-glow), or color-mix on the token for other alphas: ${sample(litShadows)}`);
+      `the element follows .theme-night and the shadow does not. State is fill and stroke; no glows. ` +
+      `Elevation is var(--panel-shadow), and a legibility halo is black or var(--bg-app): ${sample(litShadows)}`);
+  }
+  if (glows.length) {
+    fail('theme', `${app.name}: ${glows.length} glow(s) — a zero-offset coloured shadow, or a --color-*-glow ` +
+      `token (transparent and deprecated). State is fill and stroke; no glows. Elevation is ` +
+      `var(--panel-shadow); a map marker's legibility halo may be black, rgba(0,0,0,…) or var(--bg-app): ${sample(glows)}`);
+  }
+  if (statusButtons.length) {
+    fail('ui', `${app.name}: ${statusButtons.length} labelled <button>(s) painted a status colour (bg-green, ` +
+      `bg-red, bg-warning), at rest or behind a prefix such as hover:. Green is never an action; red is ` +
+      `@sentinel/ui Button's to give — variant="alarm" to acknowledge an alarm, variant="danger" for a ` +
+      `destructive action — never a raw class's. Otherwise use primary, secondary or ghost: ${sample(statusButtons)}`);
   }
   if (smallType.length) {
-    fail('type', `${app.name}: ${smallType.length} type size(s) below the 12px floor in ` +
+    fail('type', `${app.name}: ${smallType.length} type size(s) below the ${TYPE_FLOOR}px floor in ` +
       `@sentinel/theme/type.css — these screens are read at arm's length, in spray, sometimes ` +
       `through gloves. Type that is genuinely not read — a glyph, a chart annotation, licence ` +
-      `credit — may say so in a /* ${FLOOR_EXEMPT}: why */ comment above the rule: ${sample(smallType)}`);
+      `credit — may say so in a /* ${FLOOR_EXEMPT}: why */ comment above a stylesheet rule. ` +
+      `VesselKeeper alone may draw 12px below sm, written \`text-[12px] sm:text-[13px]\`: ${sample(smallType)}`);
+  }
+  for (const [name, { use, hits }] of deprecated) {
+    warn('deprecated', `${app.name}: ${hits.length} use(s) of ${name}, deprecated by fit-and-finish and due ` +
+      `for deletion after the first weekly release carrying it — use ${use}: ${sample(hits)}`);
   }
   if (localFaces.length) {
     warn('theme', `${app.name}: declares typography that belongs to @sentinel/theme — faces come from ` +
       `fonts.css and optical size is a fleet-wide property, not a per-app one: ${sample(localFaces)}`);
   }
   if (arbitraryText) {
-    warn('type', `${app.name}: ${arbitraryText} hand-written text-[Npx] value(s). All are at or above the ` +
-      `floor, so this is a burndown count, not a fault — prefer the named steps in ` +
+    warn('type', `${app.name}: ${arbitraryText} hand-written text-[Npx] value(s). Any under the ${TYPE_FLOOR}px ` +
+      `floor is reported as a failure; the rest are a burndown count, not a fault — prefer the named steps in ` +
       `@sentinel/theme/type.css as these are touched.`);
   }
   if (shippedFlags.length) {

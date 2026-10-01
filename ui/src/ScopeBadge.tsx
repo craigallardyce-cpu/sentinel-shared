@@ -21,15 +21,18 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * way to tell that changing the gateway here would or would not reach the PC at
  * the nav station.
  *
- * Only an override is drawn in the accent colour. Everything inherited is quiet,
- * because inheritance is the ordinary case and the thing worth noticing is the
- * value that departs from it.
+ * Only an override is filled. Everything inherited is hollow, because
+ * inheritance is the ordinary case and the thing worth noticing is the value
+ * that departs from it.
  *
  * Quiet means quiet. This was a bordered chip in bold uppercase mono, then a
  * muted word, and on a tab where several values are device-set it still put
  * "This device" on row after row (fit-and-finish X5). It is a 6px dot now,
  * beside the label: filled for an override (this device, this PC), hollow for
- * an inherited layer, and only an override takes the accent. The layer's name
+ * an inherited layer. Neither takes the accent: the override is a filled
+ * text-secondary dot, as the Settings boards draw it, because cyan is what the
+ * dialog uses for the selected tab and the primary action, and a dot in that
+ * colour on row after row read as something to press. The layer's name
  * is still in the element as visually hidden text (`sr-only`), so a screen
  * reader announces it and a caller can still find the badge by its text, and
  * it is in the tooltip. The dialog explains the dot once, in its header
@@ -75,7 +78,7 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }: ScopeBa
       data-source={source}
       className={cn(
         'inline-flex items-center shrink-0 align-middle leading-none',
-        isOverride ? 'text-cyan' : 'text-text-muted',
+        isOverride ? 'text-text-secondary' : 'text-text-muted',
         className
       )}
     >

@@ -43,15 +43,10 @@ export interface StatusPillProps {
   status: Status;
   children?: React.ReactNode;
   /**
-   * Animate the dot, for a state that wants attention. Honoured for `alarm`
-   * and, for now, `warning`; ignored for `ok`, `info` and `offline`, so
-   * "syncing" and "listening" draw a still dot.
-   *
-   * INTERIM (fit-and-finish Wave 1b): X5 says only alarms pulse. `warning`
-   * still pulses because HarborSentinel's Device GPS pill pulses while
-   * acquiring and its `tests/connectionStatusPill.test.tsx:56` pins that.
-   * HarborSentinel's Wave 2 PR changes that test; Wave 3 makes the pulse
-   * alarm-only here. @deprecated for `warning`.
+   * Animate the dot. Honoured for `alarm` only (fit-and-finish X5): an alarm is
+   * the one state that needs a hand, and a pulse anywhere else teaches the eye
+   * to ignore it. Ignored for `ok`, `info`, `offline` and `warning`, so
+   * "syncing", "acquiring" and "due soon" draw a still dot.
    */
   pulse?: boolean;
   /** Dot only, no label — for tight HUD spots. Provide `title` for a tooltip. */
@@ -68,8 +63,7 @@ export interface StatusPillProps {
  */
 export function StatusPill({ status, children, pulse = false, compact = false, size = 'sm', className, title }: StatusPillProps) {
   const c = STATUS_CLASS[status];
-  // INTERIM: `warning` goes in Wave 3 (see `pulse` above).
-  const pulsing = pulse && (status === 'alarm' || status === 'warning');
+  const pulsing = pulse && status === 'alarm';
   const dot = (
     <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
       {pulsing && <span className={cn('absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping', c.dot)} />}

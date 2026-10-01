@@ -579,3 +579,163 @@ test('--write-fleet-dependencies refuses without the full fleet', () => {
   assert.match(out, /needs all of them/);
   assert.equal(fs.existsSync(path.join(root, 'sentinel-shared', 'fleet-dependencies.json')), false);
 });
+
+/*
+  Section 12, as fit-and-finish Wave 3 tightened it: the 13px floor and
+  VesselKeeper's phone-only 12, status colours on labelled buttons, glows, and
+  the deprecated names. Each fixture is one app with one source file, so a
+  match names exactly the thing the case planted.
+*/
+const appSource = (name, file, body) => {
+  const srcRoot = name === 'OceanSentinel' ? 'frontend/src' : 'src';
+  return {
+    [`${name}/package.json`]: JSON.stringify({ name: name.toLowerCase(), version: '2.11.1' }),
+    [`${name}/${srcRoot}/${file}`]: body,
+  };
+};
+const checkSource = (name, file, body) => runChecker(fixture(appSource(name, file, body)));
+
+test('the type floor is 13: a text-[12px] in HarborSentinel fails, even with an sm: step beside it', () => {
+  const bare = checkSource('HarborSentinel', 'A.tsx', '<span className="text-[12px] text-text-muted">x</span>\n');
+  assert.match(bare, /FAIL {2}\[type\] HarborSentinel: 1 type size\(s\) below the 13px floor.*src\/A\.tsx:1 text-\[12px\]/);
+  const withSm = checkSource('HarborSentinel', 'A.tsx', '<span className="text-[12px] sm:text-[13px]">x</span>\n');
+  assert.match(withSm, /FAIL {2}\[type\] HarborSentinel: 1 type size/, 'the phone-only 12 is VesselKeeper\'s alone');
+});
+
+test('text-xs is under the floor, at rest and behind a prefix', () => {
+  const out = checkSource('OceanSentinel', 'A.jsx', '<p className="text-xs">a</p>\n<p className="md:text-xs">b</p>\n');
+  assert.match(out, /OceanSentinel: 2 type size\(s\) below the 13px floor.*frontend\/src\/A\.jsx:1 text-xs, frontend\/src\/A\.jsx:2 md:text-xs/);
+});
+
+test('13px and above pass, and a stylesheet font-size of 12 fails', () => {
+  assert.doesNotMatch(checkSource('HarborSentinel', 'A.tsx', '<span className="text-[13px] text-sm">x</span>\n'), /FAIL {2}\[type\]/);
+  const css = checkSource('HarborSentinel', 'a.css', '.dense { font-size: 12px; }\n');
+  assert.match(css, /HarborSentinel: 1 type size\(s\) below the 13px floor.*font-size: 12px/);
+  const exempt = checkSource('HarborSentinel', 'a.css', '/* type-floor-exempt: licence credit */\n.credit { font-size: 9px; }\n');
+  assert.doesNotMatch(exempt, /FAIL {2}\[type\]/, 'the exemption comment still works');
+});
+
+test('VesselKeeper may draw 12px below sm, written as text-[12px] sm:text-[13px]', () => {
+  for (const cls of ['text-[12px] sm:text-[13px] w-full', 'text-xs sm:text-body-sm', 'w-full text-[12px] sm:text-sm']) {
+    // The theme's named steps are read from type.css, so the fixture needs it.
+    const out = runChecker(fixture({
+      ...appSource('VesselKeeper', 'Table.tsx', `<table className="${cls}"><tbody /></table>\n`),
+      'sentinel-shared/theme/type.css': fs.readFileSync(path.join(SCRIPTS_DIR, '..', 'theme', 'type.css'), 'utf8'),
+    }));
+    assert.doesNotMatch(out, /FAIL {2}\[type\]/, cls);
+  }
+});
+
+test('VesselKeeper still fails a bare 12, a 12 at sm and up, an 11, and a 12 whose sm step is in another string', () => {
+  const cases = [
+    '<td className="text-[12px] w-full">x</td>',
+    '<td className="sm:text-[12px] text-[13px]">x</td>',
+    '<td className="text-[11px] sm:text-[13px]">x</td>',
+    '<td className="text-[12px] sm:text-[12px]">x</td>',
+    '<td className="text-[12px]" data-x="sm:text-[13px]">x</td>',
+  ];
+  for (const body of cases) {
+    assert.match(checkSource('VesselKeeper', 'Table.tsx', `${body}\n`), /FAIL {2}\[type\] VesselKeeper: \d+ type size.*text-\[1[12]px\]/, body);
+  }
+});
+
+test('a labelled button painted bg-green fails even when its onClick is an arrow function', () => {
+  const body = `export const A = () => (
+  <button onClick={() => save()} className="px-4 h-12 bg-green text-bg-app">
+    Save
+  </button>
+);
+`;
+  const out = checkSource('HarborSentinel', 'A.tsx', body);
+  assert.match(out, /FAIL {2}\[ui\] HarborSentinel: 1 labelled <button>\(s\) painted a status colour.*src\/A\.tsx:2 bg-green/);
+});
+
+test('a status colour behind a prefix fails too, and a label from an expression is a label', () => {
+  const body = `<button
+  onClick={async () => { if (await ok()) { go(); } }}
+  className={\`px-3 \${busy ? 'opacity-50' : ''} hover:bg-red/10\`}
+>
+  {busy ? 'Clearing' : 'Clear track'}
+</button>
+`;
+  assert.match(checkSource('OceanSentinel', 'A.jsx', body), /OceanSentinel: 1 labelled <button>\(s\).*hover:bg-red/);
+});
+
+test('an icon-only status-coloured button is not a labelled button', () => {
+  const body = '<button onClick={() => close()} className="hover:bg-red/10" aria-label="Close"><X size={16} /></button>\n';
+  assert.doesNotMatch(checkSource('HarborSentinel', 'A.tsx', body), /labelled <button>/);
+});
+
+test('an accent button behind an arrow onClick is now seen, and still only warns', () => {
+  const body = '<button onClick={() => go()} className="bg-cyan text-bg-app">Go</button>\n';
+  const out = checkSource('HarborSentinel', 'A.tsx', body);
+  assert.match(out, /WARN {2}\[ui\] HarborSentinel: 1 hand-rolled <button>\(s\) wearing fleet colours/);
+  assert.doesNotMatch(out, /FAIL {2}\[ui\]/);
+});
+
+test('a zero-offset coloured shadow fails, in a class, a stylesheet, a style object and a marker\'s HTML', () => {
+  const cases = [
+    ['A.tsx', '<div className="shadow-[0_0_8px_var(--color-cyan)]" />\n'],
+    ['A.tsx', '<div className="shadow-[0_0_12px_#22d3ee]" />\n'],
+    ['a.css', '.lit { box-shadow: 0 0 6px var(--color-cyan-glow); }\n'],
+    ['A.tsx', "<div style={{ boxShadow: '0 0 10px rgba(34,211,238,0.8)' }} />\n"],
+    ['A.tsx', 'const html = `<div style="box-shadow:0 0 6px rgba(34,211,238,0.8);"></div>`;\n'],
+    ['A.tsx', 'const html = `<span style="box-shadow:0 0 8px color-mix(in srgb, ${ink} 55%, transparent);"></span>`;\n'],
+    ['a.css', '.icon { filter: drop-shadow(0 0 4px #4cd7f6); }\n'],
+  ];
+  for (const [file, body] of cases) {
+    assert.match(checkSource('OceanSentinel', file, body), /FAIL {2}\[theme\] OceanSentinel: 1 glow\(s\)/, body);
+  }
+});
+
+test('a black or --bg-app legibility halo, a ring, an offset shadow and the panel shadow all pass', () => {
+  const cases = [
+    ['A.tsx', '<div className="shadow-[var(--panel-shadow)] drop-shadow-[0_0_2px_rgba(0,0,0,0.8)]" />\n'],
+    ['A.tsx', 'const html = `<div style="filter: drop-shadow(0 0 3px rgba(0,0,0,0.85))"></div>`;\n'],
+    ['A.tsx', 'const html = `<div style="filter: drop-shadow(0 0 1px var(--bg-app)) drop-shadow(0 0 1px var(--bg-app))"></div>`;\n'],
+    ['A.tsx', "<td style={{ boxShadow: on ? 'inset 0 0 0 1.5px rgba(255,255,255,0.55)' : 'none' }} />\n"],
+    ['A.tsx', "<div style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.7)' }} />\n"],
+    ['a.css', '.panel { box-shadow: var(--panel-shadow); }\n.flat { box-shadow: none !important; }\n'],
+    ['A.tsx', '// box-shadow: 0 0 8px cyan was the old look\nexport const a = 1;\n'],
+  ];
+  for (const [file, body] of cases) {
+    assert.doesNotMatch(checkSource('OceanSentinel', file, body), /glow\(s\)/, body);
+  }
+});
+
+test('the literal-colour shadow rule no longer advises a glow token', () => {
+  const out = checkSource('HarborSentinel', 'A.tsx', '<div className="shadow-[0_2px_4px_#22d3ee]" />\n');
+  assert.match(out, /FAIL {2}\[theme\] HarborSentinel: 1 shadow\(s\) carry a literal colour.*State is fill and stroke; no glows/);
+  assert.doesNotMatch(out, /Use var\(--color-\*-glow\)/);
+});
+
+test('each deprecated name warns, naming its replacement', () => {
+  const cases = [
+    ['A.tsx', '<span className="text-label-caps text-text-muted">x</span>', /1 use\(s\) of text-label-caps.*use text-label/],
+    ['A.tsx', '<div className="rounded-sm border p-2">x</div>', /1 use\(s\) of rounded-sm.*use rounded-md/],
+    ['A.tsx', '<div className="rounded border p-2">x</div>', /1 use\(s\) of rounded,.*use rounded-md/],
+    ['A.tsx', '<div className="rounded">x</div>', /1 use\(s\) of rounded,.*use rounded-md/],
+    ['A.tsx', '<div className="hover:rounded-lg border">x</div>', /1 use\(s\) of rounded-lg.*use rounded-md/],
+    ['a.css', '.x { outline: 1px solid var(--color-cyan-glow); }', /1 use\(s\) of var\(--color-\*-glow\).*state is fill and stroke/],
+    ['a.css', '.x { border-color: var(--border-color-glass); }', /1 use\(s\) of --border-color-glass.*use var\(--border-color\)/],
+    ['A.tsx', '<Button onClick={() => go()} variant="success">Go</Button>', /1 use\(s\) of <Button variant="success">.*use variant="primary"/],
+    ['A.tsx', '<Button variant={"accent"} onClick={() => go()}>Go</Button>', /1 use\(s\) of <Button variant="accent">.*use variant="secondary"/],
+    ['A.tsx', '<Button size="dense">Go</Button>', /1 use\(s\) of <Button size="dense">.*use size="sm"/],
+    ['A.tsx', "const tabs = [{ id: 'log', label: \"Ship's Log\", shortLabel: 'Log' }];", /1 use\(s\) of shortLabel.*soft hyphen/],
+    ['A.tsx', '<AppShell dockFooter={<span>v2</span>} />', /1 use\(s\) of dockFooter.*Settings > About/],
+  ];
+  for (const [file, body, re] of cases) {
+    const out = checkSource('VesselKeeper', file, `${body}\n`);
+    assert.match(out, new RegExp(`WARN {2}\\[deprecated\\] VesselKeeper: ${re.source}`), body);
+    assert.doesNotMatch(out, /FAIL {2}\[deprecated\]/);
+  }
+});
+
+test('the word "rounded" in prose or code, and a deprecated name in a comment, do not warn', () => {
+  const body = `// rounded corners, text-label-caps and rounded-lg were the old look
+const rounded = Math.round(x);
+const msg = 'Speed is rounded to the nearest knot';
+export const A = () => <div className="rounded-md rounded-xl p-2" title="rounded" />;
+`;
+  assert.doesNotMatch(checkSource('VesselKeeper', 'A.tsx', body), /\[deprecated\]/);
+});
