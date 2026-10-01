@@ -24,7 +24,7 @@ export function ScopeBadge({ source, hideWhenUnset = false, className }) {
     // Only the dot is drawn. The word is visually hidden, not removed: it is the
     // badge's accessible name, and it carries the tooltip too, so hovering or
     // finding the badge by its text reaches the same explanation.
-    return (_jsxs("span", { title: DESCRIPTION[source], "data-source": source, className: cn('inline-flex items-center shrink-0 align-middle leading-none', isOverride ? 'text-cyan' : 'text-text-muted', className), children: [_jsx("span", { "aria-hidden": true, className: cn('inline-block h-1.5 w-1.5 rounded-full', isOverride ? 'bg-current' : 'border border-current') }), _jsx("span", { className: "sr-only", title: DESCRIPTION[source], children: LABEL[source] })] }));
+    return (_jsxs("span", { title: DESCRIPTION[source], "data-source": source, className: cn('inline-flex items-center shrink-0 align-middle leading-none', isOverride ? 'text-text-secondary' : 'text-text-muted', className), children: [_jsx("span", { "aria-hidden": true, className: cn('inline-block h-1.5 w-1.5 rounded-full', isOverride ? 'bg-current' : 'border border-current') }), _jsx("span", { className: "sr-only", title: DESCRIPTION[source], children: LABEL[source] })] }));
 }
 export function ClearOverride({ fallsBackTo, onClear, disabled, className }) {
     return (_jsx("button", { type: "button", onClick: onClear, disabled: disabled, title: `Remove this device's value and use the ${LABEL[fallsBackTo].toLowerCase()} one instead.`, className: cn('shrink-0 h-10 px-3 rounded-md text-[13px] font-semibold text-text-secondary', 'hover:text-text-primary hover:bg-bg-card-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer', className), children: "Clear override" }));

@@ -362,9 +362,13 @@ export function AppShell({
                       )}
                     >
                       <span className="shrink-0 [&>svg]:w-5 [&>svg]:h-5" aria-hidden>{tab.icon}</span>
-                      {/* The full label, wrapped rather than cut: a 72px rail
-                          holds "Forecast" on one line and "Punch List" on two. */}
-                      <span className="max-w-full break-words hyphens-auto">{tab.label}</span>
+                      {/* The full label, wrapped rather than cut, and broken
+                          only where the app says a word may break: at a space,
+                          or at a soft hyphen (\u00AD) it put in the label, as in
+                          "Main­tenance". No automatic hyphenation and no
+                          emergency mid-word break, so a word that is too wide
+                          shows as too wide rather than as "Forecas / t". */}
+                      <span className="max-w-full hyphens-manual [overflow-wrap:normal]" data-slot="rail-label">{tab.label}</span>
                       {tab.badge !== undefined && tab.badge > 0 && (
                         <span className="absolute top-1 right-1 bg-warning text-bg-app text-[13px] font-mono font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center">
                           {tab.badge}

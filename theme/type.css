@@ -18,9 +18,10 @@
  * One face for words, one for numbers: `--font-heading` is Inter now, and mono
  * is for numbers, coordinates and times only.
  *
- * THE FLOOR IS 13px for every class in this file. The drift checker still fails
- * a hand-written `text-[Npx]` only below 12 until the apps have moved (Wave 3 of
- * fit-and-finish raises it to 13, with VesselKeeper's phone layout keeping 12).
+ * THE FLOOR IS 13px for every class in this file, and the drift checker fails
+ * app type below it: a hand-written `text-[Npx]`, Tailwind's `text-xs`, or a
+ * stylesheet `font-size`. One exception: VesselKeeper may set 12px below `sm`,
+ * written as `text-[12px] sm:text-[13px]` in one class string.
  *
  * Two scales, kept apart on purpose. The reading scale (headline/body/label)
  * answers "what is this?" at conversational distance. The instrument scale

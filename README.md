@@ -82,13 +82,13 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `Toggle` — 56 × 32 | copy-pasted iOS switches |
 | `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
 | `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
-| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) — a dot and a word, no box; `pulse` is honoured for `alarm` (and, deprecated, `warning`) | ad-hoc emerald/amber/rose/cyan status dots |
+| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) — a dot and a word, no box; `pulse` is honoured for `alarm` only, so a warning never pulses | ad-hoc emerald/amber/rose/cyan status dots |
 | `PlanPill` — the plan or trial in the header, built from `StatusPill`, with a `Button` to convert during a trial. Presentational: it takes `planLabel`/`trial`/`daysLeft` and two callbacks, and renders nothing until the plan is known | nothing — the apps showed no plan state at all, so a customer had to leave to find out what they were on |
 | `EmptyState` (`panel` / `inline`) | bare italic sentences in one place, illustrated blocks in another |
 | `Stepper` (moved here from `auth-ui`; token defaults, so wrappers are no longer needed) | three per-app 14-line wrappers |
 | `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |
-| `<SettingsShell>` + `SettingsSection`/`SettingsRow` — titled "Settings"; Display (night, brightness, keep-awake) → app sections → Updates → About; flat rows on hairlines; `ScopeBadge` is a dot, explained once by `scopeLegend`; `onSave` puts Save and apply on the right as the primary action | three differently-organised settings modals; no About surface existed |
-| `<AppShell>` + `HeaderButton`/`HeaderGroup` — 56 px header, 72 px rail (icon over full label) ≥ lg, tab bar with full labels < lg (`tabLabelPx` 13, or 12), safe-area aware, night-mode + brightness applied on `<html>` so portals follow. `surface` (`chart` / `page`, also per `ShellTab`) decides the frame: glass floating 16 px in over a chart, opaque and attached for a page; the default is `chart` when a `background` is rendered and `page` otherwise | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
+| `<SettingsShell>` + `SettingsSection`/`SettingsRow` — titled "Settings"; Display (night, brightness, keep-awake) → app sections → Updates → About; flat rows on hairlines; `ScopeBadge` is a dot (filled text-secondary grey for an override set on this device or PC, hollow muted for an inherited layer, never the accent), explained once by `scopeLegend`; `onSave` puts Save and apply on the right as the primary action | three differently-organised settings modals; no About surface existed |
+| `<AppShell>` + `HeaderButton`/`HeaderGroup` — 56 px header, 72 px rail (icon over full label) ≥ lg, whose labels break only at a space or at a soft hyphen (`\u00AD`) the app puts in the label — `hyphens: manual`, `overflow-wrap: normal`, so never mid-word — tab bar with full labels < lg (`tabLabelPx` 13, or 12), safe-area aware, night-mode + brightness applied on `<html>` so portals follow. `surface` (`chart` / `page`, also per `ShellTab`) decides the frame: glass floating 16 px in over a chart, opaque and attached for a page; the default is `chart` when a `background` is rendered and `page` otherwise | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
 
 ### `Button` variants and layout
 
@@ -147,7 +147,6 @@ Still accepted so every app compiles; delete after the apps have moved off them.
 | `AppShell` `dockFooter` | not rendered; the version lives in Settings > About |
 | `ShellTab.shortLabel` | ignored; the tab bar shows the full `label` |
 | `SettingsTab.icon`, `SettingsSection` `icon` | not drawn |
-| `StatusPill` `pulse` on `warning` | interim: still pulses (HarborSentinel's GPS pill test pins it); on `ok`, `info` and `offline` it is ignored. Wave 3 makes the pulse alarm-only |
 
 ### `openExternal(url)`
 
