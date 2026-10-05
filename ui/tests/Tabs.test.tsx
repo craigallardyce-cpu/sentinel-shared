@@ -25,6 +25,18 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: 'Engine' })).toHaveAttribute('aria-selected', 'false');
   });
 
+  it('never scrolls vertically: no tab hangs over the strip, and overflow-y is hidden', () => {
+    // A tab with -mb-px made the content 1px taller than the strip, and Windows
+    // drew a vertical scrollbar beside the Settings tabs (5 Oct 2026).
+    render(<Controlled />);
+    const strip = screen.getByRole('tablist').parentElement!;
+    expect(strip.className).toContain('overflow-y-hidden');
+    expect(strip.className).toContain('overflow-x-auto');
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab.className).not.toMatch(/(^|\s)-mb-/);
+    }
+  });
+
   it('marks the selected tab with the 2px accent stroke, and the rest with none', () => {
     render(<Controlled />);
     const selected = screen.getByRole('tab', { name: /Scheduled/ }).className;

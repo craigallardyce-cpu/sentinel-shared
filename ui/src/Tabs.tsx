@@ -172,10 +172,18 @@ export function Tabs({
     }
   };
 
+  /* The strip's hairline is an inset shadow, not a border, and the tabs sit
+     inside the box rather than 1px over its edge. A tab that hung over the
+     border (`-mb-px`) made the content 1px taller than the strip, and with
+     overflow-x on, the browser computes overflow-y as auto too: Windows then
+     drew a vertical scrollbar beside every tab strip (HarborSentinel
+     Settings, 5 Oct). The selected tab's 2px stroke paints over the hairline
+     from inside. overflow-y-hidden keeps any later overhang from bringing the
+     scrollbar back; the horizontal scrollbar stays for strips that overflow. */
   return (
     <div
       ref={stripRef}
-      className={cn('relative flex items-end gap-1 overflow-x-auto border-b border-bg-highest select-none', className)}
+      className={cn('relative flex items-end gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--bg-highest)] select-none', className)}
     >
       <div role="tablist" aria-label={ariaLabel} aria-orientation="horizontal" className="flex items-end gap-1">
         {items.map((t) => {
@@ -197,7 +205,7 @@ export function Tabs({
               onClick={() => onChange(t.id)}
               onKeyDown={onKeyDown}
               className={cn(
-                'inline-flex items-center gap-2 h-12 px-4 -mb-px border-b-2 whitespace-nowrap cursor-pointer shrink-0',
+                'inline-flex items-center gap-2 h-12 px-4 border-b-2 whitespace-nowrap cursor-pointer shrink-0',
                 'font-sans text-[15px] font-semibold',
                 'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan/60 rounded-t-md',
