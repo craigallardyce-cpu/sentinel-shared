@@ -175,12 +175,25 @@ function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeIn
 
   ipcMain.handle('updater:get-version', () => app.getVersion());
 
+  // Every check must end in an event: the renderer shows "Checking…" until one
+  // arrives. electron-updater sends none when it skips the check -- an
+  // unpackaged run (`electron .`) resolves null without asking anyone -- and a
+  // rejected promise is not guaranteed one either, so both are reported here.
   ipcMain.handle('updater:check', async () => {
     try {
       const result = await autoUpdater.checkForUpdates();
-      return result?.updateInfo || null;
+      if (!result) {
+        sendUpdaterEvent('error', {
+          message: app.isPackaged
+            ? 'Update checks are turned off in this build.'
+            : 'Updates are checked by the installed app, not a development run.'
+        });
+        return null;
+      }
+      return result.updateInfo || null;
     } catch (err) {
       console.error('[Updater] Check failed:', err);
+      sendUpdaterEvent('error', { message: err?.message || String(err) });
       return null;
     }
   });
