@@ -32,6 +32,9 @@ describe('Tabs', () => {
     const strip = screen.getByRole('tablist').parentElement!;
     expect(strip.className).toContain('overflow-y-hidden');
     expect(strip.className).toContain('overflow-x-auto');
+    // Never squeezed by a height-capped flex parent (Modal): an overflow box's
+    // automatic minimum height is 0, which clipped the tabs' tops (5 Oct 2026).
+    expect(strip.className).toMatch(/(^|\s)shrink-0(\s|$)/);
     for (const tab of screen.getAllByRole('tab')) {
       expect(tab.className).not.toMatch(/(^|\s)-mb-/);
     }
