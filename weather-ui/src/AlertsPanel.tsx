@@ -181,6 +181,9 @@ export default function AlertsPanel({
   const SECTION_TITLE = `text-headline-md ${textColorPrimary}`;
   const selected = hasAlerts ? weatherData.alerts![selectedAlertIndex] : undefined;
   const when = (iso: string) => new Date(iso).toLocaleString();
+  /* The place and zone this panel already shows, so NWS capitals text names
+     them as written ("Block Island Sound", not "block island sound"). */
+  const placeNames = [weatherData.locName, weatherData.marineZone];
 
   return (
     <>
@@ -372,7 +375,7 @@ export default function AlertsPanel({
                             <header className={`flex flex-col gap-1 border-b pb-3 ${borderDividerClass}`}>
                               <h4 className={`text-headline-md break-words ${textColorRed}`}>{selected.event}</h4>
                               <span className={`text-body-sm ${textColorMuted}`} title={selected.headline}>
-                                {nwsSentenceCase(selected.headline)}
+                                {nwsSentenceCase(selected.headline, { names: placeNames })}
                               </span>
                               {selected.senderName && (
                                 <span className={`text-body-sm ${textColorSecondary}`}>
@@ -390,7 +393,7 @@ export default function AlertsPanel({
                                 className={`text-body-md whitespace-pre-line select-text overflow-y-auto max-h-64 custom-scrollbar ${textColorSecondary}`}
                                 title={selected.description || undefined}
                               >
-                                {selected.description ? nwsSentenceCase(selected.description) : 'No description provided.'}
+                                {selected.description ? nwsSentenceCase(selected.description, { names: placeNames }) : 'No description provided.'}
                               </p>
                             </div>
 
@@ -398,7 +401,7 @@ export default function AlertsPanel({
                               <div className="flex flex-col gap-1.5">
                                 <span className={`text-label ${textColorMuted}`}>Precautionary actions</span>
                                 <p className="text-body-md whitespace-pre-line text-warning" title={selected.instruction}>
-                                  {nwsSentenceCase(selected.instruction)}
+                                  {nwsSentenceCase(selected.instruction, { names: placeNames })}
                                 </p>
                               </div>
                             )}
@@ -469,6 +472,7 @@ export default function AlertsPanel({
                     periods={weatherData.periods}
                     tempUnit={tempUnit}
                     mode="bulletin"
+                    placeNames={placeNames}
                     theme={theme?.timelineTheme}
                   />
                 </section>

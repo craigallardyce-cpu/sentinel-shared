@@ -5,7 +5,8 @@ export { default as ForecastTimeline } from './ForecastTimeline';
 export type { ForecastPeriod, ForecastTimelineProps } from './ForecastTimeline';
 
 /* NWS prose arrives in capitals; this puts it in sentence case for display. */
-export { nwsSentenceCase, isShouting } from './nwsText';
+export { nwsSentenceCase, isShouting, windUnitKt } from './nwsText';
+export type { NwsSentenceCaseOptions } from './nwsText';
 
 /*
   The marine-warnings banner over the chart (fit-and-finish X4). Renders nothing

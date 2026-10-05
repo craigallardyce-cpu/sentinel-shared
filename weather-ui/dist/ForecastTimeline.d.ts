@@ -14,6 +14,12 @@ export interface ForecastTimelineProps {
     periods: ForecastPeriod[];
     tempUnit: string;
     mode?: 'sidebar' | 'bulletin';
+    /**
+     * Names the host knows -- the forecast location (`locName`), the zone --
+     * restored as written when NWS prose in capitals is put in sentence case,
+     * so "NEWPORT" reads "Newport" rather than "newport".
+     */
+    placeNames?: readonly (string | null | undefined)[];
     theme?: {
         /** Sidebar card: surface, border, radius and padding. */
         cardBgBorder?: string;
@@ -33,4 +39,4 @@ export interface ForecastTimelineProps {
         borderDividerClass?: string;
     };
 }
-export default function ForecastTimeline({ periods, tempUnit, mode, theme }: ForecastTimelineProps): React.JSX.Element | null;
+export default function ForecastTimeline({ periods, tempUnit, mode, placeNames, theme }: ForecastTimelineProps): React.JSX.Element | null;

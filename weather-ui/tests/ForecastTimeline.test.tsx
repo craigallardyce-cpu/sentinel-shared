@@ -84,3 +84,22 @@ describe('ForecastTimeline (both modes)', () => {
     expect(screen.getByText('Today')).toBeInTheDocument();
   });
 });
+
+describe('ForecastTimeline: unit and names', () => {
+  it('writes the wind in kt, as the fleet does, in both modes', () => {
+    for (const mode of ['bulletin', 'sidebar'] as const) {
+      const { container, unmount } = render(<ForecastTimeline periods={PERIODS} tempUnit="F" mode={mode} />);
+      expect(container.textContent).toContain('13 kt');
+      expect(container.textContent).not.toMatch(/\d kts\b/);
+      unmount();
+    }
+  });
+
+  it('restores the place names it is given in NWS capitals text', () => {
+    const periods: ForecastPeriod[] = [
+      { periodName: 'Today', windRange: '13 kts', reason: 'FOG NEAR NEWPORT. ISSUED BY NWS BOSTON.' },
+    ];
+    render(<ForecastTimeline periods={periods} tempUnit="F" mode="bulletin" placeNames={['Newport, RI']} />);
+    expect(screen.getByText('Fog near Newport. Issued by NWS Boston.')).toBeInTheDocument();
+  });
+});

@@ -3,7 +3,7 @@ import { Wind } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getWindRotation, getHighestWindValue, formatTempRangeString } from './weatherUtils';
 import { windBandColor } from './windScale';
-import { nwsSentenceCase } from './nwsText';
+import { nwsSentenceCase, windUnitKt } from './nwsText';
 
 export interface ForecastPeriod {
   periodName: string;
@@ -21,6 +21,12 @@ export interface ForecastTimelineProps {
   periods: ForecastPeriod[];
   tempUnit: string;
   mode?: 'sidebar' | 'bulletin';
+  /**
+   * Names the host knows -- the forecast location (`locName`), the zone --
+   * restored as written when NWS prose in capitals is put in sentence case,
+   * so "NEWPORT" reads "Newport" rather than "newport".
+   */
+  placeNames?: readonly (string | null | undefined)[];
   theme?: {
     /** Sidebar card: surface, border, radius and padding. */
     cardBgBorder?: string;
@@ -61,6 +67,9 @@ export interface ForecastTimelineProps {
   "Max wind (incl. gusts)" wrapped onto two lines in a quarter-width column at
   1280px, so the label is "Max wind" and "incl. gusts" sits under the value:
   the fact stays on screen, and the label stays one line at every width.
+
+  The wind unit is "kt", as the fleet writes it: a host's "13 kts" is shown as
+  "13 kt" (windUnitKt). The NWS prose is left exactly as NWS words it.
 */
 
 const LABEL = 'text-label whitespace-nowrap';
@@ -95,6 +104,7 @@ export default function ForecastTimeline({
   periods,
   tempUnit,
   mode = 'sidebar',
+  placeNames,
   theme
 }: ForecastTimelineProps) {
   if (!periods || periods.length === 0) return null;
@@ -127,7 +137,7 @@ export default function ForecastTimeline({
             <h3 className={`text-headline-md ${textPrimaryClass}`}>{period.periodName}</h3>
 
             <dl className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
-              <Field label="Max wind" value={period.windRange} note="incl. gusts" mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+              <Field label="Max wind" value={windUnitKt(period.windRange)} note="incl. gusts" mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
               <Field label="Direction" value={period.windDirection || 'Variable'} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
               <Field label="Temperature" value={formatTempRangeString(period.tempRange, tempUnit)} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
               <Field label="Precipitation" value={period.precipChance || 'None'} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
@@ -135,7 +145,7 @@ export default function ForecastTimeline({
 
             {period.reason && (
               <p className={`mt-4 text-body-md ${textSecondaryClass}`} title={period.reason} data-slot="forecast-text">
-                {nwsSentenceCase(period.reason)}
+                {nwsSentenceCase(period.reason, { names: placeNames })}
               </p>
             )}
           </motion.section>
@@ -154,7 +164,7 @@ export default function ForecastTimeline({
               <span className={`font-sans text-[15px] font-semibold leading-[22px] ${textPrimaryClass}`}>{p.periodName}</span>
               <div className="flex items-center gap-1.5">
                 <Wind size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 ${windIconClass}`} />
-                <span className={`${VALUE} ${textPrimaryClass}`}>{p.windRange}</span>
+                <span className={`${VALUE} ${textPrimaryClass}`}>{windUnitKt(p.windRange)}</span>
               </div>
             </div>
             {p.windDirection && (

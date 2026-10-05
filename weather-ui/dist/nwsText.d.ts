@@ -22,8 +22,18 @@
  */
 /** True when the text is written in capitals: at least 80% of its letters are. */
 export declare function isShouting(text: string): boolean;
+export interface NwsSentenceCaseOptions {
+    /** Names the host knows -- the forecast location, the zone -- restored as written. */
+    names?: readonly (string | null | undefined)[];
+}
 /**
  * Sentence case for NWS prose. Mixed-case text comes back unchanged (trimmed);
  * capitals are converted as described above.
  */
-export declare function nwsSentenceCase(text: string | null | undefined): string;
+export declare function nwsSentenceCase(text: string | null | undefined, options?: NwsSentenceCaseOptions): string;
+/**
+ * The fleet writes wind speed in "kt" (HarborSentinel's Wave 2 moved "kts" to
+ * "kt", as the instrument cells write it). A host-formatted wind range such as
+ * "13 kts" is shown as "13 kt"; anything else is left as given.
+ */
+export declare function windUnitKt(value: string | null | undefined): string;

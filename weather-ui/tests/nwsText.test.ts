@@ -1,5 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { nwsSentenceCase, isShouting } from '../src/nwsText';
+import { nwsSentenceCase, isShouting, windUnitKt } from '../src/nwsText';
+
+describe('nwsSentenceCase: proper nouns', () => {
+  it('capitalises the issuing office after NWS, with its state code, and stops at an ordinary word', () => {
+    expect(nwsSentenceCase('ISSUED BY NWS BOSTON AT 4 AM EDT.')).toBe('Issued by NWS Boston at 4 am EDT.');
+    expect(nwsSentenceCase('ISSUED BY NWS BOSTON/NORTON MA AT 345 AM EDT.'))
+      .toBe('Issued by NWS Boston/Norton MA at 345 am EDT.');
+    expect(nwsSentenceCase('THE NWS HAS ISSUED A GALE WARNING.')).toBe('The NWS has issued a gale warning.');
+  });
+
+  it("restores the host's area names as written, case-insensitively, longest first", () => {
+    const names = ['Block Island Sound', 'ANZ235'];
+    expect(nwsSentenceCase('SW WINDS 15 KT OVER BLOCK ISLAND SOUND. ZONE ANZ235.', { names }))
+      .toBe('SW winds 15 kt over Block Island Sound. Zone ANZ235.');
+    // A location given as "Place, ST" matches on its place part.
+    expect(nwsSentenceCase('PATCHY FOG NEAR NEWPORT AFTER 1AM.', { names: ['Newport, RI'] }))
+      .toBe('Patchy fog near Newport after 1am.');
+    // A name given in capitals comes back in title case.
+    expect(nwsSentenceCase('SEAS 3 FT IN NARRAGANSETT BAY.', { names: ['NARRAGANSETT BAY'] }))
+      .toBe('Seas 3 ft in Narragansett Bay.');
+  });
+
+  it('knows the common names in the fleet’s own waters without being told, and zone codes', () => {
+    expect(nwsSentenceCase("SEAS 4 FT SOUTH OF MARTHA'S VINEYARD AND NANTUCKET. SEE ANZ250."))
+      .toBe("Seas 4 ft south of Martha's Vineyard and Nantucket. See ANZ250.");
+  });
+
+  it('does not touch a name inside another word', () => {
+    expect(nwsSentenceCase('NEWPORTS AND BOSTONIANS.', { names: ['Newport'] })).toBe('Newports and bostonians.');
+  });
+});
+
+describe('windUnitKt', () => {
+  it('writes a host-formatted speed in kt and leaves anything else alone', () => {
+    expect(windUnitKt('13 kts')).toBe('13 kt');
+    expect(windUnitKt('10-15 KTS')).toBe('10-15 kt');
+    expect(windUnitKt('13 kt')).toBe('13 kt');
+    expect(windUnitKt('Variable')).toBe('Variable');
+    expect(windUnitKt(undefined)).toBe('');
+  });
+});
 
 describe('nwsSentenceCase', () => {
   it('puts a capitals forecast into sentence case, sentence by sentence', () => {
@@ -13,7 +53,7 @@ describe('nwsSentenceCase', () => {
     expect(nwsSentenceCase('SW WINDS 10 TO 15 KT, BECOMING NNE. SEAS 2 TO 4 FT.'))
       .toBe('SW winds 10 to 15 kt, becoming NNE. Seas 2 to 4 ft.');
     expect(nwsSentenceCase('ISSUED BY NWS BOSTON AT 4 AM EDT. MONITOR VHF CHANNEL 16.'))
-      .toBe('Issued by NWS boston at 4 am EDT. Monitor VHF channel 16.');
+      .toBe('Issued by NWS Boston at 4 am EDT. Monitor VHF channel 16.');
     expect(nwsSentenceCase('WINDS E 5 KT. WAVES 1 FT OR LESS. N SWELL.'))
       .toBe('Winds E 5 kt. Waves 1 ft or less. N swell.');
   });

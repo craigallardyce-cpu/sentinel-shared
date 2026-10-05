@@ -294,9 +294,21 @@ reached them):
   the sixteen compass points, NWS/NOAA/USCG and the other agencies, time zones,
   VHF/AIS/GPS/NAVTEX/GMDSS, U.S., and day and month names (not "may"). Units
   take their usual lower case (kt, mph, ft, nm, am, pm). Mixed-case text is
-  returned unchanged. A place name in a capitals product comes out lower case,
-  since nothing can tell it from an ordinary word, so hosts keep the original
-  in a `title` (both components do).
+  returned unchanged.
+- **Proper nouns, partly.** Three sources are restored: the issuing office
+  after "NWS" (up to three words, with a state code: "NWS Boston/Norton MA");
+  names the host passes as `{ names }` -- `AlertsPanel` passes its `locName`
+  and `marineZone`, and `ForecastTimeline` takes them as `placeNames` --
+  matched case-insensitively and put back as written; and a short built-in list
+  of places in the fleet's own waters (Block Island Sound, Narragansett Bay,
+  Martha's Vineyard…) plus any NWS zone code (ANZ236). **The limitation that
+  remains:** any other place name in a capitals product comes out lower case,
+  because nothing can tell "SOUND" the place from "sound" the word. Hosts keep
+  the original text in a `title` (both components do). OceanSentinel's Forecast
+  tab should pass `placeNames={[weatherData.locName, weatherData.marineZone]}`.
+- **`windUnitKt(value)`**: the fleet writes wind in "kt". A host-formatted
+  range such as "13 kts" is shown as "13 kt" by `ForecastTimeline`; NWS prose
+  is left as NWS wrote it.
 
 ## `@sentinel/settings`
 
