@@ -231,9 +231,9 @@ describe('Tabs initial scroll', () => {
     expect(tail.style.width).toBe('0px');
   });
 
-  it('snaps a hand scroll to tab starts', () => {
-    const { container } = render(<Tabs items={FIVE} value="display" onChange={vi.fn()} />);
-    expect(stripOf(container).className).toContain('snap-x');
-    for (const tab of screen.getAllByRole('tab')) expect(tab.className).toContain('snap-start');
+  it('uses no CSS scroll-snap, which pulled a padded first tab off its line', () => {
+    const { container } = render(<Tabs items={FIVE} value="display" onChange={vi.fn()} className="px-4" />);
+    expect(stripOf(container).className).not.toMatch(/snap-/);
+    for (const tab of screen.getAllByRole('tab')) expect(tab.className).not.toMatch(/snap-/);
   });
 });

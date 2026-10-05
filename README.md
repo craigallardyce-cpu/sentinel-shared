@@ -78,7 +78,7 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `Input`, `Select`, `Textarea` (`label`, `hint`, `error`, `required`) — 48 px, labels 13/600 sentence case | 20+ hand-assembled input class strings; toast-as-validation |
 | `UnitField` — a number with its unit inside a 48 px box, for limits and thresholds | hand-rolled bare `<input>`s in styled `<div>`s |
 | `InstrumentCell` — `label` / `value` / `unit` / `sub`, `size` (`readout` 40 px or `instrument` 24 px), `tone` (`normal` / `warning` / `alarm`), `align`. No box of its own; the caller lays a strip out with hairline dividers | HarborSentinel's instrument strip and OceanSentinel's HUD, which drew the same reading two ways (fit-and-finish X7) |
-| `Tabs` — `items` (`{ id, label, count? }`), `value`, `onChange`, optional `onAdd`/`addLabel`, `idPrefix`. Sentence case, 48 px targets, a 2 px accent stroke under the selected tab, arrow-key navigation. A strip wider than its container rests only on tab boundaries: on mount and on each selection it scrolls to the leftmost tab start from which the selected tab is whole (0 when it fits, so the first tab starts at the left edge), and `snap-x` keeps a hand scroll on a boundary. `tabStripScrollFor` is the rule | each app's own tab strip, several ways to add a tab (V9) |
+| `Tabs` — `items` (`{ id, label, count? }`), `value`, `onChange`, optional `onAdd`/`addLabel`, `idPrefix`. Sentence case, 48 px targets, a 2 px accent stroke under the selected tab, arrow-key navigation. A strip wider than its container rests only on tab boundaries: on mount and on each selection it scrolls to the leftmost tab start from which the selected tab is whole (0 when it fits, so the first tab starts at the left edge); a scrolled strip rests a tab flush with its edge, so no sliver of the one before shows. `tabStripScrollFor` is the rule | each app's own tab strip, several ways to add a tab (V9) |
 | `Toggle` — 56 × 32 | copy-pasted iOS switches |
 | `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
 | `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
@@ -260,6 +260,12 @@ import { WarningsBanner } from '@sentinel/weather-ui';
   nothing. Tailwind classes, so an app must `@source` this package's
   `dist` (both consumers already do). No new runtime imports: `react` and
   `lucide-react` only.
+- **Nothing in the collapsed line is truncated on a phone** (fixes,
+  2026-10-05): at 412px it read "… until Tue 08:00…". Below `sm` the band grows
+  instead -- the event name (wrapping if it must) and the `+N more` chip, then
+  the expiry and the host's statement under them, both shown -- so it is 48px
+  from `sm` up and two or three lines on a phone. A host that places something
+  directly under the banner must let it grow.
 
 ## `@sentinel/weather-ui`: `ForecastTimeline`, `AlertsPanel` and NWS text
 
