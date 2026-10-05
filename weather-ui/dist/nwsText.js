@@ -55,9 +55,10 @@ export function isShouting(text) {
        the first ordinary word ("at", "until"…) or punctuation; a two-letter
        state code among them goes back to capitals.
     2. Names the host already knows: the forecast's location and zone
-       (`locName`, `marineZone`), passed as `names`. Each comma-separated part
-       of three letters or more is matched case-insensitively and put back as
-       written (title case if it was given in capitals).
+       (`locName`, `marineZone`), passed as `names`. The whole name and each
+       comma-separated part are matched case-insensitively, as whole words,
+       and put back as written: "Newport, RI" returns with its state code
+       (a long name given in capitals comes back in title case).
     3. A short list of the marine-text names the fleet's own areas use, and
        any NWS zone code (ANZ236).
 */
@@ -78,16 +79,49 @@ const KNOWN_PLACES = [
 ];
 const titleCase = (s) => s.toLowerCase().replace(/(^|[\s/'-])([a-z])/g, (_, a, c) => a + c.toUpperCase());
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/*
+  Two-letter words that are also state codes. A host's "Portland, OR" must not
+  turn every "or" in the forecast into "OR", so a short part that is one of
+  these is restored only where it follows its own place ("Portland, OR"),
+  never on its own. Any other short all-capitals part (RI, MA, NY) is
+  restored wherever it stands as a word.
+*/
+const SHORT_WORDS = new Set([
+    'al', 'am', 'as', 'at', 'be', 'by', 'co', 'de', 'do', 'go', 'he', 'hi', 'id', 'if', 'in', 'is', 'it', 'la', 'me',
+    'my', 'no', 'of', 'oh', 'ok', 'on', 'or', 'pa', 'pm', 'so', 'to', 'up', 'us', 'we',
+]);
+/** How a part is written back: as given, or in title case if given in capitals as a name (not a code). */
+function writtenForm(part) {
+    const letters = part.replace(/[^A-Za-z]/g, '');
+    if (/\d/.test(part) || letters.length <= 3)
+        return part; // RI, MA, ANZ236 stay as given
+    return isShouting(part) ? titleCase(part) : part;
+}
 function restoreNames(out, names) {
-    const parts = [...names, ...KNOWN_PLACES]
-        .flatMap((n) => (n ?? '').split(','))
-        .map((p) => p.trim())
-        .filter((p) => p.replace(/[^A-Za-z]/g, '').length >= 3)
-        // Longest first, so "Block Island Sound" wins over "Block Island".
-        .sort((a, b) => b.length - a.length);
-    for (const part of parts) {
-        const written = isShouting(part) && !/\d/.test(part) ? titleCase(part) : part;
-        out = out.replace(new RegExp(`(?<![A-Za-z])${escapeRe(part)}(?![A-Za-z])`, 'gi'), written);
+    const candidates = [];
+    for (const name of [...names, ...KNOWN_PLACES]) {
+        const whole = (name ?? '').trim();
+        if (!/[A-Za-z]/.test(whole))
+            continue;
+        const parts = whole.split(',').map((p) => p.trim()).filter((p) => /[A-Za-z]/.test(p));
+        // The whole name, so "Newport, RI" comes back with its state code.
+        if (parts.length > 1)
+            candidates.push(whole);
+        for (const p of parts) {
+            const letters = p.replace(/[^A-Za-z]/g, '');
+            if (letters.length <= 2 && (!/^[A-Z]+$/.test(letters) || SHORT_WORDS.has(letters.toLowerCase())))
+                continue;
+            candidates.push(p);
+        }
+    }
+    // Longest first, so "Block Island Sound" wins over "Block Island", and a
+    // whole "Newport, RI" over its parts.
+    candidates.sort((a, b) => b.length - a.length);
+    for (const cand of candidates) {
+        const written = cand.split(',').map((p) => writtenForm(p.trim())).join(', ');
+        // Word boundaries, not a minimum length, keep "ri" inside "rising" alone.
+        const body = escapeRe(cand).replace(/,\s*/g, ',\\s*');
+        out = out.replace(new RegExp(`(?<![A-Za-z'])${body}(?![A-Za-z])`, 'gi'), written);
     }
     // NWS zone codes: two letters, Z, three digits.
     return out.replace(/\b([a-z]{2}z\d{3})\b/gi, (z) => z.toUpperCase());

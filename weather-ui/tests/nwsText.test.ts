@@ -29,6 +29,21 @@ describe('nwsSentenceCase: proper nouns', () => {
   it('does not touch a name inside another word', () => {
     expect(nwsSentenceCase('NEWPORTS AND BOSTONIANS.', { names: ['Newport'] })).toBe('Newports and bostonians.');
   });
+
+  it('restores "Newport, RI" whole, state code included, and the code where it stands alone', () => {
+    const names = ['Newport, RI'];
+    expect(nwsSentenceCase('FOG NEAR NEWPORT, RI THIS MORNING.', { names })).toBe('Fog near Newport, RI this morning.');
+    expect(nwsSentenceCase('COASTAL WATERS OF RI AND MA.', { names })).toBe('Coastal waters of RI and ma.');
+  });
+
+  it('never changes a two-letter code inside another word', () => {
+    expect(nwsSentenceCase('RISING SEAS. RAIN AT TIMES.', { names: ['Newport, RI'] })).toBe('Rising seas. Rain at times.');
+  });
+
+  it('restores a code that is also a word only beside its own place, never on its own', () => {
+    expect(nwsSentenceCase('RAIN OR SNOW NEAR PORTLAND, OR.', { names: ['Portland, OR'] }))
+      .toBe('Rain or snow near Portland, OR.');
+  });
 });
 
 describe('windUnitKt', () => {

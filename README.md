@@ -299,7 +299,10 @@ reached them):
   after "NWS" (up to three words, with a state code: "NWS Boston/Norton MA");
   names the host passes as `{ names }` -- `AlertsPanel` passes its `locName`
   and `marineZone`, and `ForecastTimeline` takes them as `placeNames` --
-  matched case-insensitively and put back as written; and a short built-in list
+  matched case-insensitively as whole words and put back as written, the whole
+  name as well as each comma part ("Newport, RI" keeps its state code; a code
+  that is also a word, like OR or IN, is restored only beside its own place);
+  and a short built-in list
   of places in the fleet's own waters (Block Island Sound, Narragansett Bay,
   Martha's Vineyard…) plus any NWS zone code (ANZ236). **The limitation that
   remains:** any other place name in a capitals product comes out lower case,
