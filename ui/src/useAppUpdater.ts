@@ -23,6 +23,12 @@ export interface UpdateState {
   progress?: number;
   changelog?: string;
   errorMsg?: string;
+  /**
+   * Why there is nothing to check, when that is not a failure: an unpackaged
+   * development run, or a build with updates turned off. Shown in place of the
+   * idle prompt, without the Error pill.
+   */
+  noteMsg?: string;
 }
 
 export interface UseAppUpdaterOptions {
@@ -166,7 +172,12 @@ export function useAppUpdater({ appName, fallbackVersion, versionUrl, checkOnMou
     const off = updater.onEvent((data) => {
       switch (data.type) {
         case 'checking':
-          setState((prev) => ({ ...prev, status: 'checking', errorMsg: undefined }));
+          setState((prev) => ({ ...prev, status: 'checking', errorMsg: undefined, noteMsg: undefined }));
+          break;
+        case 'unavailable':
+          // Nothing to check here (a development run). Back to idle, with the
+          // reason as a note rather than an error.
+          setState((prev) => ({ ...prev, status: 'idle', errorMsg: undefined, noteMsg: data.message }));
           break;
         case 'available':
           setState((prev) => ({ ...prev, status: 'available', latestVersion: data.version, hasUpdate: true, updateReady: false, progress: undefined }));

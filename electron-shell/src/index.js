@@ -183,7 +183,9 @@ function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeIn
     try {
       const result = await autoUpdater.checkForUpdates();
       if (!result) {
-        sendUpdaterEvent('error', {
+        // Not a failure: there is nothing to check here. `unavailable` is shown as
+        // a neutral note, where `error` drew a red "Error" in About (5 Oct).
+        sendUpdaterEvent('unavailable', {
           message: app.isPackaged
             ? 'Update checks are turned off in this build.'
             : 'Updates are checked by the installed app, not a development run.'
