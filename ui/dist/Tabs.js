@@ -135,8 +135,17 @@ export function Tabs({ items, value, onChange, onAdd, addLabel = 'New tab', 'ari
        drew a vertical scrollbar beside every tab strip (HarborSentinel
        Settings, 5 Oct). The selected tab's 2px stroke paints over the hairline
        from inside. overflow-y-hidden keeps any later overhang from bringing the
-       scrollbar back; the horizontal scrollbar stays for strips that overflow. */
-    return (_jsxs("div", { ref: stripRef, className: cn('relative flex items-end gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--bg-highest)] select-none', className), children: [_jsx("div", { role: "tablist", "aria-label": ariaLabel, "aria-orientation": "horizontal", className: "flex items-end gap-1", children: items.map((t) => {
+       scrollbar back; the horizontal scrollbar stays for strips that overflow.
+  
+       shrink-0, because a box with `overflow` set has an automatic minimum
+       height of 0 in a flex column. Inside a dialog that is short of height
+       (Modal's flex column, capped by max-h-full) the strip was squeezed below
+       its own 48px: first that showed as a vertical scrollbar, then, with
+       overflow-y hidden, as the tabs' tops cut off (HarborSentinel Settings in a
+       narrow window, 5 Oct). The strip never gives up height; the dialog's body
+       scrolls instead. The horizontal scrollbar is drawn thin, not as the
+       platform's full bar with arrows. */
+    return (_jsxs("div", { ref: stripRef, className: cn('relative shrink-0 flex items-end gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--bg-highest)] select-none [scrollbar-width:thin]', className), children: [_jsx("div", { role: "tablist", "aria-label": ariaLabel, "aria-orientation": "horizontal", className: "flex items-end gap-1", children: items.map((t) => {
                     const selected = t.id === value;
                     return (_jsxs("button", { ref: (el) => {
                             if (el)
