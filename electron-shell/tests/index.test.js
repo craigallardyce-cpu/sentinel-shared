@@ -124,6 +124,21 @@ describe('setupAutoUpdater', () => {
     autoUpdater.checkForUpdates = vi.fn(async () => { throw new Error('network down'); });
     const failed = await ipcMain.invoke('updater:check');
     expect(failed).toBeNull();
+    expect(sentEvents).toContainEqual({ type: 'error', message: 'network down' });
+  });
+
+  it('updater:check ends in an error event when electron-updater skips the check (unpackaged run)', async () => {
+    // electron-updater resolves null and emits nothing when the app is not
+    // packaged; without this event the renderer shows "Checking…" forever.
+    autoUpdater.checkForUpdates = vi.fn(async () => null);
+    app.isPackaged = false;
+    setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow: () => mainWindow });
+    const result = await ipcMain.invoke('updater:check');
+    expect(result).toBeNull();
+    expect(sentEvents).toContainEqual({
+      type: 'error',
+      message: 'Updates are checked by the installed app, not a development run.'
+    });
   });
 });
 
