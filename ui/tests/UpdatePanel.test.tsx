@@ -100,6 +100,24 @@ describe('UpdatePanel where a check cannot succeed', () => {
   });
 });
 
+describe('UpdatePanel in a development run', () => {
+  it('shows why there is nothing to check as a note, with no Error pill', () => {
+    // electron-shell sends `unavailable` for an unpackaged run (5 Oct 2026):
+    // it used to send `error`, and About drew a red "Error" for a run that
+    // had done nothing wrong.
+    const note = 'Updates are checked by the installed app, not a development run.';
+    render(
+      <UpdatePanel
+        updater={updaterFor({ status: 'idle', currentVersion: '2.12.1', noteMsg: note }, { canCheck: true, isElectron: true })}
+      />
+    );
+    const status = screen.getByText(note);
+    expect(status.className).not.toContain('whitespace-nowrap');
+    expect(screen.queryByText('Error')).toBeNull();
+    expect(screen.queryByText(/Check for a newer release/i)).toBeNull();
+  });
+});
+
 describe('UpdatePanel where a check can succeed', () => {
   it('keeps the Check button, so nothing is lost on desktop', () => {
     render(<UpdatePanel updater={updaterFor({ status: 'idle', currentVersion: '2.11.1' }, { canCheck: true, isElectron: true })} />);

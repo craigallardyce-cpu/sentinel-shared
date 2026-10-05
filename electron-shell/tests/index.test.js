@@ -127,18 +127,20 @@ describe('setupAutoUpdater', () => {
     expect(sentEvents).toContainEqual({ type: 'error', message: 'network down' });
   });
 
-  it('updater:check ends in an error event when electron-updater skips the check (unpackaged run)', async () => {
+  it('updater:check ends in an unavailable event, not an error, when electron-updater skips the check (unpackaged run)', async () => {
     // electron-updater resolves null and emits nothing when the app is not
-    // packaged; without this event the renderer shows "Checking…" forever.
+    // packaged; without an event the renderer shows "Checking…" forever. It is
+    // not a failure, so it must not be `error` (which drew a red Error pill).
     autoUpdater.checkForUpdates = vi.fn(async () => null);
     app.isPackaged = false;
     setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow: () => mainWindow });
     const result = await ipcMain.invoke('updater:check');
     expect(result).toBeNull();
     expect(sentEvents).toContainEqual({
-      type: 'error',
+      type: 'unavailable',
       message: 'Updates are checked by the installed app, not a development run.'
     });
+    expect(sentEvents.some((e) => e.type === 'error')).toBe(false);
   });
 });
 

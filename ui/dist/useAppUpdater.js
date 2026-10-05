@@ -106,7 +106,12 @@ export function useAppUpdater({ appName, fallbackVersion, versionUrl, checkOnMou
         const off = updater.onEvent((data) => {
             switch (data.type) {
                 case 'checking':
-                    setState((prev) => ({ ...prev, status: 'checking', errorMsg: undefined }));
+                    setState((prev) => ({ ...prev, status: 'checking', errorMsg: undefined, noteMsg: undefined }));
+                    break;
+                case 'unavailable':
+                    // Nothing to check here (a development run). Back to idle, with the
+                    // reason as a note rather than an error.
+                    setState((prev) => ({ ...prev, status: 'idle', errorMsg: undefined, noteMsg: data.message }));
                     break;
                 case 'available':
                     setState((prev) => ({ ...prev, status: 'available', latestVersion: data.version, hasUpdate: true, updateReady: false, progress: undefined }));

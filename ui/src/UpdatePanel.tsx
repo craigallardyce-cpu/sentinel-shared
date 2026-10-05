@@ -51,7 +51,7 @@ export function UpdatePanel({ updater, className }: UpdatePanelProps) {
     may wrap, as a sentence.
   */
   const statusText =
-    state.status === 'idle' ? 'Check for a newer release.'
+    state.status === 'idle' ? (state.noteMsg || 'Check for a newer release.')
     : state.status === 'checking' ? 'Checking…'
     : state.status === 'uptodate' ? 'Up to date.'
     : state.status === 'available' ? (state.updateReady ? `Version ${state.latestVersion} is downloaded and ready.` : `Version ${state.latestVersion} is available.`)
@@ -59,16 +59,20 @@ export function UpdatePanel({ updater, className }: UpdatePanelProps) {
     : state.status === 'error' ? (state.errorMsg || 'Something went wrong.')
     : null;
 
+  /* An error and a note (why there is nothing to check) are sentences of unknown
+     length, so they wrap; every other status is a short phrase kept whole. */
+  const sentence = state.status === 'error' || (state.status === 'idle' && !!state.noteMsg);
+
   return (
     <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className={cn('max-w-full', state.status === 'error' ? 'min-w-0 flex-1' : 'shrink-0')} data-slot="update-version">
+        <div className={cn('max-w-full', sentence ? 'min-w-0 flex-1' : 'shrink-0')} data-slot="update-version">
           <p className="text-body-md text-text-primary whitespace-nowrap">
             Version <span className="font-mono">{state.currentVersion || '—'}</span>
           </p>
           {statusText && (
             <p
-              className={cn('text-body-sm text-text-muted mt-0.5', state.status !== 'error' && 'whitespace-nowrap')}
+              className={cn('text-body-sm text-text-muted mt-0.5', !sentence && 'whitespace-nowrap')}
               data-slot="update-status"
             >
               {statusText}

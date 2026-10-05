@@ -20,6 +20,12 @@ export interface UpdateState {
     progress?: number;
     changelog?: string;
     errorMsg?: string;
+    /**
+     * Why there is nothing to check, when that is not a failure: an unpackaged
+     * development run, or a build with updates turned off. Shown in place of the
+     * idle prompt, without the Error pill.
+     */
+    noteMsg?: string;
 }
 export interface UseAppUpdaterOptions {
     /** Shown in the "desktop only" error. */
