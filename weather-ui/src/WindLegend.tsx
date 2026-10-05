@@ -18,11 +18,15 @@ export interface WindLegendProps {
  * streams read as decoration until you know that one is a working breeze and the other is a
  * reef. Shown only while the wind overlay is on, and it takes the same palette the particles
  * do, so a light chart gets the darker set.
+ *
+ * Fit-and-finish fixes (2026-10-05): 12px mono capitals moved to the 13px floor, the labels to
+ * sentence-case `text-label`, the unit to "kt" as the instrument cells write it, and the corner
+ * to 16px, a surface floating over the chart.
  */
 export default function WindLegend({ isLightBg }: WindLegendProps) {
   return (
-    <div className="glass-panel rounded-lg px-2.5 py-1.5 flex items-center gap-2 select-none pointer-events-none">
-      <span className="text-[12px] font-mono uppercase tracking-widest text-text-muted">Wind</span>
+    <div className="glass-panel rounded-xl px-3 py-2 flex items-center gap-2 select-none pointer-events-none">
+      <span className="text-label text-text-muted">Wind</span>
       <div className="flex items-end gap-px">
         {WIND_BANDS.map((band) => (
           <div key={band.from} className="flex flex-col items-center gap-1">
@@ -30,11 +34,11 @@ export default function WindLegend({ isLightBg }: WindLegendProps) {
               className="block w-6 sm:w-7 h-1.5 rounded-[1px]"
               style={{ backgroundColor: `rgb(${isLightBg ? band.light : band.dark})` }}
             />
-            <span className="text-[12px] font-mono text-text-muted leading-none">{band.from}</span>
+            <span className="font-mono text-[13px] font-medium text-text-muted leading-none">{band.from}</span>
           </div>
         ))}
       </div>
-      <span className="text-[12px] font-mono uppercase tracking-widest text-text-muted">Kts</span>
+      <span className="text-label text-text-muted">kt</span>
     </div>
   );
 }

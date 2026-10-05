@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowUpCircle, CheckCircle2, OctagonAlert, RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 import { StatusPill } from './StatusPill';
+import { cn } from './cn';
 import type { AppUpdater } from './useAppUpdater';
 
 export interface UpdatePanelProps {
@@ -32,31 +33,49 @@ export function UpdatePanel({ updater, className }: UpdatePanelProps) {
   if (!canCheck) {
     return (
       <div className={className}>
-        <p className="text-sm text-text-primary">
+        <p className="text-body-md text-text-primary whitespace-nowrap">
           Version <span className="font-mono">{state.currentVersion || '—'}</span>
         </p>
       </div>
     );
   }
 
+  /*
+    The layout wraps as units, never mid-phrase. On a phone the version and its
+    status used to share a squeezed column beside the pill and the button, and
+    "Up to date." broke over two lines as "Up to / date." (HarborSentinel's
+    About, catalogue re-shoot). Now the two groups -- what is installed, and
+    what to do about it -- sit side by side when there is room and the second
+    drops under the first when there is not. Inside them the short phrases do
+    not wrap. An error message is the one status of unknown length, so it alone
+    may wrap, as a sentence.
+  */
+  const statusText =
+    state.status === 'idle' ? 'Check for a newer release.'
+    : state.status === 'checking' ? 'Checking…'
+    : state.status === 'uptodate' ? 'Up to date.'
+    : state.status === 'available' ? (state.updateReady ? `Version ${state.latestVersion} is downloaded and ready.` : `Version ${state.latestVersion} is available.`)
+    : state.status === 'updating' ? (state.updateReady ? 'Restarting…' : 'Downloading update…')
+    : state.status === 'error' ? (state.errorMsg || 'Something went wrong.')
+    : null;
+
   return (
     <div className={className}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm text-text-primary">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className={cn('max-w-full', state.status === 'error' ? 'min-w-0 flex-1' : 'shrink-0')} data-slot="update-version">
+          <p className="text-body-md text-text-primary whitespace-nowrap">
             Version <span className="font-mono">{state.currentVersion || '—'}</span>
           </p>
-          <p className="text-[13px] text-text-muted mt-0.5">
-            {state.status === 'idle' && 'Check for a newer release.'}
-            {state.status === 'checking' && 'Checking…'}
-            {state.status === 'uptodate' && 'Up to date.'}
-            {state.status === 'available' && !state.updateReady && `Version ${state.latestVersion} is available.`}
-            {state.status === 'available' && state.updateReady && `Version ${state.latestVersion} is downloaded and ready.`}
-            {state.status === 'updating' && (state.updateReady ? 'Restarting…' : 'Downloading update…')}
-            {state.status === 'error' && (state.errorMsg || 'Something went wrong.')}
-          </p>
+          {statusText && (
+            <p
+              className={cn('text-body-sm text-text-muted mt-0.5', state.status !== 'error' && 'whitespace-nowrap')}
+              data-slot="update-status"
+            >
+              {statusText}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full" data-slot="update-actions">
           {state.status === 'uptodate' && <StatusPill status="ok">Current</StatusPill>}
           {state.status === 'error' && <StatusPill status="alarm">Error</StatusPill>}
           {state.status === 'available' ? (

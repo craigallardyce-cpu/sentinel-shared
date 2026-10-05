@@ -20,6 +20,18 @@ export declare const STATUS_CLASS: Record<Status, {
     bg: string;
     border: string;
 }>;
+/**
+ * Set by AppShell around its header status band. Inside it, below `sm`, a
+ * StatusPill draws its dot alone and keeps its word for screen readers.
+ *
+ * The band yields width to the controls beside it, and a word squeezed there
+ * was cut mid-word: OceanSentinel's phone header read "Instrum…", which says
+ * less than the dot does on its own. A status word is never truncated in the
+ * header now; at phone width it is not drawn. HarborSentinel already passed a
+ * `compact` pill below `sm` for the same reason; that still works, and every
+ * other caller gets the same behaviour without having to know to ask.
+ */
+export declare const HeaderStatusContext: React.Context<boolean>;
 export interface StatusPillProps {
     status: Status;
     children?: React.ReactNode;

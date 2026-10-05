@@ -20,7 +20,8 @@ import { ChevronDown, ChevronRight, CloudOff, TriangleAlert } from 'lucide-react
 
   It looks as the approved board draws it (`OceanNightAfter.dc.html`): a glass
   surface (`--bg-panel-glass` behind a 16px backdrop blur), the 16px surface
-  radius, 48px tall, no shadow, and a 1px border of the severity colour at 40%.
+  radius, 48px tall from `sm` up (it grows on a phone rather than truncate;
+  see the summary below), no shadow, and a 1px border of the severity colour at 40%.
   The event name carries the severity colour; the rest is secondary text.
   Severity is `--color-red` or `--color-warning`, never a glow. Tokens only
   (`@sentinel/theme`), so night mode follows with no code here: `night.css`
@@ -236,42 +237,60 @@ export function WarningsBanner({
   const age = stale ? formatCheckAge(checkedAt, now) : null;
   const until = formatWhen(top.ends, false);
 
-  /* The one clause read after the event name, most useful first: the host's
-     own statement, else when the top warning ends. */
-  const secondary = detail ? (
-    <span className="truncate min-w-0">{detail}</span>
-  ) : until ? (
-    <span className="truncate min-w-0">
+  /* The clause read after the event name, most useful first: the host's own
+     statement, else when the top warning ends.
+
+     Never cut with an ellipsis (fit-and-finish fixes, 2026-10-05). On a 412px
+     phone the one 48px line came out as "… until Tue 08:00…": the event name
+     and the expiry are facts, and a reader cannot act on the half of either
+     that survives. So below `sm` the band grows to two lines instead of
+     truncating -- the event name (and the +N chip) on the first, wrapping if it
+     must, and the expiry and the host's statement under it -- and the expiry is
+     shown there even when the host gave a statement, because on a phone there
+     is room for both once the band may grow. From `sm` up it is the board's one
+     48px line, as before. */
+  const untilClause = until ? (
+    <span className={`whitespace-nowrap ${detail ? 'sm:hidden' : ''}`} data-slot="warnings-banner-until">
       until <span className="font-mono">{until}</span>
     </span>
+  ) : null;
+  const detailClause = detail ? (
+    <span className="min-w-0 sm:truncate" data-slot="warnings-banner-detail">{detail}</span>
   ) : null;
 
   const summary = (
     <>
       <TriangleAlert size={20} strokeWidth={1.75} aria-hidden className={`shrink-0 ${tone.text}`} />
-      <span className={`font-semibold shrink-0 max-w-[60%] truncate ${tone.text}`}>{sentenceCase(top.event)}</span>
-      {more > 0 && (
-        <span
-          data-testid="warnings-banner-count"
-          className={`shrink-0 inline-flex items-center rounded-full border px-2 text-body-sm font-semibold ${tone.chip}`}
-        >
-          <span className="font-mono">+{more}</span>&nbsp;more
-        </span>
-      )}
-      <span className="flex-1 min-w-0 flex items-center gap-2 text-text-secondary">
-        {secondary}
-        {age && (
-          <span className="shrink-0 text-body-sm text-text-muted">
-            last checked <span className="font-mono">{age}</span>
+      <span className="flex-1 min-w-0 flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+        <span className="flex items-center gap-3 min-w-0 max-w-full sm:max-w-[60%] sm:shrink-0">
+          <span className={`font-semibold min-w-0 sm:truncate ${tone.text}`} data-slot="warnings-banner-event">
+            {sentenceCase(top.event)}
           </span>
-        )}
-        {usingChartCentre && <span className="shrink-0 text-body-sm text-text-muted">Chart centre</span>}
+          {more > 0 && (
+            <span
+              data-testid="warnings-banner-count"
+              className={`shrink-0 inline-flex items-center rounded-full border px-2 text-body-sm font-semibold whitespace-nowrap ${tone.chip}`}
+            >
+              <span className="font-mono">+{more}</span>&nbsp;more
+            </span>
+          )}
+        </span>
+        <span className="min-w-0 max-w-full flex flex-wrap items-center gap-x-2 text-text-secondary text-body-sm sm:text-body-md sm:flex-1 sm:flex-nowrap">
+          {untilClause}
+          {detailClause}
+          {age && (
+            <span className="shrink-0 whitespace-nowrap text-body-sm text-text-muted">
+              last checked <span className="font-mono">{age}</span>
+            </span>
+          )}
+          {usingChartCentre && <span className="shrink-0 whitespace-nowrap text-body-sm text-text-muted">Chart centre</span>}
+        </span>
       </span>
     </>
   );
 
   const rowClass =
-    'w-full h-12 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
+    'w-full min-h-12 py-1.5 sm:h-12 sm:py-0 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
     'rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus';
 
   return (

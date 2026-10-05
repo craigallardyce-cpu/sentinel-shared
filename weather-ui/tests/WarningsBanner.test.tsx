@@ -137,7 +137,8 @@ describe('severity', () => {
     expect(cls).toContain('[-webkit-backdrop-filter:blur(16px)]');
     expect(cls).toContain('rounded-xl');
     expect(cls).not.toMatch(/shadow|glow|-dim/);
-    expect(screen.getByRole('button').className.split(' ')).toContain('h-12');
+    // 48px from sm up; on a phone it may grow rather than truncate.
+    expect(screen.getByRole('button').className.split(' ')).toEqual(expect.arrayContaining(['sm:h-12', 'min-h-12']));
 
     rerender(<WarningsBanner warnings={[SCA]} />);
     section = screen.getByRole('status');
@@ -199,10 +200,12 @@ describe('count and expand', () => {
 
 describe('host clauses', () => {
   it('reads the host detail after the event name', () => {
-    render(<WarningsBanner warnings={[STORM]} detail="Hazardous conditions forecast from Saturday night" />);
-    expect(screen.getByRole('button')).toHaveTextContent(
-      'Storm warningHazardous conditions forecast from Saturday night'
+    const { container } = render(
+      <WarningsBanner warnings={[STORM]} detail="Hazardous conditions forecast from Saturday night" />
     );
+    expect(screen.getByRole('button')).toHaveTextContent(/^Storm warning.*Hazardous conditions forecast from Saturday night/);
+    // From sm up the statement replaces the expiry; on a phone both show.
+    expect(container.querySelector('[data-slot="warnings-banner-until"]')!.className).toContain('sm:hidden');
   });
 
   it('dates stale warnings rather than presenting them as current', () => {
@@ -238,5 +241,46 @@ describe('helpers', () => {
   it('is exported from the package index with its helpers', () => {
     expect(pkg.WarningsBanner).toBe(WarningsBanner);
     expect(pkg.sortWarnings).toBe(sortWarnings);
+  });
+});
+
+/*
+  A 412px phone showed "… until Tue 08:00…" (fit-and-finish fixes, 2026-10-05).
+  Below sm the band grows to two lines rather than cut a fact; nothing that
+  carries the event name or the expiry may truncate at that width.
+*/
+describe('on a phone', () => {
+  const LONG: BannerWarning = {
+    event: 'Small Craft Advisory for Hazardous Seas',
+    severity: 'Minor',
+    ends: '2026-10-06T12:00:00Z',
+  };
+
+  it('never truncates the event name or the expiry below sm', () => {
+    const { container } = render(<WarningsBanner warnings={[LONG, SCA]} />);
+    const event = container.querySelector('[data-slot="warnings-banner-event"]')!;
+    const until = container.querySelector('[data-slot="warnings-banner-until"]')!;
+    expect(event.textContent).toBe('Small craft advisory for hazardous seas');
+    expect(until.textContent).toMatch(/^until /);
+    // Truncation only from sm up, never at rest.
+    for (const el of [event, until, ...Array.from(event.parentElement!.querySelectorAll('*'))]) {
+      expect(el.className.split(' ')).not.toContain('truncate');
+    }
+    expect(until.className).toContain('whitespace-nowrap');
+    expect(event.className).not.toMatch(/(?:^|\s)max-w-\[/);
+  });
+
+  it('lets the band grow to two lines below sm and keeps 48px from sm', () => {
+    render(<WarningsBanner warnings={[LONG]} />);
+    const cls = screen.getByRole('button').className.split(' ');
+    expect(cls).toContain('min-h-12');
+    expect(cls).toContain('sm:h-12');
+    expect(cls).not.toContain('h-12');
+  });
+
+  it('keeps the expiry on a phone even when the host gives a statement', () => {
+    const { container } = render(<WarningsBanner warnings={[LONG]} detail="Seas 6 to 9 ft" />);
+    expect(container.querySelector('[data-slot="warnings-banner-until"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="warnings-banner-detail"]')!.textContent).toBe('Seas 6 to 9 ft');
   });
 });

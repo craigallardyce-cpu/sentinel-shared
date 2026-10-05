@@ -5,7 +5,7 @@ export { Input, Textarea, Select } from './Field';
 export { Toggle } from './Toggle';
 export { Modal, ConfirmDialog, MODAL_Z } from './Modal';
 export { ToastProvider, useToast, toast, confirm } from './Toast';
-export { StatusPill, STATUS_CLASS } from './StatusPill';
+export { StatusPill, STATUS_CLASS, HeaderStatusContext } from './StatusPill';
 export { PlanPill } from './PlanPill';
 export { EmptyState } from './EmptyState';
 export { UnitField } from './UnitField';

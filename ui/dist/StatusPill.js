@@ -1,4 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import React from 'react';
 import { cn } from './cn';
 /**
  * Classes for each status, for callers drawing their own status surface.
@@ -26,12 +27,25 @@ const WORD = {
     alarm: 'text-red',
 };
 /**
+ * Set by AppShell around its header status band. Inside it, below `sm`, a
+ * StatusPill draws its dot alone and keeps its word for screen readers.
+ *
+ * The band yields width to the controls beside it, and a word squeezed there
+ * was cut mid-word: OceanSentinel's phone header read "Instrum…", which says
+ * less than the dot does on its own. A status word is never truncated in the
+ * header now; at phone width it is not drawn. HarborSentinel already passed a
+ * `compact` pill below `sm` for the same reason; that still works, and every
+ * other caller gets the same behaviour without having to know to ask.
+ */
+export const HeaderStatusContext = React.createContext(false);
+/**
  * A dot and a word (fit-and-finish X3, X5). No border and no fill: it was a
  * bordered pill inside `HeaderGroup`'s bordered box, and a status is not a
  * control. The name is kept so no caller has to change.
  */
 export function StatusPill({ status, children, pulse = false, compact = false, size = 'sm', className, title }) {
     const c = STATUS_CLASS[status];
+    const inHeader = React.useContext(HeaderStatusContext);
     const pulsing = pulse && status === 'alarm';
     const dot = (_jsxs("span", { className: "relative flex h-2 w-2 shrink-0", "aria-hidden": true, children: [pulsing && _jsx("span", { className: cn('absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping', c.dot) }), _jsx("span", { className: cn('relative inline-flex h-2 w-2 rounded-full', c.dot) })] }));
     if (compact) {
@@ -51,5 +65,7 @@ export function StatusPill({ status, children, pulse = false, compact = false, s
         //
         // The rounded corner draws nothing at rest; it is there for a caller
         // that tints the background on hover (PlanPill), so the tint is a pill.
-        'inline-flex items-center gap-2 rounded-full font-sans font-normal whitespace-nowrap', size === 'sm' ? 'h-6 px-2 text-[13px] min-w-8' : 'h-7 px-2.5 text-[15px] min-w-9', WORD[status], className), children: [dot, children || children === 0 ? _jsx("span", { className: "truncate", children: children }) : null] }));
+        'inline-flex items-center gap-2 rounded-full font-sans font-normal whitespace-nowrap', size === 'sm' ? 'h-6 px-2 text-[13px] min-w-8' : 'h-7 px-2.5 text-[15px] min-w-9', 
+        // Dot alone in the header on a phone: no gap beside a word that is not drawn.
+        inHeader && 'max-sm:gap-0', WORD[status], className), children: [dot, children || children === 0 ? (_jsx("span", { className: inHeader ? 'truncate max-sm:sr-only' : 'truncate', "data-slot": "status-word", children: children })) : null] }));
 }

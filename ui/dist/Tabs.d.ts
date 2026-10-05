@@ -30,6 +30,17 @@ export interface TabsProps {
     className?: string;
 }
 /**
+ * Where a tab strip should rest so the selected tab is whole and no tab is cut
+ * at the left edge. `starts` are the tabs' left offsets in strip coordinates,
+ * in order; `left`/`right` the selected tab's edges; `width` the visible width;
+ * `current` the present scrollLeft.
+ *
+ * If the selected tab is already whole in view and the view starts on a tab
+ * boundary, nothing moves. Otherwise the answer is the smallest tab start from
+ * which the selected tab fits: 0 whenever it fits from the first tab.
+ */
+export declare function tabStripScrollFor(starts: number[], left: number, right: number, width: number, current: number): number;
+/**
  * The fleet tab strip (fit-and-finish V9): one way to draw tabs, and one way to
  * add one.
  *

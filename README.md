@@ -78,15 +78,15 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `Input`, `Select`, `Textarea` (`label`, `hint`, `error`, `required`) — 48 px, labels 13/600 sentence case | 20+ hand-assembled input class strings; toast-as-validation |
 | `UnitField` — a number with its unit inside a 48 px box, for limits and thresholds | hand-rolled bare `<input>`s in styled `<div>`s |
 | `InstrumentCell` — `label` / `value` / `unit` / `sub`, `size` (`readout` 40 px or `instrument` 24 px), `tone` (`normal` / `warning` / `alarm`), `align`. No box of its own; the caller lays a strip out with hairline dividers | HarborSentinel's instrument strip and OceanSentinel's HUD, which drew the same reading two ways (fit-and-finish X7) |
-| `Tabs` — `items` (`{ id, label, count? }`), `value`, `onChange`, optional `onAdd`/`addLabel`, `idPrefix`. Sentence case, 48 px targets, a 2 px accent stroke under the selected tab, arrow-key navigation | each app's own tab strip, several ways to add a tab (V9) |
+| `Tabs` — `items` (`{ id, label, count? }`), `value`, `onChange`, optional `onAdd`/`addLabel`, `idPrefix`. Sentence case, 48 px targets, a 2 px accent stroke under the selected tab, arrow-key navigation. A strip wider than its container rests only on tab boundaries: on mount and on each selection it scrolls to the leftmost tab start from which the selected tab is whole (0 when it fits, so the first tab starts at the left edge); a scrolled strip rests a tab flush with its edge, so no sliver of the one before shows. `tabStripScrollFor` is the rule | each app's own tab strip, several ways to add a tab (V9) |
 | `Toggle` — 56 × 32 | copy-pasted iOS switches |
 | `Modal` (focus trap, Escape, scrim click, safe-area padding, `tone="danger"`) and `ConfirmDialog` | 34 hand-rolled fixed overlays with eight different scrims |
 | `toast.success/info/warning/error()` and `await confirm({...})` — imperative, work from any module once `ToastProvider` is mounted | `window.alert()` / `window.confirm()` (OS-styled dialogs on Android) and three toast implementations |
-| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) — a dot and a word, no box; `pulse` is honoured for `alarm` only, so a warning never pulses | ad-hoc emerald/amber/rose/cyan status dots |
+| `StatusPill` (`ok` / `warning` / `alarm` / `offline` / `info`) — a dot and a word, no box; `pulse` is honoured for `alarm` only, so a warning never pulses. Inside AppShell's `headerStatus` (`HeaderStatusContext`), below `sm` it is the dot alone with its word `sr-only`: never a truncated word like "Instrum…" | ad-hoc emerald/amber/rose/cyan status dots |
 | `PlanPill` — the plan or trial in the header, built from `StatusPill`, with a `Button` to convert during a trial. Presentational: it takes `planLabel`/`trial`/`daysLeft` and two callbacks, and renders nothing until the plan is known | nothing — the apps showed no plan state at all, so a customer had to leave to find out what they were on |
 | `EmptyState` (`panel` / `inline`) | bare italic sentences in one place, illustrated blocks in another |
 | `Stepper` (moved here from `auth-ui`; token defaults, so wrappers are no longer needed) | three per-app 14-line wrappers |
-| `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl` | three identical ~90-line updater state machines |
+| `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl`. The version-and-status group and the actions wrap as two units; a status phrase ("Up to date.") never breaks, only an error message may | three identical ~90-line updater state machines |
 | `<SettingsShell>` + `SettingsSection`/`SettingsRow` — titled "Settings"; Display (night, brightness, keep-awake) → app sections → Updates → About; flat rows on hairlines; `ScopeBadge` is a dot (filled text-secondary grey for an override set on this device or PC, hollow muted for an inherited layer, never the accent), explained once by `scopeLegend`; `onSave` puts Save and apply on the right as the primary action | three differently-organised settings modals; no About surface existed |
 | `<AppShell>` + `HeaderButton`/`HeaderGroup` — 56 px header, 72 px rail (icon over full label) ≥ lg, whose labels break only at a space or at a soft hyphen (`\u00AD`) the app puts in the label — `hyphens: manual`, `overflow-wrap: normal`, so never mid-word — tab bar with full labels < lg (`tabLabelPx` 13, or 12), safe-area aware, night-mode + brightness applied on `<html>` so portals follow. `surface` (`chart` / `page`, also per `ShellTab`) decides the frame: glass floating 16 px in over a chart, opaque and attached for a page; the default is `chart` when a `background` is rendered and `page` otherwise | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
 
@@ -260,6 +260,58 @@ import { WarningsBanner } from '@sentinel/weather-ui';
   nothing. Tailwind classes, so an app must `@source` this package's
   `dist` (both consumers already do). No new runtime imports: `react` and
   `lucide-react` only.
+- **Nothing in the collapsed line is truncated on a phone** (fixes,
+  2026-10-05): at 412px it read "… until Tue 08:00…". Below `sm` the band grows
+  instead -- the event name (wrapping if it must) and the `+N more` chip, then
+  the expiry and the host's statement under them, both shown -- so it is 48px
+  from `sm` up and two or three lines on a phone. A host that places something
+  directly under the banner must let it grow.
+
+## `@sentinel/weather-ui`: `ForecastTimeline`, `AlertsPanel` and NWS text
+
+Both follow the fit-and-finish system (fixes, 2026-10-05; the waves had not
+reached them):
+
+- **`ForecastTimeline`**, `mode="bulletin"`: one full-width card per period,
+  16px radius, one surface with no box inside and no shadow. The period title
+  is as NWS names it ("Today", "Friday") at Inter 20/600; field labels are
+  `text-label` (Inter 13/600, sentence case, muted) and never wrap; values are
+  `text-data-mono-lg` (mono 15/500). The wind field is labelled **Max wind**,
+  with "incl. gusts" under the value, because "Max wind (incl. gusts)" wrapped
+  in a quarter-width column at 1280px. `mode="sidebar"` (the next four
+  periods) uses the same steps at 15/600 for the title; nothing is truncated
+  and nothing pulses. `theme.gridBgClass` is ignored now.
+- **`AlertsPanel`**: sentence-case labels and headings, Inter for words and
+  mono only for times and numbers, nothing under 13px, 8px controls and 16px
+  surfaces, no pulse and no coloured shadow. An alert's name and the report
+  area wrap rather than truncate. A selected alert is a red stroke, not a red
+  fill. The bulletin no longer prints "Sync Integrity: Pass" or "INTEGRITY
+  CHECK: PASS", which asserted checks nothing performs; it names its source and
+  when it was fetched.
+- **`nwsSentenceCase(text)`**: NWS marine prose arrives in capitals. Text that
+  is at least 80% capitals (`isShouting`) is lowercased, each sentence start is
+  capitalised, and the words that are capitals in ordinary writing go back up:
+  the sixteen compass points, NWS/NOAA/USCG and the other agencies, time zones,
+  VHF/AIS/GPS/NAVTEX/GMDSS, U.S., and day and month names (not "may"). Units
+  take their usual lower case (kt, mph, ft, nm, am, pm). Mixed-case text is
+  returned unchanged.
+- **Proper nouns, partly.** Three sources are restored: the issuing office
+  after "NWS" (up to three words, with a state code: "NWS Boston/Norton MA");
+  names the host passes as `{ names }` -- `AlertsPanel` passes its `locName`
+  and `marineZone`, and `ForecastTimeline` takes them as `placeNames` --
+  matched case-insensitively as whole words and put back as written, the whole
+  name as well as each comma part ("Newport, RI" keeps its state code; a code
+  that is also a word, like OR or IN, is restored only beside its own place);
+  and a short built-in list
+  of places in the fleet's own waters (Block Island Sound, Narragansett Bay,
+  Martha's Vineyard…) plus any NWS zone code (ANZ236). **The limitation that
+  remains:** any other place name in a capitals product comes out lower case,
+  because nothing can tell "SOUND" the place from "sound" the word. Hosts keep
+  the original text in a `title` (both components do). OceanSentinel's Forecast
+  tab should pass `placeNames={[weatherData.locName, weatherData.marineZone]}`.
+- **`windUnitKt(value)`**: the fleet writes wind in "kt". A host-formatted
+  range such as "13 kts" is shown as "13 kt" by `ForecastTimeline`; NWS prose
+  is left as NWS wrote it.
 
 ## `@sentinel/settings`
 
@@ -477,7 +529,7 @@ three apps keep their own persistence, which is duplication but not a defect.
 
 | Path | What it is |
 |---|---|
-| `scripts/check-fleet-drift.mjs` | Drift checker. Its scope comes from the app directories beside `sentinel-shared`, not from where you run it, so a machine with all three checkouts always gets the full fleet. The per-app scope is CI's, which checks out one app and this repo. Also runs in each app's CI on every push. |
+| `scripts/check-fleet-drift.mjs` | Drift checker. Its scope comes from the app directories beside `sentinel-shared`, not from where you run it, so a machine with all three checkouts always gets the full fleet. The per-app scope is CI's, which checks out one app and this repo. Also runs in each app's CI on every push. The floor, glow and status-button rules also read the shared packages' own `src/` (every package with `.tsx`, `.jsx` or `.css` there; not `dist/`, not tests), reported as `sentinel-shared/<package>`, because a component here is drawn in all three apps. |
 | `fleet-version.json` | The one fleet version the three apps release on. The drift checker compares each app's root `package.json` against it, which is what lets version alignment run in an app's CI, where only that app and this repo are checked out. Bump it in the same set as the apps' own versions. |
 | `fleet-dependencies.json` | The range every app must declare for each package in the checker's `ALIGNED_DEPS` (React, Capacitor, Supabase and the rest), so dependency alignment runs in an app's CI too, where one app is checked out. Generated, not hand-edited: `node sentinel-shared/scripts/check-fleet-drift.mjs --write-fleet-dependencies` from a full-fleet checkout, which refuses while the apps disagree. |
 | `scripts/smoke-launch-linux.sh` | Launches a built Linux AppImage under Xvfb and passes when a window opens and the app stays up; kills the app's whole process tree afterwards. Called from the ubuntu leg of each app's `build.yml`, so a release is gated on the artifact actually starting. The header holds the exact step and its apt packages (`xvfb`, `xdotool`). Its tests skip where those are not installed. |

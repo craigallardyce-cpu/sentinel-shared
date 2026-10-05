@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from './cn';
 
@@ -35,6 +35,29 @@ export interface TabsProps {
 }
 
 /**
+ * Where a tab strip should rest so the selected tab is whole and no tab is cut
+ * at the left edge. `starts` are the tabs' left offsets in strip coordinates,
+ * in order; `left`/`right` the selected tab's edges; `width` the visible width;
+ * `current` the present scrollLeft.
+ *
+ * If the selected tab is already whole in view and the view starts on a tab
+ * boundary, nothing moves. Otherwise the answer is the smallest tab start from
+ * which the selected tab fits: 0 whenever it fits from the first tab.
+ */
+export function tabStripScrollFor(starts: number[], left: number, right: number, width: number, current: number): number {
+  const sorted = [...starts].sort((a, b) => a - b);
+  const first = sorted.length ? sorted[0] : 0;
+  const atStart = current <= first;
+  const onBoundary = atStart || sorted.some((s) => Math.abs(s - current) < 1);
+  if (onBoundary && left >= current && right <= current + width) return atStart ? 0 : current;
+  for (const s of sorted) {
+    if (s > left) break;
+    if (right - s <= width) return s <= first ? 0 : s;
+  }
+  return left <= first ? 0 : left;
+}
+
+/**
  * The fleet tab strip (fit-and-finish V9): one way to draw tabs, and one way to
  * add one.
  *
@@ -58,25 +81,60 @@ export function Tabs({
 }: TabsProps) {
   const stripRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const tailRef = useRef<HTMLSpanElement | null>(null);
 
-  /* Keep the selected tab inside the scroll window.
+  /* Keep the selected tab inside the scroll window, and never show a sliver.
 
-     A strip that outruns its container scrolls, and nothing puts the selected
-     tab back in view -- so it can sit half out of the left edge, showing the
-     tail of its own label while reading as selected. Adjusting this element's
-     own scrollLeft rather than calling scrollIntoView, which would also scroll
-     the dialog or page behind it. Measured with getBoundingClientRect rather
-     than offsetLeft, which is relative to the nearest positioned ancestor. */
-  useEffect(() => {
+     A strip that outruns its container scrolls, and nothing put the selected
+     tab back in view -- so it could sit half out of the left edge, showing the
+     tail of its own label while reading as selected. The first fix scrolled
+     just far enough to show the selected tab plus 8px, which fixed that and
+     made a new one: on HarborSentinel's phone Settings, opening About scrolled
+     the strip by an arbitrary amount and left "Display" as a single "y" at the
+     left edge (catalogue re-shoot, 2026-10).
+
+     So the strip only ever rests on a tab boundary. On mount and whenever the
+     selection changes, scrollLeft is the start of the leftmost tab from which
+     the selected one still fits whole -- 0 when it fits without scrolling, so
+     the first tab starts at the left edge. A hand scroll stays where the
+     owner puts it. A tab wider than the strip starts at its own left edge.
+
+     Measured with offsetLeft against the strip, which is `relative` for the
+     purpose: offsets ignore transforms, so a dialog still scaling or sliding
+     in when this runs measures the same as one at rest. getBoundingClientRect
+     did not. A layout effect, so the first paint is already in place. The
+     strip's own scrollLeft is set rather than calling scrollIntoView, which
+     would also scroll the dialog or page behind it. */
+  useLayoutEffect(() => {
     const strip = stripRef.current;
     const tab = tabRefs.current.get(value);
     if (!strip || !tab) return;
-    const t = tab.getBoundingClientRect();
-    const r = strip.getBoundingClientRect();
-    const pad = 8;
-    if (t.left < r.left + pad) strip.scrollLeft -= r.left + pad - t.left;
-    else if (t.right > r.right - pad) strip.scrollLeft += t.right - (r.right - pad);
-  }, [value]);
+    /* Measured against the strip's border edge, not its padding: a caller's
+       padding (SettingsShell gives `px-4`) is where the first tab sits at
+       rest, but once the strip scrolls, content shows through that padding,
+       and resting a tab on the padding line left 12px of the previous one
+       there -- the sliver again. So a scrolled strip rests a tab flush with
+       its edge, and an unscrolled one starts at 0, where the padding puts the
+       first tab. No CSS scroll-snap: with padding, `snap-start` pulled the
+       first tab out to the border edge on open. */
+    const starts = items
+      .map((t) => tabRefs.current.get(t.id))
+      .filter((el): el is HTMLButtonElement => !!el)
+      .map((el) => el.offsetLeft);
+    const target = tabStripScrollFor(starts, tab.offsetLeft, tab.offsetLeft + tab.offsetWidth, strip.clientWidth, strip.scrollLeft);
+    /* A boundary near the end can lie past the furthest the strip can scroll,
+       and the browser would clamp it -- back to a sliver. The tail spacer
+       after the strip's last item makes up the difference, so the target is
+       reachable; it is empty space after the last tab, never under a label. */
+    const tail = tailRef.current;
+    if (tail) {
+      tail.style.width = '0px';
+      const max = strip.scrollWidth - strip.clientWidth;
+      if (target > max) tail.style.width = `${Math.ceil(target - max)}px`;
+    }
+    strip.scrollLeft = target;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new `items` array each render must not pull a hand-scrolled strip back
+  }, [value, items.length]);
 
   const selectedIndex = Math.max(
     0,
@@ -117,7 +175,7 @@ export function Tabs({
   return (
     <div
       ref={stripRef}
-      className={cn('flex items-end gap-1 overflow-x-auto border-b border-bg-highest select-none', className)}
+      className={cn('relative flex items-end gap-1 overflow-x-auto border-b border-bg-highest select-none', className)}
     >
       <div role="tablist" aria-label={ariaLabel} aria-orientation="horizontal" className="flex items-end gap-1">
         {items.map((t) => {
@@ -139,7 +197,7 @@ export function Tabs({
               onClick={() => onChange(t.id)}
               onKeyDown={onKeyDown}
               className={cn(
-                'inline-flex items-center gap-2 h-12 px-4 -mb-px border-b-2 whitespace-nowrap cursor-pointer',
+                'inline-flex items-center gap-2 h-12 px-4 -mb-px border-b-2 whitespace-nowrap cursor-pointer shrink-0',
                 'font-sans text-[15px] font-semibold',
                 'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan/60 rounded-t-md',
@@ -174,6 +232,7 @@ export function Tabs({
           <Plus size={20} aria-hidden />
         </button>
       )}
+      <span ref={tailRef} aria-hidden className="block shrink-0 self-stretch" style={{ width: 0 }} data-slot="tabs-tail" />
     </div>
   );
 }

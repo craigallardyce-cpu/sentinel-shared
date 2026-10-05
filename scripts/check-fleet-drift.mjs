@@ -1342,6 +1342,61 @@ const DEPRECATED_BUTTON = [
 const FLOOR_EXEMPT = 'type-floor-exempt';
 const sample = (list, n = 3) => list.slice(0, n).join(', ') + (list.length > n ? `, +${list.length - n} more` : '');
 
+/*
+  The three style rules that fail rather than warn -- a glow, type under the
+  floor, a labelled button painted a status colour -- for one file. The apps'
+  pass below and the shared packages' pass after it both call this, so the
+  two cannot drift apart. `where(index)` names a hit; `allowPhoneTwelve` is
+  VesselKeeper's 12px-below-sm exception.
+*/
+function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
+  const glows = [];
+  const smallType = [];
+  const statusButtons = [];
+
+  for (const m of code.matchAll(SHADOW_ARBITRARY)) {
+    const value = arbitraryShadowValue(m[0]);
+    if (value !== null && glowsIn(value).length) glows.push(`${where(m.index)} ${m[0]}`);
+  }
+  // Glows written as CSS rather than as a class: a stylesheet, a style
+  // object, or the HTML string of a map marker. The legibility halos the map
+  // markers draw (black, rgba(0,0,0,…), --bg-app) are neutral and pass.
+  for (const { index, value } of shadowDeclarations(code)) {
+    for (const layer of glowsIn(value)) glows.push(`${where(index)} ${layer.trim().slice(0, 60)}`);
+  }
+
+  for (const hit of smallTypeClasses(code)) {
+    if (allowPhoneTwelve && isPhoneOnlyTwelve(code, hit, TYPE_STEPS)) continue;
+    smallType.push(`${where(hit.index)} ${hit.cls}`);
+  }
+  if (isCss) {
+    // A stylesheet reaches under the floor where a Tailwind class cannot: the
+    // sweep and the text-[Npx] check both read class names, and neither can
+    // see a declaration. VesselKeeper's dense tables sat at 11px this way for
+    // the whole of v2.9.0 with nothing to say so.
+    for (const m of code.matchAll(RAW_FONT_SIZE)) {
+      if (parseFloat(m[1]) >= TYPE_FLOOR) continue;
+      if (src.slice(Math.max(0, m.index - 400), m.index).includes(FLOOR_EXEMPT)) continue;
+      smallType.push(`${where(m.index)} ${m[0]}`);
+    }
+  } else {
+    // A status colour on a labelled button fails whether it is there at rest
+    // or behind a prefix (see the longer note in the apps' pass below).
+    for (const m of code.matchAll(BUTTON_OPEN)) {
+      const tagEnd = jsxTagEnd(code, m.index);
+      if (tagEnd === -1) continue;
+      const tag = code.slice(m.index, tagEnd + 1);
+      if (tag.endsWith('/>')) continue;
+      const status = [...tag.matchAll(BUTTON_COLOUR_HIT)].filter((h) => STATUS_FILL.test(h[2]));
+      if (!status.length) continue;
+      const close = code.indexOf('</button>', tagEnd);
+      if (!buttonLabel(close === -1 ? '' : code.slice(tagEnd + 1, close))) continue;
+      statusButtons.push(`${where(m.index)} ${status.map((h) => h[0]).join(' ')}`);
+    }
+  }
+  return { glows, smallType, statusButtons };
+}
+
 for (const app of presentApps) {
   const srcRel = APP_SRC[app.name];
   if (!srcRel) continue;
@@ -1373,27 +1428,23 @@ for (const app of presentApps) {
     // Comments blanked, offsets kept: prose about a shadow or a class is not one.
     const code = isCss ? blankCssComments(src) : blankJsComments(src);
 
+    // Glows, type under the floor and status-coloured buttons: the rules the
+    // shared packages are held to as well.
+    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, PHONE_TWELVE_APPS.has(app.name));
+    glows.push(...hits.glows);
+    smallType.push(...hits.smallType);
+    statusButtons.push(...hits.statusButtons);
+
     for (const m of code.matchAll(SHADOW_ARBITRARY)) {
       const cls = m[0];
       const value = arbitraryShadowValue(cls);
-      if (value !== null && glowsIn(value).length) { glows.push(`${rel(f)}:${lineOf(src, m.index)} ${cls}`); continue; }
+      if (value !== null && glowsIn(value).length) continue; // a glow, counted above
       for (const colour of cls.match(SHADOW_COLOUR) ?? []) {
         if (!NEUTRAL_SHADOW.test(colour)) litShadows.push(`${rel(f)} ${colour}`);
       }
     }
 
-    // Glows written as CSS rather than as a class: a stylesheet, a style
-    // object, or the HTML string of a map marker. The legibility halos the map
-    // markers draw (black, rgba(0,0,0,…), --bg-app) are neutral and pass.
-    for (const { index, value } of shadowDeclarations(code)) {
-      for (const layer of glowsIn(value)) glows.push(`${rel(f)}:${lineOf(src, index)} ${layer.trim().slice(0, 60)}`);
-    }
-
     for (const _ of src.matchAll(ARBITRARY_TEXT)) arbitraryText++;
-    for (const hit of smallTypeClasses(code)) {
-      if (PHONE_TWELVE_APPS.has(app.name) && isPhoneOnlyTwelve(code, hit, TYPE_STEPS)) continue;
-      smallType.push(`${rel(f)}:${lineOf(src, hit.index)} ${hit.cls}`);
-    }
 
     // Deprecated names, for the post-release deletion.
     for (const d of DEPRECATED_NAMES) {
@@ -1461,12 +1512,9 @@ for (const app of presentApps) {
       const body = close === -1 ? '' : code.slice(tagEnd + 1, close);
       if (!buttonLabel(body)) continue;
 
-      // A status colour fails whether it is there at rest or behind a prefix.
-      const status = hits.filter((h) => STATUS_FILL.test(h[2]));
-      if (status.length) {
-        statusButtons.push(`${rel(f)}:${lineOf(src, m.index)} ${status.map((h) => h[0]).join(' ')}`);
-        continue;
-      }
+      // A status colour fails whether it is there at rest or behind a prefix;
+      // styleRuleHits above has already reported it.
+      if (hits.some((h) => STATUS_FILL.test(h[2]))) continue;
       if (hits.every((h) => h[1])) continue;
       rawButtons.push(rel(f));
     }
@@ -1492,17 +1540,7 @@ for (const app of presentApps) {
       const css = stripCssComments(src);
       if (/@font-face\b/.test(css)) localFaces.push(`${rel(f)} @font-face`);
       if (/^\s*font-size-adjust\s*:/m.test(css)) localFaces.push(`${rel(f)} font-size-adjust`);
-
-      // A stylesheet reaches under the floor where a Tailwind class cannot: the
-      // sweep and the text-[Npx] check both read class names, and neither can
-      // see a declaration. VesselKeeper's dense tables sat at 11px this way for
-      // the whole of v2.9.0 with nothing to say so.
-      const blanked = blankCssComments(src);
-      for (const m of blanked.matchAll(RAW_FONT_SIZE)) {
-        if (parseFloat(m[1]) >= TYPE_FLOOR) continue;
-        if (src.slice(Math.max(0, m.index - 400), m.index).includes(FLOOR_EXEMPT)) continue;
-        smallType.push(`${rel(f)} ${m[0]}`);
-      }
+      // A stylesheet font-size under the floor is reported by styleRuleHits.
     }
   }
 
@@ -1563,6 +1601,63 @@ for (const app of presentApps) {
     fail('theme', `${app.name}: ${htmlRel} loads fonts from fonts.googleapis.com — these apps run offline ` +
       `at anchor, where a font fetched over the network is a font that is missing. The faces ship with ` +
       `@sentinel/theme, which every app already imports.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7b. The shared packages are held to the same three style rules.
+//
+//    Everything above reads the apps' own source. The UI the shared packages
+//    draw -- @sentinel/ui's shell and controls, weather-ui's forecast and
+//    alerts, auth-ui's sign-in screen -- appears in all three apps and was
+//    checked by nothing, so fit-and-finish's waves moved every app and left
+//    ForecastTimeline in 12px mono capitals and AuthScreen with three glows
+//    (catalogue re-shoot, 2026-10). Same floor, glow and status-button rules,
+//    applied to every package whose src/ renders UI (has .tsx, .jsx or .css).
+//    dist/ is the build of src/ and is not read; tests are not UI.
+//
+//    The 12px exception is VesselKeeper's, so a shared component may only
+//    offer it in its written form (`text-[12px] sm:text-[13px]`), as
+//    AppShell's `tabLabelPx={12}` does.
+// ---------------------------------------------------------------------------
+const UI_EXT = ['.tsx', '.jsx', '.css'];
+const isTestFile = (rel) => /(^|\/)(tests?|__tests__)\//.test(rel) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
+for (const e of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
+  if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue;
+  const pkgDir = path.join(SHARED_ROOT, e.name);
+  const srcDir = path.join(pkgDir, 'src');
+  if (!exists(path.join(pkgDir, 'package.json')) || !exists(srcDir)) continue;
+  const rel = (f) => `${e.name}/${path.relative(pkgDir, f).split(path.sep).join('/')}`;
+  const files = walk(srcDir).filter((f) => SOURCE_EXT.includes(path.extname(f)) && !isTestFile(rel(f)));
+  if (!files.some((f) => UI_EXT.includes(path.extname(f)))) continue;
+
+  const glows = [];
+  const smallType = [];
+  const statusButtons = [];
+  for (const f of files) {
+    const src = readText(f);
+    const isCss = path.extname(f) === '.css';
+    const code = isCss ? blankCssComments(src) : blankJsComments(src);
+    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, true);
+    glows.push(...hits.glows);
+    smallType.push(...hits.smallType);
+    statusButtons.push(...hits.statusButtons);
+  }
+  const who = `sentinel-shared/${e.name}`;
+  if (glows.length) {
+    fail('theme', `${who}: ${glows.length} glow(s) in a shared package's UI — a zero-offset coloured shadow, ` +
+      `or a --color-*-glow token. All three apps draw this. State is fill and stroke; elevation is ` +
+      `var(--panel-shadow): ${sample(glows)}`);
+  }
+  if (statusButtons.length) {
+    fail('ui', `${who}: ${statusButtons.length} labelled <button>(s) in a shared package painted a status ` +
+      `colour (bg-green, bg-red, bg-warning), at rest or behind a prefix. Use Button's variants; a selection ` +
+      `is a stroke, not a status fill: ${sample(statusButtons)}`);
+  }
+  if (smallType.length) {
+    fail('type', `${who}: ${smallType.length} type size(s) below the ${TYPE_FLOOR}px floor in a shared ` +
+      `package's UI, which all three apps draw. The one exception is VesselKeeper's 12px below sm, written ` +
+      `\`text-[12px] sm:text-[13px]\`: ${sample(smallType)}`);
   }
 }
 

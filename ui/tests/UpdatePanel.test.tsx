@@ -124,3 +124,35 @@ describe('UpdatePanel where a check can succeed', () => {
     expect(screen.getByText('Error')).toBeInTheDocument();
   });
 });
+
+/*
+  The phone About screen wrapped "Up to / date." (catalogue re-shoot). The
+  status is one unbreakable phrase; the layout wraps as two units instead.
+*/
+describe('UpdatePanel on a narrow screen', () => {
+  it('never breaks the status mid-phrase, and wraps the actions under it as a unit', () => {
+    const { container } = render(
+      <UpdatePanel updater={updaterFor({ status: 'uptodate', currentVersion: '2.12.1' }, { canCheck: true, isElectron: true })} />
+    );
+    const status = container.querySelector('[data-slot="update-status"]')!;
+    expect(status.textContent).toBe('Up to date.');
+    expect(status.className).toContain('whitespace-nowrap');
+    const version = container.querySelector('[data-slot="update-version"]')!;
+    expect(version.className).toContain('shrink-0');
+    expect(version.parentElement!.className).toContain('flex-wrap');
+    const actions = container.querySelector('[data-slot="update-actions"]')!;
+    expect(actions.className).toContain('shrink-0');
+  });
+
+  it('lets an error message wrap as a sentence, since its length is unknown', () => {
+    const { container } = render(
+      <UpdatePanel
+        updater={updaterFor(
+          { status: 'error', currentVersion: '2.12.1', errorMsg: 'Could not reach the update server. Check the connection and try again.' },
+          { canCheck: true, isElectron: true }
+        )}
+      />
+    );
+    expect(container.querySelector('[data-slot="update-status"]')!.className).not.toContain('whitespace-nowrap');
+  });
+});

@@ -3,6 +3,7 @@ import { Wind } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getWindRotation, getHighestWindValue, formatTempRangeString } from './weatherUtils';
 import { windBandColor } from './windScale';
+import { nwsSentenceCase, windUnitKt } from './nwsText';
 
 export interface ForecastPeriod {
   periodName: string;
@@ -20,8 +21,16 @@ export interface ForecastTimelineProps {
   periods: ForecastPeriod[];
   tempUnit: string;
   mode?: 'sidebar' | 'bulletin';
+  /**
+   * Names the host knows -- the forecast location (`locName`), the zone --
+   * restored as written when NWS prose in capitals is put in sentence case,
+   * so "NEWPORT" reads "Newport" rather than "newport".
+   */
+  placeNames?: readonly (string | null | undefined)[];
   theme?: {
+    /** Sidebar card: surface, border, radius and padding. */
     cardBgBorder?: string;
+    /** Bulletin card: surface and border colours (radius and padding are fixed). */
     bulletinCardBgBorder?: string;
     windIconClass?: string;
     textMutedClass?: string;
@@ -29,97 +38,143 @@ export interface ForecastTimelineProps {
     textSecondaryClass?: string;
     textOrangeClass?: string;
     textCyanClass?: string;
+    /**
+     * @deprecated Ignored (fit-and-finish fixes, 2026-10-05). The bulletin card
+     * is one surface: the inner box this coloured was a card inside a card.
+     */
     gridBgClass?: string;
     borderDividerClass?: string;
   };
 }
 
-export default function ForecastTimeline({ 
-  periods, 
-  tempUnit, 
+/*
+  The forecast, as cards (bulletin) or as a compact list of the next four
+  periods (sidebar).
+
+  Fit-and-finish (2026-09-30) never reached this component, and the catalogue
+  re-shoot found it still in the old house style: mono capitals for every label
+  and for the NWS prose, a 12px description, and a card inside each card. It
+  follows the system now:
+
+    - period title   Inter 20/600 (bulletin) or 15/600 (sidebar), as written;
+    - field label    `text-label`, Inter 13/600, sentence case, muted;
+    - value          `text-data-mono-lg`, JetBrains Mono 15/500;
+    - NWS prose      Inter 15/400, in sentence case (see nwsText.ts), with the
+                     original text in its `title`;
+    - card           one surface at the full width it is given, 16px radius,
+                     no shadow and no inner box.
+
+  "Max wind (incl. gusts)" wrapped onto two lines in a quarter-width column at
+  1280px, so the label is "Max wind" and "incl. gusts" sits under the value:
+  the fact stays on screen, and the label stays one line at every width.
+
+  The wind unit is "kt", as the fleet writes it: a host's "13 kts" is shown as
+  "13 kt" (windUnitKt). The NWS prose is left exactly as NWS words it.
+*/
+
+const LABEL = 'text-label whitespace-nowrap';
+const VALUE = 'text-data-mono-lg';
+
+/** One label/value pair in the bulletin card's grid. */
+function Field({
+  label,
+  value,
+  note,
+  mutedClass,
+  primaryClass,
+}: {
+  label: string;
+  value: React.ReactNode;
+  note?: string;
+  mutedClass: string;
+  primaryClass: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 min-w-0" data-slot="forecast-field">
+      <dt className={`${LABEL} ${mutedClass}`}>{label}</dt>
+      <dd className={`${VALUE} ${primaryClass}`}>
+        {value}
+        {note && <span className={`block font-sans text-body-sm ${mutedClass}`}>{note}</span>}
+      </dd>
+    </div>
+  );
+}
+
+export default function ForecastTimeline({
+  periods,
+  tempUnit,
   mode = 'sidebar',
+  placeNames,
   theme
 }: ForecastTimelineProps) {
   if (!periods || periods.length === 0) return null;
 
-  // Ocean Sentinel styles as defaults
-  const cardBgBorder = theme?.cardBgBorder || 'bg-bg-card/60 border-border-color/30';
-  const bulletinCardBgBorder = theme?.bulletinCardBgBorder || 'bg-bg-card/30 border-border-color/10 hover:bg-bg-card/50 hover:border-border-color/20';
+  // OceanSentinel's styles as defaults.
+  const cardBgBorder = theme?.cardBgBorder || 'p-3 rounded-md border bg-bg-card/60 border-border-color/30';
+  const bulletinCardBgBorder = theme?.bulletinCardBgBorder || 'bg-bg-card border-border-color/30';
   const windIconClass = theme?.windIconClass || 'text-cyan';
   const textMutedClass = theme?.textMutedClass || 'text-text-muted';
   const textPrimaryClass = theme?.textPrimaryClass || 'text-text-primary';
   const textSecondaryClass = theme?.textSecondaryClass || 'text-text-secondary';
   const textOrangeClass = theme?.textOrangeClass || 'text-orange';
   const textCyanClass = theme?.textCyanClass || 'text-cyan/80';
-  const gridBgClass = theme?.gridBgClass || 'bg-bg-lowest/60 border-border-color/10';
   const borderDividerClass = theme?.borderDividerClass || 'border-border-color/20';
 
   if (mode === 'bulletin') {
     return (
-      <div className="grid grid-cols-1 gap-5">
+      <div className="flex flex-col gap-4 w-full" data-slot="forecast-bulletin">
         {periods.map((period, i) => (
-          <motion.div 
+          <motion.section
             key={i}
-            initial={{ opacity: 0, y: 15 }}
+            /* A surface entering: 200ms on the fleet curve, and a short rise. */
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-            className={`p-6 border rounded-xl space-y-4 transition-all duration-300 shadow-lg text-left ${bulletinCardBgBorder}`}
+            transition={{ duration: 0.2, ease: [0.2, 0, 0, 1], delay: Math.min(i, 6) * 0.04 }}
+            aria-label={period.periodName}
+            className={`w-full p-4 sm:p-6 rounded-xl border text-left ${bulletinCardBgBorder}`}
+            data-slot="forecast-card"
           >
-            <div className={`flex items-center justify-between border-b pb-2 ${borderDividerClass}`}>
-              <span className={`text-sm font-extrabold uppercase tracking-widest ${textPrimaryClass}`}>{period.periodName}</span>
-            </div>
+            <h3 className={`text-headline-md ${textPrimaryClass}`}>{period.periodName}</h3>
 
-            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-lg border ${gridBgClass}`}>
-              <div className="flex flex-col space-y-1">
-                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Max Wind (Inc Gusts)</span>
-                <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{period.windRange}</span>
-              </div>
-              <div className="flex flex-col space-y-1">
-                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Direction</span>
-                <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{period.windDirection || 'Variable'}</span>
-              </div>
-              <div className="flex flex-col space-y-1">
-                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Temperature</span>
-                <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{formatTempRangeString(period.tempRange, tempUnit)}</span>
-              </div>
-              <div className="flex flex-col space-y-1">
-                <span className={`text-[13px] font-mono uppercase tracking-widest leading-none ${textMutedClass}`}>Precipitation</span>
-                <span className={`text-sm font-mono font-bold ${textPrimaryClass}`}>{period.precipChance || 'None'}</span>
-              </div>
-            </div>
+            <dl className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
+              <Field label="Max wind" value={windUnitKt(period.windRange)} note="incl. gusts" mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+              <Field label="Direction" value={period.windDirection || 'Variable'} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+              <Field label="Temperature" value={formatTempRangeString(period.tempRange, tempUnit)} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+              <Field label="Precipitation" value={period.precipChance || 'None'} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+            </dl>
 
-            <div className="pt-1">
-              <p className={`text-xs leading-relaxed font-mono uppercase ${textSecondaryClass}`}>
-                {period.reason}
+            {period.reason && (
+              <p className={`mt-4 text-body-md ${textSecondaryClass}`} title={period.reason} data-slot="forecast-text">
+                {nwsSentenceCase(period.reason, { names: placeNames })}
               </p>
-            </div>
-          </motion.div>
+            )}
+          </motion.section>
         ))}
       </div>
     );
   }
 
-  // Sidebar compact mode (slice(0, 4))
+  // Sidebar: the next four periods, compact.
   return (
-    <div className="grid grid-cols-1 gap-1.5">
+    <div className="grid grid-cols-1 gap-2 w-full">
       {periods.slice(0, 4).map((p, idx) => (
-        <div key={idx} className={`flex flex-col p-3 rounded-lg border space-y-1.5 text-left ${cardBgBorder}`}>
-          <div className="flex items-center justify-between">
+        <div key={idx} className={`flex flex-col gap-1.5 text-left ${cardBgBorder}`}>
+          <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col min-w-0">
-              <span className={`text-[13px] font-mono truncate uppercase font-bold ${textMutedClass}`}>{p.periodName}</span>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <Wind size={8} className={`${windIconClass} animate-pulse`} />
-                <span className={`text-[13px] font-mono font-bold ${textPrimaryClass}`}>{p.windRange}</span>
+              <span className={`font-sans text-[15px] font-semibold leading-[22px] ${textPrimaryClass}`}>{p.periodName}</span>
+              <div className="flex items-center gap-1.5">
+                <Wind size={16} strokeWidth={1.75} aria-hidden className={`shrink-0 ${windIconClass}`} />
+                <span className={`${VALUE} ${textPrimaryClass}`}>{windUnitKt(p.windRange)}</span>
               </div>
             </div>
             {p.windDirection && (
               <div className="flex flex-col items-end shrink-0">
-                <span className={`text-[13px] font-mono uppercase font-bold ${textMutedClass}`}>Dir</span>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className={`text-[13px] font-mono font-bold ${textSecondaryClass}`}>{p.windDirection}</span>
-                  <div 
-                    style={{ transform: `rotate(${getWindRotation(p.windDirection)}deg)`, transformOrigin: 'center' }} 
-                    className="transition-transform duration-500 ease-out flex items-center justify-center w-3 h-3"
+                <span className={`${LABEL} ${textMutedClass}`}>Direction</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`${VALUE} ${textSecondaryClass}`}>{p.windDirection}</span>
+                  <div
+                    style={{ transform: `rotate(${getWindRotation(p.windDirection)}deg)`, transformOrigin: 'center' }}
+                    className="transition-transform duration-500 ease-out flex items-center justify-center w-4 h-4"
                     title={`Wind from ${p.windDirection}`}
                   >
                     {/* `wind-band-arrow` is the hook night mode needs. The stroke
@@ -128,7 +183,7 @@ export default function ForecastTimeline({
                         `.theme-night` cannot reach it — which left a green or blue
                         arrow on every forecast row at 0300. @sentinel/theme's
                         night.css overrides this class to the alarm red. */}
-                    <svg className="wind-band-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={windBandColor(getHighestWindValue(p.windRange))} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="wind-band-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={windBandColor(getHighestWindValue(p.windRange))} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <line x1="12" y1="20" x2="12" y2="4"></line>
                       <polyline points="5 11 12 4 19 11"></polyline>
                     </svg>
@@ -139,9 +194,13 @@ export default function ForecastTimeline({
           </div>
 
           {(p.tempRange || p.precipChance) && (
-            <div className={`flex items-center justify-between pt-1.5 border-t text-[13px] font-mono ${borderDividerClass}`}>
-              <span className={textOrangeClass}>{formatTempRangeString(p.tempRange, tempUnit)}</span>
-              <span className={textCyanClass}>{p.precipChance ? `Precip: ${p.precipChance}` : ''}</span>
+            <div className={`flex items-center justify-between gap-3 pt-1.5 border-t ${borderDividerClass}`}>
+              <span className={`${VALUE} ${textOrangeClass}`}>{formatTempRangeString(p.tempRange, tempUnit)}</span>
+              {p.precipChance ? (
+                <span className={`text-body-sm ${textCyanClass}`}>
+                  Precip <span className="font-mono font-medium">{p.precipChance}</span>
+                </span>
+              ) : null}
             </div>
           )}
         </div>
