@@ -54,6 +54,30 @@ describe('AppShell phone tab bar', () => {
   });
 });
 
+describe('AppShell nav="bottom"', () => {
+  it('renders no rail, and a tab bar that never hides at lg', () => {
+    const { container } = shell({ nav: 'bottom' });
+    expect(container.querySelector('aside')).toBeNull();
+    const navs = screen.getAllByRole('navigation', { name: 'Primary' });
+    expect(navs).toHaveLength(1);
+    expect(navs[0].className).not.toContain('lg:hidden');
+    expect(within(navs[0]).getByRole('button', { name: 'Maintenance' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('keeps the content clear of the tab bar at every size', () => {
+    const { container } = shell({ nav: 'bottom' });
+    const content = container.querySelector('.sentinel-shell-content')!;
+    expect(content.className).toContain('[--sentinel-shell-pb:calc(var(--shell-bottom-nav)');
+    expect(content.className).not.toContain('lg:[--sentinel-shell-pb');
+  });
+
+  it('leaves the default responsive: a rail, and a tab bar hidden from lg', () => {
+    const { container } = shell();
+    expect(container.querySelector('aside')).not.toBeNull();
+    expect(phoneBar().className).toContain('lg:hidden');
+  });
+});
+
 describe('AppShell rail', () => {
   it('is 72px wide, with the icon over the full label', () => {
     const { container } = shell();

@@ -123,6 +123,17 @@ export interface AppShellProps {
      * where four full labels have to fit.
      */
     tabLabelPx?: 12 | 13;
+    /**
+     * Where the primary navigation lives.
+     *
+     * - `responsive` (default): the bottom tab bar below `lg`, the 72px side rail
+     *   from `lg` up.
+     * - `bottom`: the bottom tab bar at every size, and no rail. OceanSentinel
+     *   uses it (Craig, 5 Oct 2026): its chart wants the full width at every
+     *   size, and its four tabs sit at the foot of the screen on a plotter as on
+     *   a phone.
+     */
+    nav?: 'responsive' | 'bottom';
     children?: React.ReactNode;
     className?: string;
 }
@@ -135,4 +146,4 @@ export interface AppShellProps {
  * How the frame is drawn depends on `surface`: floating glass over a chart,
  * opaque and attached for a page.
  */
-export declare function AppShell({ appName, brandIcon, tabs, activeTab, onTabChange, nightMode, onToggleNightMode, brightness, settingsOpen, onOpenSettings, headerCenter, headerStatus, headerActions, background, passThrough, mainClassName, bareMain, surface, tabLabelPx, children, className, }: AppShellProps): React.JSX.Element;
+export declare function AppShell({ appName, brandIcon, tabs, activeTab, onTabChange, nightMode, onToggleNightMode, brightness, settingsOpen, onOpenSettings, headerCenter, headerStatus, headerActions, background, passThrough, mainClassName, bareMain, surface, tabLabelPx, nav, children, className, }: AppShellProps): React.JSX.Element;

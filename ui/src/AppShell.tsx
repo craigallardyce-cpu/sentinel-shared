@@ -151,6 +151,17 @@ export interface AppShellProps {
    * where four full labels have to fit.
    */
   tabLabelPx?: 12 | 13;
+  /**
+   * Where the primary navigation lives.
+   *
+   * - `responsive` (default): the bottom tab bar below `lg`, the 72px side rail
+   *   from `lg` up.
+   * - `bottom`: the bottom tab bar at every size, and no rail. OceanSentinel
+   *   uses it (Craig, 5 Oct 2026): its chart wants the full width at every
+   *   size, and its four tabs sit at the foot of the screen on a plotter as on
+   *   a phone.
+   */
+  nav?: 'responsive' | 'bottom';
   children?: React.ReactNode;
   className?: string;
 }
@@ -167,6 +178,10 @@ const CONTENT_PB = {
   pageTabs:
     '[--sentinel-shell-pb:calc(var(--shell-bottom-nav)_+_var(--safe-area-bottom,0px))] lg:[--sentinel-shell-pb:var(--safe-area-bottom,0px)]',
   pageNoTabs: '[--sentinel-shell-pb:var(--safe-area-bottom,0px)]',
+  /* nav="bottom": the tab bar shows at every size, so the below-lg value holds
+     at every size too. */
+  chartTabsBottom: '[--sentinel-shell-pb:calc(var(--shell-bottom-nav)_+_0.5rem_+_var(--safe-area-bottom,0px))]',
+  pageTabsBottom: '[--sentinel-shell-pb:calc(var(--shell-bottom-nav)_+_var(--safe-area-bottom,0px))]',
 };
 
 /** The one hairline a page draws between the window's chrome and its content. */
@@ -201,10 +216,13 @@ export function AppShell({
   bareMain = false,
   surface,
   tabLabelPx = 13,
+  nav = 'responsive',
   children,
   className,
 }: AppShellProps) {
   const hasTabs = tabs.length > 0;
+  /* nav="bottom": no rail at any size, and the tab bar never hides. */
+  const bottomOnly = nav === 'bottom';
   const activeSurface = tabs.find((t) => t.id === activeTab)?.surface;
   const resolved: ShellSurface = activeSurface ?? surface ?? (background ? 'chart' : 'page');
   const chart = resolved === 'chart';
@@ -332,7 +350,11 @@ export function AppShell({
             'sentinel-shell-content flex-grow flex flex-row min-h-0 overflow-hidden relative z-10',
             chart ? 'gap-4' : 'gap-0',
             !hasTabs && 'sentinel-shell-content--no-tabs',
-            hasTabs ? (chart ? CONTENT_PB.chartTabs : CONTENT_PB.pageTabs) : chart ? CONTENT_PB.chartNoTabs : CONTENT_PB.pageNoTabs,
+            hasTabs
+              ? bottomOnly
+                ? chart ? CONTENT_PB.chartTabsBottom : CONTENT_PB.pageTabsBottom
+                : chart ? CONTENT_PB.chartTabs : CONTENT_PB.pageTabs
+              : chart ? CONTENT_PB.chartNoTabs : CONTENT_PB.pageNoTabs,
             passThrough && 'pointer-events-none'
           )}
           style={{
@@ -341,7 +363,7 @@ export function AppShell({
             paddingBottom: 'var(--sentinel-shell-pb)',
           }}
         >
-          {hasTabs && (
+          {hasTabs && !bottomOnly && (
             <aside
               className={cn(
                 'hidden lg:flex flex-col shrink-0 w-18 h-full p-2 select-none pointer-events-auto',
@@ -403,7 +425,8 @@ export function AppShell({
         {hasTabs && (
           <nav
             className={cn(
-              'fixed bottom-0 left-0 right-0 grid grid-flow-col auto-cols-fr lg:hidden z-40 select-none px-1 border-t',
+              'fixed bottom-0 left-0 right-0 grid grid-flow-col auto-cols-fr z-40 select-none px-1 border-t',
+              !bottomOnly && 'lg:hidden',
               chart ? 'bg-bg-panel/90 backdrop-blur-md border-border-color' : cn('bg-bg-app', PAGE_HAIRLINE)
             )}
             style={{ height: 'calc(var(--shell-bottom-nav) + var(--safe-area-bottom, 0px))', paddingBottom: 'var(--safe-area-bottom, 0px)' }}
