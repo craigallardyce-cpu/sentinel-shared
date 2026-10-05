@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ShieldAlert, AlertCircle, X, ChevronRight, Waves, Info } from 'lucide-react';
+import { ShieldAlert, X, ChevronRight, Waves, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ForecastTimeline, { ForecastPeriod } from './ForecastTimeline';
 import { formatSyncDateTime } from './weatherUtils';
+import { nwsSentenceCase } from './nwsText';
 
 export interface WeatherAlert {
   event: string;
@@ -140,9 +141,25 @@ export default function AlertsPanel({
   /* The two non-answers share the card tint and the muted badge; only the copy differs. */
   const noAnswer = alertsUnchecked || noCoverage;
 
-  // Ocean Sentinel styles as defaults
-  const alertsCardClass = theme?.alertsCardClass || 'p-3 rounded-lg border flex flex-col gap-2 relative group overflow-hidden';
-  const alertsCardAlertsActive = theme?.alertsCardAlertsActive || 'bg-red/5 border-red/20';
+
+  /*
+    Fit-and-finish (2026-09-30) did not reach this panel either; the catalogue
+    re-shoot found it in the old house style next to ForecastTimeline. It
+    follows the system now: sentence-case `text-label` labels, Inter for words
+    and mono only for times and numbers, nothing under 13px, radius 8 for a
+    control and 16 for a surface, no glows or coloured shadows, and nothing
+    pulses (only alarms do, and an NWS warning is a warning, not this app's
+    alarm). Facts are never cut with an ellipsis: an alert's name and the report
+    area wrap instead.
+
+    Two lines of copy went with the restyle because they asserted checks
+    nothing performs: "Sync Integrity: Pass" under the bulletin title, and
+    "INTEGRITY CHECK: PASS" with "Raw Data Relay" at its foot. The bulletin now
+    names its source and when it was fetched, which is what those lines were
+    standing in for.
+  */
+  const alertsCardClass = theme?.alertsCardClass || 'p-4 rounded-xl border flex flex-col gap-3 relative overflow-hidden';
+  const alertsCardAlertsActive = theme?.alertsCardAlertsActive || 'bg-red/5 border-red/30';
   const alertsCardAlertsClear = theme?.alertsCardAlertsClear || 'bg-green/5 border-green/20';
   const badgeActiveAlerts = theme?.badgeActiveAlerts || 'bg-red/10 border-red/30 text-red';
   const badgeClearAlerts = theme?.badgeClearAlerts || 'text-green bg-green/10 border-green/20';
@@ -157,91 +174,87 @@ export default function AlertsPanel({
   const borderDividerClassThick = theme?.borderDividerClass || 'border-border-color/30';
   const bulletinBtnClass = theme?.bulletinBtnClass || 'text-cyan hover:text-cyan/80 bg-bg-card border border-border-color hover:border-text-muted';
   const bulletinOverlayBgClass = theme?.bulletinOverlayBgClass || 'bg-bg-app';
-  const zonePanelClass = theme?.zonePanelClass || 'bg-bg-card/40 border-border-color/30 border-l-4 border-l-cyan';
+  const zonePanelClass = theme?.zonePanelClass || 'bg-bg-card border-border-color/30';
   const zoneChipClass = theme?.zoneChipClass || 'text-cyan bg-cyan/10 border-cyan/20';
+
+  const BADGE = 'inline-flex items-center gap-1 h-6 px-2 rounded-full border text-label whitespace-nowrap';
+  const SECTION_TITLE = `text-headline-md ${textColorPrimary}`;
+  const selected = hasAlerts ? weatherData.alerts![selectedAlertIndex] : undefined;
+  const when = (iso: string) => new Date(iso).toLocaleString();
 
   return (
     <>
       {/* Marine Alerts Card */}
       <div className={`${alertsCardClass} ${hasAlerts ? alertsCardAlertsActive : noAnswer ? alertsCardNoCoverage : alertsCardAlertsClear}`}>
         <div className={`flex flex-col gap-1.5 border-b pb-2 ${borderDividerClass}`}>
-          <div className="flex items-center justify-between">
-            <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>Marine Warnings</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-label ${textColorMuted}`}>Marine warnings</span>
             <div className="flex items-center gap-1.5">
               {hasAlerts ? (
-                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border animate-pulse ${badgeActiveAlerts}`}>
-                  <ShieldAlert size={10} className={textColorRed} />
-                  <span className="text-[13px] font-black font-mono uppercase">{weatherData.alerts!.length} ACTIVE</span>
-                </div>
+                <span className={`${BADGE} ${badgeActiveAlerts}`}>
+                  <ShieldAlert size={16} strokeWidth={1.75} aria-hidden className={textColorRed} />
+                  <span>{weatherData.alerts!.length} active</span>
+                </span>
               ) : alertsUnchecked ? (
-                <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeNoCoverage}`}>
-                  Not checked
-                </span>
+                <span className={`${BADGE} ${badgeNoCoverage}`}>Not checked</span>
               ) : noCoverage ? (
-                <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeNoCoverage}`}>
-                  No coverage
-                </span>
+                <span className={`${BADGE} ${badgeNoCoverage}`}>No coverage</span>
               ) : (
-                <span className={`text-[13px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-md border ${badgeClearAlerts}`}>
-                  Clear
-                </span>
+                <span className={`${BADGE} ${badgeClearAlerts}`}>Clear</span>
               )}
             </div>
           </div>
-          <div className="flex items-center justify-between text-[13px] font-mono">
-            <span className={textColorMuted}>REPORT AREA:</span>
-            <span className={`font-bold uppercase tracking-tight truncate max-w-[200px] ${textColorCyan}`} title={weatherData.locName || 'Coastal Area'}>
-              {weatherData.locName || 'Coastal Area'}
+          <div className="flex items-baseline justify-between gap-3">
+            <span className={`text-label shrink-0 ${textColorMuted}`}>Report area</span>
+            <span className={`text-body-sm font-semibold text-right min-w-0 break-words ${textColorCyan}`}>
+              {weatherData.locName || 'Coastal area'}
             </span>
           </div>
         </div>
 
-        {/* Prose, so sans. Mono belongs to the values and the limits; an alert
-            headline set in it reads slower for no gain. */}
-        <div className={`text-[13px] font-sans leading-tight ${hasAlerts ? textColorRed : textColorMuted}`}>
+        <div className={`text-body-sm text-left ${hasAlerts ? textColorRed : textColorMuted}`}>
           {hasAlerts ? (
-            <div className="space-y-1">
+            <ul className="space-y-1">
               {weatherData.alerts!.slice(0, 2).map((alert, i) => (
-                <div key={i} className={`flex items-start gap-1 ${textColorRed}`}>
-                  <span className="shrink-0">•</span>
-                  <span className="truncate max-w-[250px] text-left block" title={alert.event}>{alert.event}</span>
-                </div>
+                <li key={i} className={`flex items-start gap-1.5 ${textColorRed}`}>
+                  <span className="shrink-0" aria-hidden>•</span>
+                  <span className="min-w-0 break-words">{alert.event}</span>
+                </li>
               ))}
               {weatherData.alerts!.length > 2 && (
-                <span className={`text-[13px] block ${textColorMuted}`}>+{weatherData.alerts!.length - 2} more warnings active</span>
+                <li className={textColorMuted}>
+                  <span className="font-mono">+{weatherData.alerts!.length - 2}</span> more warnings active
+                </li>
               )}
-            </div>
+            </ul>
           ) : alertsUnchecked ? (
             /* Deliberately not the no-coverage wording below: that says NWS does not
                cover this position, which here would be untrue. The check was made and
                it failed, and the panel says only that. */
-            <p className={`${textColorMuted} text-[13px] font-sans text-left`}>
+            <p>
               Couldn't check for warnings — this is not an all-clear. Warnings may be in force; the app will try again at the next refresh.
             </p>
           ) : noCoverage ? (
-            /* Sans, like the other two. This arrived as italic mono, which is the
-               hardest-to-read pairing on the panel — and of the three states this
-               is the one a reader must actually take in, because it is the one
-               saying the app cannot see what the weather is doing. */
-            <p className={`${textColorMuted} text-[13px] font-sans text-left`}>
+            <p>
               No warning service covers this position. This is not an all-clear — warnings may be in force and this app cannot see them. Use NAVTEX or SafetyNET.
             </p>
           ) : (
-            <p className={`${textColorMuted} text-[13px] font-sans text-left`}>No active weather warnings or advisories posted for this region.</p>
+            <p>No active weather warnings or advisories posted for this region.</p>
           )}
         </div>
 
-        <div className={`flex items-center justify-between mt-2 pt-2 border-t ${borderDividerClassThick}`}>
-          <div className="flex flex-col min-w-0 text-left">
-            <span className={`text-[13px] font-mono uppercase tracking-widest truncate max-w-[160px] ${textColorMuted}`}>{weatherData.source}</span>
-            <span className={`text-[13px] font-mono font-bold mt-0.5 ${
-              hasAlerts ? textColorRed : textColorMuted
-            }`}>Updated {formatSyncDateTime(lastSync)}</span>
+        <div className={`flex flex-wrap items-center justify-between gap-2 pt-2 border-t ${borderDividerClassThick}`}>
+          <div className="flex flex-col min-w-0 text-left text-body-sm">
+            <span className={`break-words ${textColorMuted}`}>{weatherData.source}</span>
+            <span className={hasAlerts ? textColorRed : textColorMuted}>
+              Updated <span className="font-mono">{formatSyncDateTime(lastSync)}</span>
+            </span>
           </div>
           {showBulletinButton && (
-            <button 
+            <button
+              type="button"
               onClick={() => { setSelectedAlertIndex(0); setShowBulletin(true); }}
-              className={`text-[13px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md transition-all cursor-pointer active:scale-95 ${bulletinBtnClass}`}
+              className={`h-10 px-3 rounded-md text-label cursor-pointer transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)] ${bulletinBtnClass}`}
             >
               Bulletin
             </button>
@@ -253,42 +266,42 @@ export default function AlertsPanel({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {showBulletin && (
-            <motion.div 
+            <motion.div
               key="weather-bulletin-overlay"
               initial={{ opacity: 0, x: '100%' }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
               /* sentinel-titlebar-safe: this is a full-bleed overlay outside the
                  shell, so nothing else is keeping its header clear of the OS
                  window-controls cluster. Without it the close button below sits
                  under that cluster on desktop and only half of it is pressable. */
               className={`fixed inset-0 z-[9999] flex flex-col overflow-hidden sentinel-titlebar-safe ${bulletinOverlayBgClass} ${textColorPrimary}`}
             >
-              {/* Floating Header */}
-              <header className={`px-6 py-4 border-b flex items-center justify-between shrink-0 select-none ${borderDividerClassThick}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center bg-red/5 border ${hasAlerts ? 'border-red/20' : 'border-border-color/20'}`}>
-                    <Waves className={hasAlerts ? textColorRed : textColorCyan} size={18} />
-                  </div>
-                  <div className="flex flex-col text-left">
-                    <h2 className="text-sm font-extrabold uppercase tracking-wider">National Weather Bulletin</h2>
-                    <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>
-                      {weatherData.locName || 'US Coastal Waters'} // Sync Integrity: Pass
+              <header className={`px-4 sm:px-6 py-3 border-b flex items-center justify-between gap-3 shrink-0 select-none ${borderDividerClassThick}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Waves className={`shrink-0 ${hasAlerts ? textColorRed : textColorCyan}`} size={20} strokeWidth={1.75} aria-hidden />
+                  <div className="flex flex-col text-left min-w-0">
+                    <h2 className="text-headline-md">Weather bulletin</h2>
+                    <span className={`text-body-sm break-words ${textColorMuted}`}>
+                      {[weatherData.locName, weatherData.source].filter(Boolean).join(' · ')}
                     </span>
                   </div>
                 </div>
 
-                <button 
+                <button
+                  type="button"
                   onClick={() => setShowBulletin(false)}
-                  className={`p-2 rounded-lg border transition-all active:scale-90 cursor-pointer ${bulletinBtnClass}`}
+                  aria-label="Close bulletin"
+                  title="Close"
+                  className={`h-12 w-12 shrink-0 flex items-center justify-center rounded-md cursor-pointer transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)] ${bulletinBtnClass}`}
                 >
-                  <X size={16} />
+                  <X size={20} strokeWidth={1.75} aria-hidden />
                 </button>
               </header>
 
-              {/* Scrollable Document Body */}
-              <main className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 custom-scrollbar">
+              <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar">
+                <div className="flex flex-col gap-12 w-full max-w-5xl mx-auto">
 
                 {/* Which area this bulletin actually covers.
                     Rendered only when the feed supplied both the place and the zone. It has no
@@ -299,206 +312,171 @@ export default function AlertsPanel({
                     third line is `source`, which the feed does supply, rather than a coverage-area
                     description nothing reports. */}
                 {weatherData.locName && weatherData.marineZone && (
-                  <section className={`relative p-6 md:p-8 rounded-xl border overflow-hidden text-left ${zonePanelClass}`}>
-                    <div className="absolute top-0 right-0 p-6 opacity-20 pointer-events-none" aria-hidden="true">
-                      <ShieldAlert className={textColorCyan} size={56} />
-                    </div>
-                    <div className="relative z-10">
-                      <span className={`block text-[13px] font-bold uppercase tracking-[0.3em] ${textColorCyan}`}>
-                        Reporting area centre
+                  <section className={`p-4 sm:p-6 rounded-xl border text-left ${zonePanelClass}`}>
+                    <span className={`block text-label ${textColorMuted}`}>Reporting area centre</span>
+                    <h3 className="mt-1 text-headline-lg break-words">{weatherData.locName}</h3>
+                    <div className="flex items-center gap-3 mt-3 flex-wrap">
+                      <span className={`inline-flex items-center h-6 px-2 rounded-full border text-label whitespace-nowrap ${zoneChipClass}`}>
+                        Zone&nbsp;<span className="font-mono font-medium">{weatherData.marineZone}</span>
                       </span>
-                      <h3 className="mt-2 text-2xl md:text-3xl font-extrabold tracking-tight">
-                        {weatherData.locName}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-3 flex-wrap">
-                        <span className={`font-mono text-xs px-2 py-0.5 rounded-md border uppercase ${zoneChipClass}`}>
-                          Zone {weatherData.marineZone}
-                        </span>
-                        <span className="w-1 h-1 rounded-full bg-border-color/50" aria-hidden="true"></span>
-                        <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>
-                          {weatherData.source}
-                        </span>
-                      </div>
+                      <span className={`text-body-sm ${textColorMuted}`}>{weatherData.source}</span>
                     </div>
                   </section>
                 )}
 
                 {/* ACTIVE NWS WARNINGS/ALERTS */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4 px-2 select-none">
-                    <div className={`h-px flex-1 bg-border-color/25`}></div>
-                    <h3 className={`text-[13px] font-mono font-bold uppercase tracking-[0.25em] ${textColorMuted}`}>Active Marine Hazards</h3>
-                    <div className={`h-px flex-1 bg-border-color/25`}></div>
-                  </div>
+                <section className="flex flex-col gap-4">
+                  <h3 className={SECTION_TITLE}>Active marine hazards</h3>
 
                   {hasAlerts ? (
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
-                      
-                      {/* Left: Alerts Selector List */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 items-stretch">
+
+                      {/* Left: the alerts, one control each */}
                       <div className="md:col-span-4 flex flex-col gap-2">
                         {weatherData.alerts!.map((alert, i) => (
+                          /* Selection is a stroke and the accent word, not a
+                             red fill: a red-filled button reads as "acknowledge
+                             the alarm", which is Button's alarm variant's job. */
                           <button
                             key={i}
+                            type="button"
                             onClick={() => setSelectedAlertIndex(i)}
-                            className={`p-4 rounded-xl border text-left transition-all relative group cursor-pointer active:scale-[0.98] ${
+                            aria-pressed={selectedAlertIndex === i}
+                            className={`p-3 rounded-md border text-left cursor-pointer transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)] ${
                               selectedAlertIndex === i
-                                ? 'bg-red/10 border-red/40 text-red shadow-md shadow-red/5'
-                                : 'bg-bg-card/25 border-border-color/10 hover:border-border-color/30 text-text-muted hover:text-text-primary'
+                                ? 'bg-bg-card border-red/60 text-red'
+                                : 'bg-bg-card/40 border-border-color/30 hover:border-border-color text-text-secondary hover:text-text-primary'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-extrabold truncate uppercase tracking-wide">{alert.event}</span>
-                              <ChevronRight className={`transition-colors shrink-0 ${
-                                selectedAlertIndex === i ? textColorRed : 'text-text-muted/20 group-hover:text-text-secondary'
-                              }`} size={16} />
-                            </div>
-                            <span className="text-[13px] font-mono uppercase tracking-wider block mt-1 opacity-60 truncate">
+                            <span className="flex items-start justify-between gap-2">
+                              <span className="text-body-md font-semibold break-words min-w-0">{alert.event}</span>
+                              <ChevronRight className="shrink-0 mt-0.5" size={16} strokeWidth={1.75} aria-hidden />
+                            </span>
+                            <span className="block text-body-sm text-text-muted">
                               Severity: {alert.severity || 'Moderate'}
                             </span>
                           </button>
                         ))}
                       </div>
 
-                      {/* Right: Full Alert Detail Card */}
+                      {/* Right: the selected alert in full */}
                       <div className="md:col-span-8 flex flex-col">
-                        {weatherData.alerts![selectedAlertIndex] && (
-                          <motion.div 
+                        {selected && (
+                          <motion.article
                             key={selectedAlertIndex}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`p-6 bg-red/5 border border-red/20 rounded-2xl flex-1 flex flex-col justify-between text-left`}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.12, ease: [0.2, 0, 0, 1] }}
+                            className="p-4 sm:p-6 bg-red/5 border border-red/30 rounded-xl flex-1 flex flex-col gap-6 text-left"
                           >
-                            <div className="space-y-4">
-                              <div className={`flex flex-col gap-1 border-b pb-3 ${borderDividerClass}`}>
-                                <h4 className={`text-base font-black uppercase tracking-wider ${textColorRed}`}>
-                                  {weatherData.alerts![selectedAlertIndex].event}
-                                </h4>
-                                <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>
-                                  {weatherData.alerts![selectedAlertIndex].headline}
+                            <header className={`flex flex-col gap-1 border-b pb-3 ${borderDividerClass}`}>
+                              <h4 className={`text-headline-md break-words ${textColorRed}`}>{selected.event}</h4>
+                              <span className={`text-body-sm ${textColorMuted}`} title={selected.headline}>
+                                {nwsSentenceCase(selected.headline)}
+                              </span>
+                              {selected.senderName && (
+                                <span className={`text-body-sm ${textColorSecondary}`}>
+                                  Issued by {selected.senderName}
                                 </span>
-                                {weatherData.alerts![selectedAlertIndex].senderName && (
-                                  <span className={`text-[13px] font-mono uppercase tracking-widest ${textColorCyan}`}>
-                                    Issued by {weatherData.alerts![selectedAlertIndex].senderName}
-                                  </span>
-                                )}
-                              </div>
+                              )}
+                            </header>
 
-                              {/* Was `font-mono … uppercase`. An NWS alert
-                                  description is several paragraphs of plain
-                                  English, and shouting it in a monospace face is
-                                  the hardest-to-read combination on the screen —
-                                  on the one panel someone reads when the weather
-                                  has actually turned. Its labels keep the house
-                                  mono-caps below. */}
-                              <div className="space-y-4 font-sans text-xs leading-relaxed">
-                                <div className="space-y-1.5">
-                                  <span className={`text-[13px] font-mono font-black uppercase tracking-widest block ${textColorMuted}`}>Detailed description</span>
-                                  <p className={`p-4 bg-bg-card/40 rounded-xl border border-border-color/10 select-text overflow-y-auto max-h-[160px] custom-scrollbar ${textColorSecondary}`}>
-                                    {weatherData.alerts![selectedAlertIndex].description || 'No description provided.'}
-                                  </p>
-                                </div>
-
-                                {weatherData.alerts![selectedAlertIndex].instruction && (
-                                  <div className="space-y-1.5">
-                                    <span className={`text-[13px] font-mono font-black uppercase tracking-widest block ${textColorMuted}`}>Precautionary actions</span>
-                                    <div className="p-4 bg-warning/5 border border-warning/20 text-warning rounded-xl">
-                                      {weatherData.alerts![selectedAlertIndex].instruction}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                            {/* An NWS alert description is several paragraphs of
+                                plain English, often in capitals. Inter 15/400 in
+                                sentence case, with the original in its title. */}
+                            <div className="flex flex-col gap-1.5">
+                              <span className={`text-label ${textColorMuted}`}>Description</span>
+                              <p
+                                className={`text-body-md whitespace-pre-line select-text overflow-y-auto max-h-64 custom-scrollbar ${textColorSecondary}`}
+                                title={selected.description || undefined}
+                              >
+                                {selected.description ? nwsSentenceCase(selected.description) : 'No description provided.'}
+                              </p>
                             </div>
 
-                            <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 pt-6 border-t mt-6 text-[13px] font-mono ${borderDividerClass}`}>
-                              <div>
-                                <span className={`block opacity-50 ${textColorMuted}`}>Severity</span>
-                                <span className={`font-bold uppercase ${textColorRed}`}>{weatherData.alerts![selectedAlertIndex].severity || 'Moderate'}</span>
+                            {selected.instruction && (
+                              <div className="flex flex-col gap-1.5">
+                                <span className={`text-label ${textColorMuted}`}>Precautionary actions</span>
+                                <p className="text-body-md whitespace-pre-line text-warning" title={selected.instruction}>
+                                  {nwsSentenceCase(selected.instruction)}
+                                </p>
                               </div>
-                              <div>
-                                <span className={`block opacity-50 ${textColorMuted}`}>Urgency</span>
-                                <span className={`font-bold uppercase ${textColorSecondary}`}>{weatherData.alerts![selectedAlertIndex].urgency || 'Immediate'}</span>
+                            )}
+
+                            <dl className={`grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t ${borderDividerClass}`}>
+                              <div className="flex flex-col gap-1">
+                                <dt className={`text-label ${textColorMuted}`}>Severity</dt>
+                                <dd className={`text-body-md font-semibold ${textColorRed}`}>{selected.severity || 'Moderate'}</dd>
                               </div>
-                              {weatherData.alerts![selectedAlertIndex].effective && (
-                                <div>
-                                  <span className={`block opacity-50 ${textColorMuted}`}>Effective</span>
-                                  <span className={`font-bold uppercase ${textColorSecondary}`}>
-                                    {new Date(weatherData.alerts![selectedAlertIndex].effective!).toLocaleString()}
-                                  </span>
+                              <div className="flex flex-col gap-1">
+                                <dt className={`text-label ${textColorMuted}`}>Urgency</dt>
+                                <dd className={`text-body-md font-semibold ${textColorSecondary}`}>{selected.urgency || 'Immediate'}</dd>
+                              </div>
+                              {selected.effective && (
+                                <div className="flex flex-col gap-1">
+                                  <dt className={`text-label ${textColorMuted}`}>Effective</dt>
+                                  <dd className={`text-data-mono-lg ${textColorSecondary}`}>{when(selected.effective)}</dd>
                                 </div>
                               )}
-                              <div>
-                                <span className={`block opacity-50 ${textColorMuted}`}>Effective Until</span>
-                                <span className={`font-bold uppercase ${textColorSecondary}`}>
-                                  {weatherData.alerts![selectedAlertIndex].ends 
-                                    ? new Date(weatherData.alerts![selectedAlertIndex].ends!).toLocaleString()
-                                    : 'Until further notice'}
-                                </span>
+                              <div className="flex flex-col gap-1">
+                                <dt className={`text-label ${textColorMuted}`}>Effective until</dt>
+                                <dd className={selected.ends ? `text-data-mono-lg ${textColorSecondary}` : `text-body-md ${textColorSecondary}`}>
+                                  {selected.ends ? when(selected.ends) : 'Until further notice'}
+                                </dd>
                               </div>
-                            </div>
-                          </motion.div>
+                            </dl>
+                          </motion.article>
                         )}
                       </div>
 
                     </div>
                   ) : (
                     alertsUnchecked ? (
-                      <div className="p-10 bg-warning/5 border border-warning/30 rounded-2xl text-center space-y-2 select-none">
-                        <Info className="w-8 h-8 mx-auto text-warning" />
-                        <h4 className="text-xs font-black uppercase tracking-widest text-warning">Warnings Not Checked</h4>
-                        <p className={`text-[13px] font-mono tracking-wide ${textColorMuted}`}>
+                      <div className="p-6 bg-warning/5 border border-warning/30 rounded-xl flex flex-col gap-2 text-left select-none">
+                        <Info className="w-5 h-5 text-warning" strokeWidth={1.75} aria-hidden />
+                        <h4 className="text-headline-md text-warning">Warnings not checked</h4>
+                        <p className={`text-body-md ${textColorSecondary}`}>
                           Couldn't check for warnings — this is not an all-clear. Warnings may be in force; the app will try again at the next refresh.
                         </p>
                       </div>
                     ) : noCoverage ? (
-                      <div className="p-10 bg-warning/5 border border-warning/30 rounded-2xl text-center space-y-2 select-none">
-                        <Info className="w-8 h-8 mx-auto text-warning" />
-                        <h4 className="text-xs font-black uppercase tracking-widest text-warning">Outside Warning Coverage</h4>
-                        <p className={`text-[13px] font-mono tracking-wide ${textColorMuted}`}>
+                      <div className="p-6 bg-warning/5 border border-warning/30 rounded-xl flex flex-col gap-2 text-left select-none">
+                        <Info className="w-5 h-5 text-warning" strokeWidth={1.75} aria-hidden />
+                        <h4 className="text-headline-md text-warning">Outside warning coverage</h4>
+                        <p className={`text-body-md ${textColorSecondary}`}>
                           Severe-weather warnings come from the US National Weather Service and are only available in US waters. This position is outside them, so no warning service was asked and none can be shown.
                         </p>
-                        <p className={`text-[13px] font-mono tracking-wide ${textColorMuted}`}>
+                        <p className={`text-body-md ${textColorSecondary}`}>
                           An empty panel here does not mean the water is clear. NAVTEX and SafetyNET under the GMDSS are the official channel for maritime safety information, and nothing in this app replaces a receiver.
                         </p>
                       </div>
                     ) : (
-                    <div className="p-10 bg-green/5 border border-green/10 rounded-2xl text-center space-y-2 select-none">
-                      <Waves className="w-8 h-8 mx-auto text-green animate-pulse" />
-                      <h4 className="text-xs font-black uppercase tracking-widest text-green">All Regional Hazards Clear</h4>
-                      <p className={`text-[13px] font-mono uppercase tracking-widest ${textColorMuted}`}>
+                    <div className="p-6 bg-green/5 border border-green/20 rounded-xl flex flex-col gap-2 text-left select-none">
+                      <Waves className="w-5 h-5 text-green" strokeWidth={1.75} aria-hidden />
+                      <h4 className="text-headline-md text-green">All regional hazards clear</h4>
+                      <p className={`text-body-md ${textColorSecondary}`}>
                         No active small craft advisories, gale warnings, or storm alerts are currently posted for this area.
                       </p>
                     </div>
                     )
                   )}
-                </div>
+                </section>
 
-                {/* DIRECT ZONE FORECASTS */}
-                <div className="space-y-6">
-                  <div className="flex items-center gap-4 px-2 select-none">
-                    <div className={`h-px flex-1 bg-border-color/25`}></div>
-                    <h3 className={`text-[13px] font-mono font-bold uppercase tracking-[0.25em] ${textColorMuted}`}>Direct Period Forecasts</h3>
-                    <div className={`h-px flex-1 bg-border-color/25`}></div>
-                  </div>
-
-                  <ForecastTimeline 
-                    periods={weatherData.periods} 
-                    tempUnit={tempUnit} 
-                    mode="bulletin" 
+                {/* The forecast, period by period */}
+                <section className="flex flex-col gap-4">
+                  <h3 className={SECTION_TITLE}>Period forecasts</h3>
+                  <ForecastTimeline
+                    periods={weatherData.periods}
+                    tempUnit={tempUnit}
+                    mode="bulletin"
                     theme={theme?.timelineTheme}
                   />
-                </div>
+                </section>
 
-                <div className={`p-6 bg-bg-card/20 rounded-xl border border-dashed flex flex-col md:flex-row items-center justify-between gap-4 text-left border-border-color/25`}>
-                  <div className={`flex items-center gap-3 ${textColorMuted}`}>
-                    <Info size={16} />
-                    <span className="font-mono text-[13px] uppercase tracking-widest">Verification: {weatherData.source} // Raw Data Relay</span>
-                  </div>
-                  <div className={`flex items-center gap-4 font-mono text-[13px] uppercase ${textColorMuted}`}>
-                    <span>Last Report Sync: {new Date(lastSync || Date.now()).toISOString().split('T')[0]}</span>
-                    <span>INTEGRITY CHECK: PASS</span>
-                  </div>
+                <p className={`text-body-sm text-left ${textColorMuted}`}>
+                  Source: {weatherData.source}
+                </p>
                 </div>
-
               </main>
 
               {/* Carries when the forecast was fetched, and nothing else.
@@ -508,8 +486,8 @@ export default function AlertsPanel({
                   under them invited arithmetic errors. What matters here is the age of
                   the forecast, not the time of day. formatSyncDateTime is the same
                   helper the collapsed card uses, so the two now agree. */}
-              <footer className={`px-6 py-4 border-t flex items-center justify-end shrink-0 font-mono text-[13px] tracking-widest select-none bg-bg-panel/40 ${borderDividerClass} ${textColorMuted}`}>
-                <span>Synced {formatSyncDateTime(lastSync)}</span>
+              <footer className={`px-4 sm:px-6 py-3 border-t flex items-center justify-end shrink-0 text-body-sm select-none bg-bg-panel ${borderDividerClass} ${textColorMuted}`}>
+                <span>Synced <span className="font-mono">{formatSyncDateTime(lastSync)}</span></span>
               </footer>
             </motion.div>
           )}

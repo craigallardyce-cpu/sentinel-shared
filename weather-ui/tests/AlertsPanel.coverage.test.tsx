@@ -65,7 +65,7 @@ describe('AlertsPanel outside warning coverage', () => {
     render(<AlertsPanel weatherData={STORMY} lastSync={Date.now()} tempUnit="C" hasWarningCoverage={false} />);
 
     expect(screen.getByText('Gale Warning')).toBeInTheDocument();
-    expect(screen.getByText(/1 ACTIVE/)).toBeInTheDocument();
+    expect(screen.getByText(/1 active/)).toBeInTheDocument();
     expect(screen.queryByText('No coverage')).toBeNull();
   });
 });

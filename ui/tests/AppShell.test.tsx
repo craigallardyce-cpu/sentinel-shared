@@ -47,8 +47,9 @@ describe('AppShell phone tab bar', () => {
   it('draws them at 12px with tabLabelPx={12}', () => {
     shell({ tabLabelPx: 12 });
     for (const button of within(phoneBar()).getAllByRole('button')) {
-      expect(button.className).toContain('text-[12px]');
-      expect(button.className).not.toContain('text-[13px]');
+      // 12 below sm only, which is the approved exception's written form.
+      expect(button.className).toContain('text-[12px] sm:text-[13px]');
+      expect(button.className).not.toMatch(/(?:^|\s)text-\[13px\]/);
     }
   });
 });
@@ -229,5 +230,57 @@ describe('SettingsShell', () => {
     expect(names).toEqual(['Display', 'Vessel', 'About']);
     expect(screen.queryByTestId('tab-icon')).toBeNull();
     expect(screen.getByRole('tab', { name: 'Display' })).toHaveAttribute('aria-controls', 'settings-panel-__display');
+  });
+});
+
+/*
+  The header status on a phone (fit-and-finish fixes, 2026-10-05). OceanSentinel's
+  phone header read "Instrum…": a word cut to its first letters says less than
+  the dot alone. Below `sm` a StatusPill in the header band is the dot, with its
+  word kept for screen readers; from `sm` up the word is drawn.
+*/
+describe('AppShell header status on a phone', () => {
+  it('hides every StatusPill word in the header below sm, keeping it for screen readers', () => {
+    shell({
+      headerStatus: (
+        <>
+          <StatusPill status="ok">Instruments</StatusPill>
+          <button type="button"><StatusPill status="alarm">Sync error</StatusPill></button>
+        </>
+      ),
+    });
+    for (const word of ['Instruments', 'Sync error']) {
+      const el = screen.getByText(word);
+      expect(el.className).toContain('max-sm:sr-only');
+      expect(el.closest('[data-slot="header-status"]')).not.toBeNull();
+    }
+    // The word is still the button's accessible name.
+    expect(screen.getByRole('button', { name: 'Sync error' })).toBeInTheDocument();
+  });
+
+  it('leaves a StatusPill outside the header alone', () => {
+    render(
+      <AppShell appName="VesselKeeper" tabs={TABS} activeTab="maintenance" onTabChange={vi.fn()}>
+        <StatusPill status="ok">Cloud</StatusPill>
+      </AppShell>
+    );
+    expect(screen.getByText('Cloud').className).not.toContain('sr-only');
+  });
+
+  it("keeps HarborSentinel's own phone form working: a compact pill below sm, the word from sm", () => {
+    shell({
+      headerStatus: (
+        <>
+          <span className="flex shrink-0 sm:hidden">
+            <StatusPill status="ok" compact title="Instruments: connected" />
+          </span>
+          <span className="hidden sm:flex min-w-0">
+            <StatusPill status="ok">Instruments</StatusPill>
+          </span>
+        </>
+      ),
+    });
+    expect(screen.getByRole('img', { name: 'Instruments: connected' })).toBeInTheDocument();
+    expect(screen.getByText('Instruments')).toBeInTheDocument();
   });
 });

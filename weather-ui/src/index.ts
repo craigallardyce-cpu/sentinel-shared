@@ -4,6 +4,9 @@ export type { WeatherAlert, WeatherData, AlertsPanelProps } from './AlertsPanel'
 export { default as ForecastTimeline } from './ForecastTimeline';
 export type { ForecastPeriod, ForecastTimelineProps } from './ForecastTimeline';
 
+/* NWS prose arrives in capitals; this puts it in sentence case for display. */
+export { nwsSentenceCase, isShouting } from './nwsText';
+
 /*
   The marine-warnings banner over the chart (fit-and-finish X4). Renders nothing
   when no warning is in force; see the component's header for the non-answer

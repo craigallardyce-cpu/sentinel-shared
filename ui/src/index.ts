@@ -10,7 +10,7 @@ export { Modal, ConfirmDialog, MODAL_Z } from './Modal';
 export type { ModalProps, ModalSize, ConfirmDialogProps } from './Modal';
 export { ToastProvider, useToast, toast, confirm } from './Toast';
 export type { ToastKind, ToastOptions, ToastItem, ConfirmOptions, ToastProviderProps } from './Toast';
-export { StatusPill, STATUS_CLASS } from './StatusPill';
+export { StatusPill, STATUS_CLASS, HeaderStatusContext } from './StatusPill';
 export type { Status, StatusPillProps } from './StatusPill';
 export { PlanPill } from './PlanPill';
 export type { PlanPillProps } from './PlanPill';

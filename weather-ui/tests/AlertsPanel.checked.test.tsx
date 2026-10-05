@@ -67,7 +67,7 @@ describe('AlertsPanel when the warning check failed', () => {
     render(<AlertsPanel weatherData={STORMY} lastSync={Date.now()} tempUnit="C" alertsChecked={false} />);
 
     expect(screen.getByText('Gale Warning')).toBeInTheDocument();
-    expect(screen.getByText(/1 ACTIVE/)).toBeInTheDocument();
+    expect(screen.getByText(/1 active/)).toBeInTheDocument();
     expect(screen.queryByText('Not checked')).toBeNull();
   });
 
@@ -142,7 +142,7 @@ describe('AlertsPanel bulletin when the warning check failed', () => {
     render(<AlertsPanel weatherData={QUIET} lastSync={Date.now()} tempUnit="C" alertsChecked={false} />);
     openBulletin();
 
-    expect(screen.getByText('Warnings Not Checked')).toBeInTheDocument();
+    expect(screen.getByText('Warnings not checked')).toBeInTheDocument();
     expect(
       screen.getAllByText(
         /Couldn't check for warnings — this is not an all-clear\. Warnings may be in force; the app will try again at the next refresh\./
@@ -155,7 +155,7 @@ describe('AlertsPanel bulletin when the warning check failed', () => {
     render(<AlertsPanel weatherData={STORMY} lastSync={Date.now()} tempUnit="C" alertsChecked={false} />);
     openBulletin();
 
-    expect(screen.queryByText('Warnings Not Checked')).toBeNull();
+    expect(screen.queryByText('Warnings not checked')).toBeNull();
     expect(screen.getByText(/Gale Warning in effect/)).toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe('AlertsPanel bulletin when the warning check failed', () => {
     openBulletin();
 
     expect(screen.getByText(/Outside Warning Coverage/i)).toBeInTheDocument();
-    expect(screen.queryByText('Warnings Not Checked')).toBeNull();
+    expect(screen.queryByText('Warnings not checked')).toBeNull();
   });
 
   it('keeps the full-screen all-clear when the check did run and found nothing', () => {
@@ -174,7 +174,7 @@ describe('AlertsPanel bulletin when the warning check failed', () => {
     openBulletin();
 
     expect(screen.getByText(/All Regional Hazards Clear/i)).toBeInTheDocument();
-    expect(screen.queryByText('Warnings Not Checked')).toBeNull();
+    expect(screen.queryByText('Warnings not checked')).toBeNull();
   });
 
   it("defaults to checked, so an un-updated host's bulletin is unchanged", () => {
@@ -182,6 +182,6 @@ describe('AlertsPanel bulletin when the warning check failed', () => {
     openBulletin();
 
     expect(screen.getByText(/All Regional Hazards Clear/i)).toBeInTheDocument();
-    expect(screen.queryByText('Warnings Not Checked')).toBeNull();
+    expect(screen.queryByText('Warnings not checked')).toBeNull();
   });
 });

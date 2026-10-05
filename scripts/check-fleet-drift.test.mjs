@@ -739,3 +739,73 @@ export const A = () => <div className="rounded-md rounded-xl p-2" title="rounded
 `;
   assert.doesNotMatch(checkSource('VesselKeeper', 'A.tsx', body), /\[deprecated\]/);
 });
+
+/*
+  The shared packages' own UI (fit-and-finish fixes, 2026-10-05). The rules
+  above read only the apps' source, so ForecastTimeline kept 12px mono capitals
+  and AuthScreen three glows through every wave. A shared package whose src/
+  renders UI is held to the same floor, glow and status-button rules. Each
+  fixture is one clean app plus one shared package file.
+*/
+const withShared = (files) =>
+  runChecker(fixture({
+    ...appSource('HarborSentinel', 'A.tsx', 'export const a = 1;\n'),
+    ...Object.fromEntries(Object.entries(files).map(([rel, body]) => [`sentinel-shared/${rel}`, body])),
+  }));
+/** A finding against a shared package, as opposed to the fixture's missing fleet files. */
+const SHARED_HIT = /sentinel-shared\/(?!fleet-)[a-z-]+: \d+/;
+const SHARED_PKG = (name) => ({ [`${name}/package.json`]: JSON.stringify({ name: `@sentinel/${name}` }) });
+
+test('a glow in a shared package fails, named by package, file and line', () => {
+  const out = withShared({
+    ...SHARED_PKG('auth-ui'),
+    'auth-ui/src/AuthScreen.tsx': 'export const A = () => (\n  <div className="shadow-[0_0_15px_var(--color-cyan-glow)]" />\n);\n',
+  });
+  assert.match(out, /FAIL {2}\[theme\] sentinel-shared\/auth-ui: 1 glow\(s\).*auth-ui\/src\/AuthScreen\.tsx:2 shadow-\[0_0_15px_var\(--color-cyan-glow\)\]/);
+});
+
+test('type under the floor in a shared package fails, and the written VesselKeeper form passes', () => {
+  const out = withShared({
+    ...SHARED_PKG('weather-ui'),
+    'weather-ui/src/Forecast.tsx': '<p className="text-xs uppercase">a</p>\n<span className="text-[12px]">b</span>\n',
+  });
+  assert.match(out, /FAIL {2}\[type\] sentinel-shared\/weather-ui: 2 type size\(s\) below the 13px floor.*Forecast\.tsx:1 text-xs.*Forecast\.tsx:2 text-\[12px\]/);
+  const phone = withShared({
+    ...SHARED_PKG('ui'),
+    'ui/src/AppShell.tsx': "const c = small ? 'text-[12px] sm:text-[13px]' : 'text-[13px]';\n",
+  });
+  assert.doesNotMatch(phone, SHARED_HIT);
+});
+
+test('a status-coloured labelled button in a shared package fails; an icon-only one does not', () => {
+  const out = withShared({
+    ...SHARED_PKG('weather-ui'),
+    'weather-ui/src/Alerts.tsx':
+      '<button onClick={() => pick(i)} className="p-3 bg-red/10 text-red">Gale warning</button>\n' +
+      '<button onClick={() => close()} className="hover:bg-red/10" aria-label="Close"><X /></button>\n',
+  });
+  assert.match(out, /FAIL {2}\[ui\] sentinel-shared\/weather-ui: 1 labelled <button>\(s\).*Alerts\.tsx:1 bg-red\n/);
+  // The icon-only close button on line 2 is not a labelled button.
+  assert.doesNotMatch(out, /Alerts\.tsx:2/);
+});
+
+test('dist/, tests and packages without UI are not scanned', () => {
+  const out = withShared({
+    ...SHARED_PKG('ui'),
+    'ui/src/Button.tsx': '<button className="h-12 rounded-md">Save</button>\n',
+    'ui/dist/Button.js': 'jsx("div", { className: "text-xs shadow-[0_0_8px_var(--color-cyan-glow)]" });\n',
+    'ui/tests/Button.test.tsx': '<p className="text-[9px]">fixture</p>\n',
+    'ui/src/Button.test.tsx': '<p className="text-[9px]">fixture</p>\n',
+    ...SHARED_PKG('marine'),
+    'marine/src/format.ts': "export const cls = 'text-xs';\n",
+  });
+  assert.doesNotMatch(out, SHARED_HIT);
+});
+
+test('a clean shared package reports nothing', () => {
+  const out = withShared({
+    ...SHARED_PKG('ui'),
+    'ui/src/StatusPill.tsx': '<span className="text-[13px] max-sm:sr-only shadow-[var(--panel-shadow)]">Instruments</span>\n',
+  });
+  assert.doesNotMatch(out, SHARED_HIT);
+});

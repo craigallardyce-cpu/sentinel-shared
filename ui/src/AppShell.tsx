@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Moon, Settings, Sun } from 'lucide-react';
 import { cn } from './cn';
+import { HeaderStatusContext } from './StatusPill';
 
 declare global {
   interface Window {
@@ -302,7 +303,11 @@ export function AppShell({
 
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {headerStatus && (
-              <div className="flex items-center gap-4 min-w-0 overflow-hidden sm:px-2">{headerStatus}</div>
+              <div className="flex items-center gap-4 min-w-0 overflow-hidden sm:px-2" data-slot="header-status">
+                {/* Below `sm` every StatusPill in here is a dot, its word kept
+                    for screen readers (StatusPill's HeaderStatusContext). */}
+                <HeaderStatusContext.Provider value={true}>{headerStatus}</HeaderStatusContext.Provider>
+              </div>
             )}
             <div className="flex items-center gap-1 shrink-0">
               {onToggleNightMode && (
@@ -415,7 +420,9 @@ export function AppShell({
                   className={cn(
                     'relative flex flex-col items-center justify-center gap-1 min-w-0 px-1 cursor-pointer text-center',
                     'font-sans font-semibold leading-tight',
-                    tabLabelPx === 12 ? 'text-[12px]' : 'text-[13px]',
+                    // VesselKeeper's approved exception is 12px below `sm` only, and
+                    // the drift checker recognises it only written this way.
+                    tabLabelPx === 12 ? 'text-[12px] sm:text-[13px]' : 'text-[13px]',
                     'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan/60',
                     active ? 'text-cyan' : 'text-text-secondary hover:text-text-primary'

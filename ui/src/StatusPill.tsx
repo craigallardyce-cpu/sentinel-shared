@@ -39,6 +39,19 @@ const WORD: Record<Status, string> = {
   alarm: 'text-red',
 };
 
+/**
+ * Set by AppShell around its header status band. Inside it, below `sm`, a
+ * StatusPill draws its dot alone and keeps its word for screen readers.
+ *
+ * The band yields width to the controls beside it, and a word squeezed there
+ * was cut mid-word: OceanSentinel's phone header read "Instrum…", which says
+ * less than the dot does on its own. A status word is never truncated in the
+ * header now; at phone width it is not drawn. HarborSentinel already passed a
+ * `compact` pill below `sm` for the same reason; that still works, and every
+ * other caller gets the same behaviour without having to know to ask.
+ */
+export const HeaderStatusContext = React.createContext(false);
+
 export interface StatusPillProps {
   status: Status;
   children?: React.ReactNode;
@@ -63,6 +76,7 @@ export interface StatusPillProps {
  */
 export function StatusPill({ status, children, pulse = false, compact = false, size = 'sm', className, title }: StatusPillProps) {
   const c = STATUS_CLASS[status];
+  const inHeader = React.useContext(HeaderStatusContext);
   const pulsing = pulse && status === 'alarm';
   const dot = (
     <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
@@ -96,6 +110,8 @@ export function StatusPill({ status, children, pulse = false, compact = false, s
         // that tints the background on hover (PlanPill), so the tint is a pill.
         'inline-flex items-center gap-2 rounded-full font-sans font-normal whitespace-nowrap',
         size === 'sm' ? 'h-6 px-2 text-[13px] min-w-8' : 'h-7 px-2.5 text-[15px] min-w-9',
+        // Dot alone in the header on a phone: no gap beside a word that is not drawn.
+        inHeader && 'max-sm:gap-0',
         WORD[status],
         className
       )}
@@ -103,7 +119,11 @@ export function StatusPill({ status, children, pulse = false, compact = false, s
       {dot}
       {/* Only when there is a label to show: an empty box would still take the
           flex gap and widen a pill that has nothing to say. `0` is a label. */}
-      {children || children === 0 ? <span className="truncate">{children}</span> : null}
+      {children || children === 0 ? (
+        <span className={inHeader ? 'truncate max-sm:sr-only' : 'truncate'} data-slot="status-word">
+          {children}
+        </span>
+      ) : null}
     </span>
   );
 }
