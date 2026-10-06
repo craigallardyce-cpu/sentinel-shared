@@ -22,7 +22,7 @@ Projects/
 | `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing (including how old a position fix may be and still count as live), AIS/AIVDM decoding, the NMEA gateway rule and the gateway connection pool over either TCP or UDP | all three |
 | `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global model used everywhere NWS has no data | OceanSentinel (server + client) |
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers, the chart's wind and radar layers, and `WarningsBanner`, the marine-warnings banner over the chart | OceanSentinel, HarborSentinel |
-| `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend) | all three |
+| `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend, and the Windows installer include `installer.nsh`) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (48/40 px, a lit `active` state, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField`, `InstrumentCell`, `Tabs`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `AppShell`, `SettingsShell`, `openExternal(url)` and `openUserGuide(section)` | all three |
@@ -487,6 +487,49 @@ on the same port, and then that program, not ours, answers the window's
 The apps need no code of their own for this. A server that is not an
 `http.Server` cannot answer the token, so it is reported `'listening'`
 unverified, as before.
+
+## `@sentinel/electron-shell`: the Windows installer include
+
+`electron-shell/installer.nsh` is an NSIS include, not JavaScript, so it is
+not part of the package's exports. Each app points its electron-builder config
+at it:
+
+```json
+"build": {
+  "nsis": {
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "include": "../sentinel-shared/electron-shell/installer.nsh"
+  }
+}
+```
+
+electron-builder resolves `nsis.include` against `buildResources` (`build/`)
+first and then against the app's root. None of the apps has a `build/` folder
+with a `sentinel-shared` in it, so the path lands on the sibling checkout. That
+is the same layout locally and in CI, where `build.yml` checks this repo out
+beside the app.
+
+It defines `customCheckAppRunning`, which replaces electron-builder's own
+"is the app running" check (written against 26.15.3). The installer and the
+uninstaller now:
+
+- force-end every process whose executable is under the install directory,
+  and the descendants of those processes, without ever ending the installer
+  itself (an in-app update makes the installer a child of the app);
+- wait, for at most 15 s, until those processes are gone and every installed
+  file can be renamed, which is what the old version's uninstaller needs next;
+- carry on without a dialog.
+
+This replaces "<App> cannot be closed. Please close it manually and click
+Retry" in two cases. In the first, the app was still running because it hides
+to the tray, which hits every customer updating from 2.13.0 or earlier. In the
+second, the old version's uninstaller hit a file that was still busy, which
+also produces that text with no app running at all. The file's header has the
+full trace. Something other than the app holding an installed file open for
+minutes still ends in that dialog, because no installer can
+release another program's handle. If you upgrade electron-builder past 26.x,
+re-read `templates/nsis/include/allowOnlyOneInstallerInstance.nsh` and
+`installUtil.nsh` against this file.
 
 ## Review finding H6: investigated, then parked
 
