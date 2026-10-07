@@ -1,6 +1,113 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useId, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, CloudOff, TriangleAlert } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, CloudOff, Minimize2, TriangleAlert } from 'lucide-react';
+/**
+ * One advisory's identity: its event name and when it took effect. NWS alerts
+ * reach the apps without an id, so this is the nearest stable thing, and an
+ * advisory re-issued with a new start time counts as new, which errs towards
+ * showing it.
+ */
+export function advisoryKey(a) {
+    return `${(a.event || '').trim().toLowerCase()}|${a.effective ?? ''}`;
+}
+/**
+ * The safety rule. Collapsed only when something was collapsed, something is
+ * in force, and every advisory in force was among those collapsed. A new one
+ * -- a different event, or the same event with a new `effective` -- shows the
+ * banner expanded again.
+ */
+export function isAdvisoryCollapsed(collapsed, inForce) {
+    if (!collapsed || collapsed.length === 0 || inForce.length === 0)
+        return false;
+    const seen = new Set(collapsed);
+    return inForce.every((key) => seen.has(key));
+}
+/** Whether `inForce` holds an advisory the snapshot does not, i.e. the stored collapse is spent. */
+export function hasNewAdvisory(collapsed, inForce) {
+    if (!collapsed || collapsed.length === 0)
+        return false;
+    return inForce.length > 0 && !isAdvisoryCollapsed(collapsed, inForce);
+}
+/** A stored snapshot, or null when there is none or it is not one (junk is dropped, never thrown). */
+export function parseAdvisoryCollapse(raw) {
+    if (!raw)
+        return null;
+    try {
+        const value = JSON.parse(raw);
+        if (!Array.isArray(value))
+            return null;
+        const keys = value.filter((k) => typeof k === 'string');
+        return keys.length > 0 ? keys : null;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * A store kept in this device's `localStorage` under `key`, as a JSON array of
+ * `advisoryKey`s (the format HarborSentinel #100 wrote to
+ * `harbor_advisory_collapsed`). Every access is guarded: storage that is
+ * absent, throws, or holds junk reads as "not collapsed", and a failed write
+ * is dropped. `storage` is for tests; it defaults to `window.localStorage`.
+ */
+export function localStorageCollapseStore(key, storage) {
+    const resolve = () => {
+        if (storage !== undefined)
+            return storage;
+        try {
+            return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+        }
+        catch {
+            return null;
+        }
+    };
+    return {
+        read() {
+            try {
+                const s = resolve();
+                return s ? parseAdvisoryCollapse(s.getItem(key)) : null;
+            }
+            catch {
+                return null;
+            }
+        },
+        write(snapshot) {
+            try {
+                const s = resolve();
+                if (!s)
+                    return;
+                if (snapshot && snapshot.length > 0)
+                    s.setItem(key, JSON.stringify([...snapshot]));
+                else
+                    s.removeItem(key);
+            }
+            catch {
+                /* Quota or a disabled store: the collapse holds until the app closes. */
+            }
+        },
+    };
+}
+/* A host's own store is guarded too: it may throw or return junk. */
+function safeRead(store) {
+    try {
+        const value = store ? store.read() : null;
+        if (!Array.isArray(value))
+            return null;
+        const keys = value.filter((k) => typeof k === 'string');
+        return keys.length > 0 ? keys : null;
+    }
+    catch {
+        return null;
+    }
+}
+function safeWrite(store, snapshot) {
+    try {
+        store?.write(snapshot);
+    }
+    catch {
+        /* Remembered for this session only. */
+    }
+}
 /* ------------------------------------------------------------------------ */
 /* Pure helpers, exported for the apps' own tests and for reuse.             */
 /* ------------------------------------------------------------------------ */
@@ -110,7 +217,16 @@ const TONE = {
 const GLASS = 'bg-[var(--bg-panel-glass)] [-webkit-backdrop-filter:blur(16px)] [backdrop-filter:blur(16px)]';
 const SURFACE = `${GLASS} rounded-xl border font-sans`;
 /* ------------------------------------------------------------------------ */
-export function WarningsBanner({ warnings, notice = null, area, usingChartCentre = false, detail, stale = false, checkedAt = null, partial = false, onOpen, onOpenForecast, defaultExpanded = false, now, className = '', }) {
+/**
+ * The banner. Without `collapsible` or `collapseStore` it is exactly the banner
+ * it always was; with either, see `CollapsibleWarningsBanner` below.
+ */
+export function WarningsBanner(props) {
+    if (props.collapsible || props.collapseStore)
+        return _jsx(CollapsibleWarningsBanner, { ...props });
+    return _jsx(BannerBody, { ...props });
+}
+function BannerBody({ warnings, notice = null, area, usingChartCentre = false, detail, stale = false, checkedAt = null, partial = false, onOpen, onOpenForecast, defaultExpanded = false, now, className = '', }) {
     const [expanded, setExpanded] = useState(defaultExpanded);
     const listId = useId();
     const sorted = useMemo(() => sortWarnings((warnings || []).filter(Boolean)), [warnings]);
@@ -143,6 +259,58 @@ export function WarningsBanner({ warnings, notice = null, area, usingChartCentre
     const rowClass = 'w-full min-h-12 py-1.5 sm:h-12 sm:py-0 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
         'rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus';
     return (_jsxs("section", { "aria-label": "Marine warnings", role: level === 'alarm' ? 'alert' : 'status', className: `pointer-events-auto ${SURFACE} ${tone.band} ${className}`, children: [onOpen ? (_jsxs("button", { type: "button", className: rowClass, onClick: onOpen, children: [summary, _jsx(ChevronRight, { size: 20, strokeWidth: 1.75, "aria-hidden": true, className: "shrink-0 text-text-muted" })] })) : (_jsxs("button", { type: "button", className: rowClass, "aria-expanded": expanded, "aria-controls": listId, onClick: () => setExpanded((v) => !v), children: [summary, _jsx(ChevronDown, { size: 20, strokeWidth: 1.75, "aria-hidden": true, className: `shrink-0 text-text-muted transition-transform duration-[var(--motion-state)] ${expanded ? 'rotate-180' : ''}` })] })), !onOpen && expanded && (_jsxs("div", { id: listId, className: "px-4 pb-4 pt-1 flex flex-col gap-3 text-body-md text-text-primary", children: [(area || stale || partial) && (_jsxs("div", { className: "flex flex-col gap-1 text-body-sm text-text-secondary", children: [area && _jsx("span", { children: area }), stale && (_jsxs("span", { children: ["Couldn't check for warnings — these are from the last check", age && (_jsxs(_Fragment, { children: [", ", _jsx("span", { className: "font-mono", children: age })] })), ". Others may have been issued since."] })), partial && (_jsx("span", { children: "These may not be all the warnings in force: the warnings check failed, so these are read from the forecast." }))] })), _jsx("ul", { className: "flex flex-col gap-3", "aria-label": "Warnings in force", children: sorted.map((w, i) => (_jsx(WarningItem, { warning: w }, `${w.event}-${i}`))) }), onOpenForecast && (_jsx("button", { type: "button", onClick: onOpenForecast, className: "self-start min-h-12 text-body-md font-semibold text-cyan cursor-pointer hover:underline", children: "Open the full forecast" }))] }))] }));
+}
+/* The pill's colour is the banner's own: the event name in the severity colour
+   on a 40% border of it, on the same glass. */
+const PILL_TONE = {
+    alarm: 'text-red border-[color:color-mix(in_srgb,var(--color-red)_40%,transparent)]',
+    warning: 'text-warning border-[color:color-mix(in_srgb,var(--color-warning)_40%,transparent)]',
+};
+/**
+ * The banner with a collapse control beside it (HarborSentinel #100, moved here
+ * so both watch apps behave the same).
+ *
+ * Beside rather than inside, because the banner's own chevron already means
+ * "show the details". Collapsed, a compact pill docks in the banner's place:
+ * the warning icon and the top event's name in its colour, never nothing, so a
+ * tucked-away advisory is still on the chart. Tapping it restores the banner.
+ *
+ * Only a warning in force can be collapsed. The quiet notices are already a
+ * one-line pill and render exactly as without collapsing.
+ */
+function CollapsibleWarningsBanner(props) {
+    const { warnings, collapseStore, className = '' } = props;
+    const list = useMemo(() => (warnings || []).filter(Boolean), [warnings]);
+    const inForce = useMemo(() => list.map(advisoryKey), [list]);
+    const inForceSig = JSON.stringify(inForce);
+    const [collapsedKeys, setCollapsedKeys] = useState(() => safeRead(collapseStore));
+    /* A new advisory spends the stored collapse, so it does not come back on its
+       own once the new one has gone. */
+    useEffect(() => {
+        if (hasNewAdvisory(collapsedKeys, inForce)) {
+            setCollapsedKeys(null);
+            safeWrite(collapseStore, null);
+        }
+        // inForceSig stands for inForce.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [collapsedKeys, inForceSig, collapseStore]);
+    if (inForce.length === 0)
+        return _jsx(BannerBody, { ...props });
+    if (isAdvisoryCollapsed(collapsedKeys, inForce)) {
+        const sorted = sortWarnings(list);
+        const top = sorted[0];
+        const level = warningLevel(top);
+        const name = sentenceCase(top.event);
+        const more = sorted.length - 1;
+        return (_jsx("section", { "aria-label": "Marine warnings", className: `flex justify-center pointer-events-none ${className}`, children: _jsxs("button", { type: "button", onClick: () => {
+                    setCollapsedKeys(null);
+                    safeWrite(collapseStore, null);
+                }, "aria-expanded": false, "aria-label": `Show the weather advisory: ${name}${more > 0 ? ` and ${more} more` : ''}`, title: "Show the weather advisory", "data-testid": "advisory-pill", "data-level": level, className: `pointer-events-auto inline-flex max-w-full min-h-11 items-center gap-2 pl-3 pr-4 rounded-full border ${GLASS} ${PILL_TONE[level]} font-sans text-body-sm font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`, children: [_jsx(TriangleAlert, { size: 18, strokeWidth: 1.75, "aria-hidden": true, className: "shrink-0" }), _jsx("span", { className: "truncate min-w-0", children: name }), more > 0 && _jsxs("span", { className: "shrink-0 font-mono", children: ["+", more] })] }) }));
+    }
+    return (_jsxs("div", { className: `flex items-start gap-2 ${className}`, children: [_jsx(BannerBody, { ...props, className: "flex-1 min-w-0" }), _jsx("button", { type: "button", onClick: () => {
+                    setCollapsedKeys(inForce);
+                    safeWrite(collapseStore, inForce);
+                }, "aria-expanded": true, "aria-label": "Collapse the weather advisory", title: "Collapse the weather advisory", "data-testid": "advisory-collapse", className: `pointer-events-auto shrink-0 w-11 h-12 flex items-center justify-center rounded-xl border border-border-color ${GLASS} text-text-secondary cursor-pointer hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`, children: _jsx(Minimize2, { size: 18, strokeWidth: 1.75, "aria-hidden": true }) })] }));
 }
 function WarningItem({ warning }) {
     const tone = TONE[warningLevel(warning)];

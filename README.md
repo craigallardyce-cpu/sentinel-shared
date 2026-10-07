@@ -266,6 +266,39 @@ import { WarningsBanner } from '@sentinel/weather-ui';
   the expiry and the host's statement under them, both shown -- so it is 48px
   from `sm` up and two or three lines on a phone. A host that places something
   directly under the banner must let it grow.
+- **Collapsing (opt-in, from HarborSentinel #100).** Pass `collapseStore` (or
+  `collapsible` for a session-only collapse) and a 44×48 button labelled
+  "Collapse the weather advisory" sits beside the banner. Collapsed, a ≥44px
+  pill in the top warning's severity colour (warning icon, event name
+  truncated if it must be, `+N`) docks in the banner's place, labelled "Show
+  the weather advisory: <event>"; tapping it restores the banner. Without
+  either prop nothing changes. With it, `className` goes on the wrapper that
+  holds banner and button (or the pill).
+
+  ```tsx
+  import { WarningsBanner, localStorageCollapseStore } from '@sentinel/weather-ui';
+  const advisoryStore = localStorageCollapseStore('harbor_advisory_collapsed'); // module scope: keep it stable
+
+  <WarningsBanner warnings={alerts} notice={notice} collapseStore={advisoryStore} />
+  ```
+
+  **Safety rule:** a collapse remembers the advisories in force when it was
+  made, as `advisoryKey`s (event name, case- and space-folded, plus
+  `effective`; alerts carry no id). It stays collapsed only while every
+  advisory in force is among them. A different event, or the same event
+  re-issued with a new `effective`, shows the banner expanded and clears the
+  stored collapse, so collapsing Tuesday's frost advisory can never hide
+  Wednesday's gale. A collapsed advisory is always visible as the pill. The
+  quiet notices cannot be collapsed and are unchanged.
+
+  **Storage:** the banner never touches storage itself. A store is
+  `{ read(): readonly string[] | null; write(s: readonly string[] | null): void }`;
+  `localStorageCollapseStore(key)` keeps a JSON array of keys in
+  `localStorage` (Harbor's existing format), and every read and write, the
+  host's own store included, is guarded: absent, throwing or junk storage
+  reads as "not collapsed" and a failed write lasts the session. The rule is
+  exported as pure helpers too: `advisoryKey`, `isAdvisoryCollapsed`,
+  `hasNewAdvisory`, `parseAdvisoryCollapse`.
 
 ## `@sentinel/weather-ui`: `ForecastTimeline`, `AlertsPanel` and NWS text
 

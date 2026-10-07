@@ -1,5 +1,5 @@
-import React, { useId, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, CloudOff, TriangleAlert } from 'lucide-react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, CloudOff, Minimize2, TriangleAlert } from 'lucide-react';
 
 /*
   The marine-warnings banner: one component for HarborSentinel and OceanSentinel.
@@ -94,7 +94,156 @@ export interface WarningsBannerProps {
   defaultExpanded?: boolean;
   /** Clock for "last checked" ages; tests pass one. */
   now?: number;
+  /**
+   * Offer a control to collapse the banner to a compact pill (see "Collapsing"
+   * below). Off by default. Implied by `collapseStore`; on its own the collapse
+   * lasts until the component unmounts.
+   */
+  collapsible?: boolean;
+  /**
+   * Where the collapse is remembered between launches. The banner never
+   * touches storage itself; `localStorageCollapseStore(key)` is the usual one.
+   * Passing a store turns collapsing on.
+   */
+  collapseStore?: AdvisoryCollapseStore | null;
+  /**
+   * Layout classes. With collapsing on they go on the wrapper that holds the
+   * banner and its collapse button (or the pill), so the host places one box.
+   */
   className?: string;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Collapsing (from HarborSentinel #100).                                    */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * What a collapse remembers: the identities (`advisoryKey`) of the advisories
+ * that were in force when it was made.
+ */
+export type AdvisoryCollapseSnapshot = readonly string[];
+
+/**
+ * The host's storage for the collapse. `read` returns null when nothing is
+ * stored; `write(null)` forgets it. Either may throw: the banner treats a
+ * throwing read as "not collapsed" and a throwing write as a collapse that
+ * lasts for this session only.
+ */
+export interface AdvisoryCollapseStore {
+  read(): AdvisoryCollapseSnapshot | null;
+  write(snapshot: AdvisoryCollapseSnapshot | null): void;
+}
+
+/**
+ * One advisory's identity: its event name and when it took effect. NWS alerts
+ * reach the apps without an id, so this is the nearest stable thing, and an
+ * advisory re-issued with a new start time counts as new, which errs towards
+ * showing it.
+ */
+export function advisoryKey(a: Pick<BannerWarning, 'event' | 'effective'>): string {
+  return `${(a.event || '').trim().toLowerCase()}|${a.effective ?? ''}`;
+}
+
+/**
+ * The safety rule. Collapsed only when something was collapsed, something is
+ * in force, and every advisory in force was among those collapsed. A new one
+ * -- a different event, or the same event with a new `effective` -- shows the
+ * banner expanded again.
+ */
+export function isAdvisoryCollapsed(
+  collapsed: AdvisoryCollapseSnapshot | null | undefined,
+  inForce: readonly string[]
+): boolean {
+  if (!collapsed || collapsed.length === 0 || inForce.length === 0) return false;
+  const seen = new Set(collapsed);
+  return inForce.every((key) => seen.has(key));
+}
+
+/** Whether `inForce` holds an advisory the snapshot does not, i.e. the stored collapse is spent. */
+export function hasNewAdvisory(
+  collapsed: AdvisoryCollapseSnapshot | null | undefined,
+  inForce: readonly string[]
+): boolean {
+  if (!collapsed || collapsed.length === 0) return false;
+  return inForce.length > 0 && !isAdvisoryCollapsed(collapsed, inForce);
+}
+
+/** A stored snapshot, or null when there is none or it is not one (junk is dropped, never thrown). */
+export function parseAdvisoryCollapse(raw: string | null | undefined): string[] | null {
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return null;
+    const keys = value.filter((k): k is string => typeof k === 'string');
+    return keys.length > 0 ? keys : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The subset of `Storage` the default store uses, so tests can pass their own. */
+export interface CollapseStorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/**
+ * A store kept in this device's `localStorage` under `key`, as a JSON array of
+ * `advisoryKey`s (the format HarborSentinel #100 wrote to
+ * `harbor_advisory_collapsed`). Every access is guarded: storage that is
+ * absent, throws, or holds junk reads as "not collapsed", and a failed write
+ * is dropped. `storage` is for tests; it defaults to `window.localStorage`.
+ */
+export function localStorageCollapseStore(key: string, storage?: CollapseStorageLike | null): AdvisoryCollapseStore {
+  const resolve = (): CollapseStorageLike | null => {
+    if (storage !== undefined) return storage;
+    try {
+      return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    read() {
+      try {
+        const s = resolve();
+        return s ? parseAdvisoryCollapse(s.getItem(key)) : null;
+      } catch {
+        return null;
+      }
+    },
+    write(snapshot) {
+      try {
+        const s = resolve();
+        if (!s) return;
+        if (snapshot && snapshot.length > 0) s.setItem(key, JSON.stringify([...snapshot]));
+        else s.removeItem(key);
+      } catch {
+        /* Quota or a disabled store: the collapse holds until the app closes. */
+      }
+    },
+  };
+}
+
+/* A host's own store is guarded too: it may throw or return junk. */
+function safeRead(store: AdvisoryCollapseStore | null | undefined): AdvisoryCollapseSnapshot | null {
+  try {
+    const value: unknown = store ? store.read() : null;
+    if (!Array.isArray(value)) return null;
+    const keys = value.filter((k): k is string => typeof k === 'string');
+    return keys.length > 0 ? keys : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeWrite(store: AdvisoryCollapseStore | null | undefined, snapshot: AdvisoryCollapseSnapshot | null): void {
+  try {
+    store?.write(snapshot);
+  } catch {
+    /* Remembered for this session only. */
+  }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -205,7 +354,16 @@ const SURFACE = `${GLASS} rounded-xl border font-sans`;
 
 /* ------------------------------------------------------------------------ */
 
-export function WarningsBanner({
+/**
+ * The banner. Without `collapsible` or `collapseStore` it is exactly the banner
+ * it always was; with either, see `CollapsibleWarningsBanner` below.
+ */
+export function WarningsBanner(props: WarningsBannerProps) {
+  if (props.collapsible || props.collapseStore) return <CollapsibleWarningsBanner {...props} />;
+  return <BannerBody {...props} />;
+}
+
+function BannerBody({
   warnings,
   notice = null,
   area,
@@ -360,6 +518,95 @@ export function WarningsBanner({
         </div>
       )}
     </section>
+  );
+}
+
+/* The pill's colour is the banner's own: the event name in the severity colour
+   on a 40% border of it, on the same glass. */
+const PILL_TONE: Record<WarningLevel, string> = {
+  alarm: 'text-red border-[color:color-mix(in_srgb,var(--color-red)_40%,transparent)]',
+  warning: 'text-warning border-[color:color-mix(in_srgb,var(--color-warning)_40%,transparent)]',
+};
+
+/**
+ * The banner with a collapse control beside it (HarborSentinel #100, moved here
+ * so both watch apps behave the same).
+ *
+ * Beside rather than inside, because the banner's own chevron already means
+ * "show the details". Collapsed, a compact pill docks in the banner's place:
+ * the warning icon and the top event's name in its colour, never nothing, so a
+ * tucked-away advisory is still on the chart. Tapping it restores the banner.
+ *
+ * Only a warning in force can be collapsed. The quiet notices are already a
+ * one-line pill and render exactly as without collapsing.
+ */
+function CollapsibleWarningsBanner(props: WarningsBannerProps) {
+  const { warnings, collapseStore, className = '' } = props;
+  const list = useMemo(() => (warnings || []).filter(Boolean), [warnings]);
+  const inForce = useMemo(() => list.map(advisoryKey), [list]);
+  const inForceSig = JSON.stringify(inForce);
+  const [collapsedKeys, setCollapsedKeys] = useState<AdvisoryCollapseSnapshot | null>(() => safeRead(collapseStore));
+
+  /* A new advisory spends the stored collapse, so it does not come back on its
+     own once the new one has gone. */
+  useEffect(() => {
+    if (hasNewAdvisory(collapsedKeys, inForce)) {
+      setCollapsedKeys(null);
+      safeWrite(collapseStore, null);
+    }
+    // inForceSig stands for inForce.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsedKeys, inForceSig, collapseStore]);
+
+  if (inForce.length === 0) return <BannerBody {...props} />;
+
+  if (isAdvisoryCollapsed(collapsedKeys, inForce)) {
+    const sorted = sortWarnings(list);
+    const top = sorted[0];
+    const level = warningLevel(top);
+    const name = sentenceCase(top.event);
+    const more = sorted.length - 1;
+    return (
+      <section aria-label="Marine warnings" className={`flex justify-center pointer-events-none ${className}`}>
+        <button
+          type="button"
+          onClick={() => {
+            setCollapsedKeys(null);
+            safeWrite(collapseStore, null);
+          }}
+          aria-expanded={false}
+          aria-label={`Show the weather advisory: ${name}${more > 0 ? ` and ${more} more` : ''}`}
+          title="Show the weather advisory"
+          data-testid="advisory-pill"
+          data-level={level}
+          className={`pointer-events-auto inline-flex max-w-full min-h-11 items-center gap-2 pl-3 pr-4 rounded-full border ${GLASS} ${PILL_TONE[level]} font-sans text-body-sm font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`}
+        >
+          <TriangleAlert size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
+          <span className="truncate min-w-0">{name}</span>
+          {more > 0 && <span className="shrink-0 font-mono">+{more}</span>}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <div className={`flex items-start gap-2 ${className}`}>
+      <BannerBody {...props} className="flex-1 min-w-0" />
+      <button
+        type="button"
+        onClick={() => {
+          setCollapsedKeys(inForce);
+          safeWrite(collapseStore, inForce);
+        }}
+        aria-expanded={true}
+        aria-label="Collapse the weather advisory"
+        title="Collapse the weather advisory"
+        data-testid="advisory-collapse"
+        className={`pointer-events-auto shrink-0 w-11 h-12 flex items-center justify-center rounded-xl border border-border-color ${GLASS} text-text-secondary cursor-pointer hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus`}
+      >
+        <Minimize2 size={18} strokeWidth={1.75} aria-hidden />
+      </button>
+    </div>
   );
 }
 
