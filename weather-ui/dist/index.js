@@ -7,7 +7,7 @@ export { nwsSentenceCase, isShouting, windUnitKt } from './nwsText';
   when no warning is in force; see the component's header for the non-answer
   states it still states quietly.
 */
-export { WarningsBanner, warningLevel, sortWarnings, sentenceCase, formatCheckAge } from './WarningsBanner';
+export { WarningsBanner, warningLevel, sortWarnings, sentenceCase, formatCheckAge, advisoryKey, isAdvisoryCollapsed, hasNewAdvisory, parseAdvisoryCollapse, localStorageCollapseStore, } from './WarningsBanner';
 export * from './weatherUtils';
 export { WIND_BANDS, windBandRgb, windBandColor, windScaleGradient, windBandEdges } from './windScale';
 /*

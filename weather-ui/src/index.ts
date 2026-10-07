@@ -13,8 +13,27 @@ export type { NwsSentenceCaseOptions } from './nwsText';
   when no warning is in force; see the component's header for the non-answer
   states it still states quietly.
 */
-export { WarningsBanner, warningLevel, sortWarnings, sentenceCase, formatCheckAge } from './WarningsBanner';
-export type { WarningsBannerProps, BannerWarning, WarningLevel, WarningsNotice } from './WarningsBanner';
+export {
+  WarningsBanner,
+  warningLevel,
+  sortWarnings,
+  sentenceCase,
+  formatCheckAge,
+  advisoryKey,
+  isAdvisoryCollapsed,
+  hasNewAdvisory,
+  parseAdvisoryCollapse,
+  localStorageCollapseStore,
+} from './WarningsBanner';
+export type {
+  WarningsBannerProps,
+  BannerWarning,
+  WarningLevel,
+  WarningsNotice,
+  AdvisoryCollapseSnapshot,
+  AdvisoryCollapseStore,
+  CollapseStorageLike,
+} from './WarningsBanner';
 
 export * from './weatherUtils';
 
