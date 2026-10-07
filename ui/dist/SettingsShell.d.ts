@@ -28,7 +28,7 @@ export interface SettingsSectionProps {
  * description, then rows.
  *
  * Scope dots are drawn only where a value actually departs from its default.
- * The dialog's header carries the legend for all of them.
+ * Each dot explains itself in its tooltip.
  */
 export declare function SettingsSection({ title, description, children, className, hideTitle }: SettingsSectionProps): React.JSX.Element;
 /**
@@ -128,9 +128,11 @@ export interface SettingsShellProps {
      */
     summary?: React.ReactNode;
     /**
-     * Explain the scope dot once, in the header: "● Set on this device.
-     * Everything else comes from your account, this boat or a default." Drawn
-     * before `summary` when both are set.
+     * @deprecated No longer draws anything. It used to put an explanation of the
+     * scope dot under the title ("● Set on this device. Everything else comes from
+     * your account, this boat or a default."), which Craig removed fleet-wide on
+     * 2026-10-07 as not needed; each dot keeps its own tooltip. Still accepted so
+     * HarborSentinel and OceanSentinel, which pass it, keep compiling.
      */
     scopeLegend?: boolean;
     /**
@@ -154,4 +156,4 @@ export interface SettingsShellProps {
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel, saving, saveDisabled, size, about, summary, scopeLegend, sources, title, }: SettingsShellProps): React.JSX.Element;
+export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel, saving, saveDisabled, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;

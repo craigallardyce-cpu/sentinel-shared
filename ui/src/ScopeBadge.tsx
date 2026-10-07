@@ -35,8 +35,7 @@ export type SettingSource = 'account' | 'vessel' | 'host' | 'device' | 'default'
  * colour on row after row read as something to press. The layer's name
  * is still in the element as visually hidden text (`sr-only`), so a screen
  * reader announces it and a caller can still find the badge by its text, and
- * it is in the tooltip. The dialog explains the dot once, in its header
- * (SettingsShell's `scopeLegend`).
+ * it is in the tooltip, which is the only explanation the dot gets.
  */
 export interface ScopeBadgeProps {
   source: SettingSource;

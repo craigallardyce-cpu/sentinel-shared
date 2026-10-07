@@ -24,7 +24,7 @@ const ROW_DIVIDER = 'border-b border-bg-highest last:border-b-0';
  * description, then rows.
  *
  * Scope dots are drawn only where a value actually departs from its default.
- * The dialog's header carries the legend for all of them.
+ * Each dot explains itself in its tooltip.
  */
 export function SettingsSection({ title, description, children, className, hideTitle = false }) {
     return (_jsxs("section", { className: cn('flex flex-col', className), "aria-label": hideTitle && typeof title === 'string' ? title : undefined, children: [(!hideTitle || description) && (_jsxs("header", { className: "pb-1", children: [!hideTitle && _jsx("h3", { className: "font-sans text-[13px] font-semibold leading-[18px] text-text-muted", children: title }), description && _jsx("p", { className: cn('text-[13px] text-text-muted', !hideTitle && 'mt-1'), children: description })] })), _jsx("div", { className: "flex flex-col", children: children })] }));
@@ -44,7 +44,7 @@ export function SettingsRow({ label, description, source, action, children, clas
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel = 'Save and apply', saving = false, saveDisabled = false, size = 'lg', about, summary, scopeLegend = false, sources, title = 'Settings', }) {
+export function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel = 'Save and apply', saving = false, saveDisabled = false, size = 'lg', about, summary, sources, title = 'Settings', }) {
     const showDisplay = onNightModeChange || onDayBrightnessChange || onNightBrightnessChange || onKeepAwakeChange;
     const shownVersion = updater?.state.currentVersion || version;
     /* In tabbed mode the strip names each tab, so the section under it does not
@@ -80,14 +80,13 @@ export function SettingsShell({ open, onClose, appName, appIcon, version, nightM
         : [];
     const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
     const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id ?? '';
-    const description = scopeLegend || summary ? (_jsxs(_Fragment, { children: [scopeLegend && (_jsxs("span", { className: "block", children: [_jsx("span", { "aria-hidden": true, children: _jsx(ScopeBadge, { source: "device", className: "mr-1.5" }) }), "Set on this device. Everything else comes from your account, this boat or a default."] })), summary && _jsx("span", { className: cn('block', scopeLegend && 'mt-1'), children: summary })] })) : undefined;
     /* Save and apply is the primary action, on the right. Anything else the app
        puts in the footer sits on the left, away from it. */
     const footerContent = onSave ? (_jsxs(_Fragment, { children: [footer && _jsx("div", { className: "mr-auto flex flex-wrap items-center gap-2", children: footer }), _jsx(Button, { variant: "primary", onClick: onSave, loading: saving, disabled: saveDisabled, children: saveLabel })] })) : footer;
     if (tabs) {
-        return (_jsx(Modal, { open: open, onClose: onClose, title: title, description: description, size: size, footer: footerContent, subheader: _jsx(Tabs, { items: allTabs.map((t) => ({ id: t.id, label: t.label })), value: activeId, onChange: setActiveTab, "aria-label": "Settings sections", idPrefix: "settings", className: "px-4" }), children: allTabs.map((t) => (_jsx("div", { id: `settings-panel-${t.id}`, role: "tabpanel", "aria-labelledby": `settings-tab-${t.id}`, hidden: t.id !== activeId, children: t.content }, t.id))) }));
+        return (_jsx(Modal, { open: open, onClose: onClose, title: title, description: summary, size: size, footer: footerContent, subheader: _jsx(Tabs, { items: allTabs.map((t) => ({ id: t.id, label: t.label })), value: activeId, onChange: setActiveTab, "aria-label": "Settings sections", idPrefix: "settings", className: "px-4" }), children: allTabs.map((t) => (_jsx("div", { id: `settings-panel-${t.id}`, role: "tabpanel", "aria-labelledby": `settings-tab-${t.id}`, hidden: t.id !== activeId, children: t.content }, t.id))) }));
     }
-    return (_jsxs(Modal, { open: open, onClose: onClose, title: title, description: description, size: size, footer: footerContent, bodyClassName: "space-y-8", children: [displaySection, children, updatesSection, aboutSection] }));
+    return (_jsxs(Modal, { open: open, onClose: onClose, title: title, description: summary, size: size, footer: footerContent, bodyClassName: "space-y-8", children: [displaySection, children, updatesSection, aboutSection] }));
 }
 /** A label with its scope dot, as the brightness pair draws it. */
 function BrightnessLabel({ children, source }) {
