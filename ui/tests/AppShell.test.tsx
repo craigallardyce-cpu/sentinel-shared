@@ -24,15 +24,42 @@ function shell(props: Partial<React.ComponentProps<typeof AppShell>> = {}) {
 const phoneBar = () => screen.getAllByRole('navigation', { name: 'Primary' })[1];
 
 describe('AppShell phone tab bar', () => {
-  it('shows the full label, never shortLabel, and does not truncate it', () => {
+  it('shows the full label, never shortLabel', () => {
     shell();
     const bar = phoneBar();
     for (const label of ['Maintenance', 'Punch list', 'Ships documents']) {
-      const el = within(bar).getByText(label);
-      expect(el.className).not.toContain('truncate');
+      expect(within(bar).getByText(label)).toBeTruthy();
     }
     for (const short of ['Maint', 'Punch', 'Docs']) {
       expect(within(bar).queryByText(short)).toBeNull();
+    }
+  });
+
+  it('keeps each label on one line, ellipsised only as the last resort', () => {
+    // Android scales text by the system font size but not box widths; at 130%
+    // the labels wrapped. One line, and an ellipsis if it still cannot fit.
+    shell();
+    for (const el of phoneBar().querySelectorAll('[data-slot="tab-label"]')) {
+      const cls = el.className.split(/\s+/);
+      for (const c of ['whitespace-nowrap', 'overflow-hidden', 'text-ellipsis', 'max-w-full']) expect(cls).toContain(c);
+      for (const c of ['break-words', 'hyphens-auto']) expect(cls).not.toContain(c);
+    }
+  });
+
+  it("keeps the full label as the tab's accessible name", () => {
+    shell();
+    for (const name of ['Maintenance', 'Punch list', 'Ships documents']) {
+      expect(within(phoneBar()).getByRole('button', { name })).toBeTruthy();
+    }
+  });
+
+  it('gives each tab 2px side padding, not 4px, so the label has the room', () => {
+    shell();
+    for (const button of within(phoneBar()).getAllByRole('button')) {
+      const cls = button.className.split(/\s+/);
+      expect(cls).toContain('px-0.5');
+      expect(cls).not.toContain('px-1');
+      expect(cls).toContain('min-w-0');
     }
   });
 
@@ -100,10 +127,12 @@ describe('AppShell rail', () => {
     }
   });
 
-  it('leaves the phone tab bar wrapping as it did', () => {
-    shell();
+  it('wraps rail labels, while the phone tab bar keeps its labels on one line', () => {
+    const { container } = shell();
+    const railLabel = container.querySelector('aside [data-slot="rail-label"]')!;
+    expect(railLabel.className).not.toContain('whitespace-nowrap');
     const label = within(phoneBar()).getByText('Maintenance');
-    expect(label.className).toContain('break-words');
+    expect(label.className).toContain('whitespace-nowrap');
   });
 
   it('no longer renders the version footer, though the prop is still accepted', () => {

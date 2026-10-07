@@ -26,7 +26,11 @@ export type ShellSurface = 'chart' | 'page';
 
 export interface ShellTab {
   id: string;
-  /** Shown in full in the rail and the phone tab bar; never truncated or abbreviated. */
+  /**
+   * Shown in full in the rail and the phone tab bar; never abbreviated. The tab
+   * bar keeps it on one line and ellipsises it only when large system text
+   * leaves no room, with the full text still the accessible name.
+   */
   label: React.ReactNode;
   /**
    * @deprecated Ignored. The phone tab bar shows the full `label` (fit-and-finish
@@ -441,7 +445,7 @@ export function AppShell({
                   onClick={() => onTabChange(tab.id)}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'relative flex flex-col items-center justify-center gap-1 min-w-0 px-1 cursor-pointer text-center',
+                    'relative flex flex-col items-center justify-center gap-1 min-w-0 px-0.5 cursor-pointer text-center',
                     'font-sans font-semibold leading-tight',
                     // VesselKeeper's approved exception is 12px below `sm` only, and
                     // the drift checker recognises it only written this way.
@@ -452,9 +456,16 @@ export function AppShell({
                   )}
                 >
                   <span className="shrink-0 [&>svg]:w-5 [&>svg]:h-5" aria-hidden>{tab.icon}</span>
-                  {/* Always the full label: never `shortLabel`, never truncated.
-                      A label longer than its column wraps to a second line. */}
-                  <span className="max-w-full break-words hyphens-auto" data-slot="tab-label">{tab.label}</span>
+                  {/* Always the full label, never `shortLabel`, on one line.
+                      Android scales text with the system font size but keeps
+                      box widths, so at 130% a label used to wrap ("Mainten /
+                      ance"). It no longer wraps: the tab's side padding is 2px,
+                      and a label that still does not fit (VesselKeeper's
+                      "Maintenance" at large text) ends in an ellipsis as the
+                      last resort. The whole label stays in the DOM, so it is
+                      still the button's accessible name. At 100% text every
+                      fleet label fits from 360px up. */}
+                  <span className="max-w-full whitespace-nowrap overflow-hidden text-ellipsis" data-slot="tab-label">{tab.label}</span>
                   {tab.badge !== undefined && tab.badge > 0 && (
                     <span className="absolute top-1 right-1 bg-warning text-bg-app text-[13px] font-mono font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center">
                       {tab.badge}

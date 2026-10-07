@@ -22,7 +22,11 @@ declare global {
 export type ShellSurface = 'chart' | 'page';
 export interface ShellTab {
     id: string;
-    /** Shown in full in the rail and the phone tab bar; never truncated or abbreviated. */
+    /**
+     * Shown in full in the rail and the phone tab bar; never abbreviated. The tab
+     * bar keeps it on one line and ellipsises it only when large system text
+     * leaves no room, with the full text still the accessible name.
+     */
     label: React.ReactNode;
     /**
      * @deprecated Ignored. The phone tab bar shows the full `label` (fit-and-finish
