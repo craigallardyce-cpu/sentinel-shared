@@ -50,7 +50,7 @@ export interface SettingsSectionProps {
  * description, then rows.
  *
  * Scope dots are drawn only where a value actually departs from its default.
- * The dialog's header carries the legend for all of them.
+ * Each dot explains itself in its tooltip.
  */
 export function SettingsSection({ title, description, children, className, hideTitle = false }: SettingsSectionProps) {
   return (
@@ -188,9 +188,11 @@ export interface SettingsShellProps {
    */
   summary?: React.ReactNode;
   /**
-   * Explain the scope dot once, in the header: "● Set on this device.
-   * Everything else comes from your account, this boat or a default." Drawn
-   * before `summary` when both are set.
+   * @deprecated No longer draws anything. It used to put an explanation of the
+   * scope dot under the title ("● Set on this device. Everything else comes from
+   * your account, this boat or a default."), which Craig removed fleet-wide on
+   * 2026-10-07 as not needed; each dot keeps its own tooltip. Still accepted so
+   * HarborSentinel and OceanSentinel, which pass it, keep compiling.
    */
   scopeLegend?: boolean;
   /**
@@ -241,7 +243,6 @@ export function SettingsShell({
   size = 'lg',
   about,
   summary,
-  scopeLegend = false,
   sources,
   title = 'Settings',
 }: SettingsShellProps) {
@@ -297,21 +298,6 @@ export function SettingsShell({
   const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
   const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id ?? '';
 
-  const description =
-    scopeLegend || summary ? (
-      <>
-        {scopeLegend && (
-          <span className="block">
-            <span aria-hidden>
-              <ScopeBadge source="device" className="mr-1.5" />
-            </span>
-            Set on this device. Everything else comes from your account, this boat or a default.
-          </span>
-        )}
-        {summary && <span className={cn('block', scopeLegend && 'mt-1')}>{summary}</span>}
-      </>
-    ) : undefined;
-
   /* Save and apply is the primary action, on the right. Anything else the app
      puts in the footer sits on the left, away from it. */
   const footerContent = onSave ? (
@@ -329,7 +315,7 @@ export function SettingsShell({
         open={open}
         onClose={onClose}
         title={title}
-        description={description}
+        description={summary}
         size={size}
         footer={footerContent}
         subheader={
@@ -365,7 +351,7 @@ export function SettingsShell({
       open={open}
       onClose={onClose}
       title={title}
-      description={description}
+      description={summary}
       size={size}
       footer={footerContent}
       bodyClassName="space-y-8"
