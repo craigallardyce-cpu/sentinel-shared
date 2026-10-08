@@ -543,12 +543,17 @@ export const FLEET_SETTINGS = createRegistry({
       they are reused rather than duplicated -- a wind limit and a depth limit are
       a wind limit and a depth limit, whichever screen sets them.
   
-      Scoped `vessel` then `device`. A depth alarm is a fact about the boat, so a
-      phone in the cockpit should inherit what the nav station set; a device
-      override is there for whoever wants a tighter one on their own screen. The UI
-      writes at `device`, because a navigator setting an alarm offshore has no
-      connection to write a vessel layer with, and an alarm that silently failed to
-      save would be worse than one that only covers this screen.
+      Alarm limits belong to the boat (decided 2026-10-08): every device aboard
+      alarms at the same limits, so Set writes at `vessel`. A navigator setting a
+      limit offshore usually has no connection, so the app attaches its vessel layer
+      with `queueWhenOffline` for these keys: the limit applies on that device at
+      once, and reaches the boat's other devices when it next has signal.
+  
+      `device` stays declared for one reason: limits saved per device before
+      2.13.3 must keep resolving until the app has carried them up to the vessel,
+      which it can only do once it has read the vessel layer from the server -- on
+      a boat that can be weeks after the upgrade. Dropping the scope would switch
+      those alarms off in the meantime. No screen writes these at `device` any more.
   
       Every threshold below is stored in a CANONICAL unit -- feet, knots, degrees
       -- never in whatever the display happens to be showing. `alarm_depth_min` was
@@ -620,7 +625,7 @@ export const FLEET_SETTINGS = createRegistry({
   
       Not HarborSentinel's `alarms.ais_proximity.*`, which is a range ring around
       a boat at anchor, evaluated on the host. This one is about relative motion
-      underway, so it takes the vessel-then-device scoping of the other
+      underway, so it belongs to the boat like the other
       chartplotter alarms.
     */
     'alarms.ais_cpa_nm': defineSetting({

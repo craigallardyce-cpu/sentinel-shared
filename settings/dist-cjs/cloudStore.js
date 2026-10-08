@@ -86,6 +86,56 @@ function createCloudStore(options) {
         }
     }
     readCache();
+    const pending = new Map();
+    const pendingKey = `${cacheKey}.pending`;
+    const queues = (key) => options.queueWhenOffline?.(key) === true;
+    function readPending() {
+        if (!options.queueWhenOffline || !options.cache)
+            return;
+        try {
+            const raw = options.cache.storage.getItem(pendingKey);
+            if (!raw)
+                return;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object')
+                return;
+            for (const [key, entry] of Object.entries(parsed)) {
+                if (!entry || typeof entry !== 'object')
+                    continue;
+                const { raw: value, target } = entry;
+                if (value !== null && typeof value !== 'string')
+                    continue;
+                pending.set(key, { raw: value, target: typeof target === 'string' ? target : undefined });
+            }
+        }
+        catch {
+            /* Corrupt: nothing pending. The cache still holds the values themselves. */
+        }
+    }
+    function writePending() {
+        if (!options.queueWhenOffline || !options.cache)
+            return;
+        try {
+            if (pending.size === 0)
+                options.cache.storage.removeItem(pendingKey);
+            else
+                options.cache.storage.setItem(pendingKey, JSON.stringify(Object.fromEntries(pending)));
+        }
+        catch {
+            /* Out of quota or storage disabled; still pending for this session. */
+        }
+    }
+    /** Lay the pending writes over the cache, so this device keeps applying them. */
+    function applyPending() {
+        for (const [key, entry] of pending) {
+            if (entry.raw === null)
+                cache.delete(key);
+            else
+                cache.set(key, entry.raw);
+        }
+    }
+    readPending();
+    applyPending();
     /*
       Resolved once, then reused. A null answer is not cached: it means the client
       could not reach the server or is not signed in yet, and the next call should
@@ -121,10 +171,63 @@ function createCloudStore(options) {
             return String(value);
         return undefined;
     }
+    /** One key to the server: a value, or null to clear it. Throws on any failure. */
+    async function send(at, key, raw) {
+        const column = columns[key];
+        if (column) {
+            const { error } = await client
+                .from(identity.table)
+                .update({ [column]: raw, updated_at: new Date().toISOString() })
+                .match(at.identityMatch ?? identity.match);
+            if (error)
+                throw new Error(error.message ?? String(error));
+        }
+        else {
+            const change = raw === null ? { remove_keys: [key] } : { patch: { [key]: raw } };
+            const { error } = await client.rpc(merge.fn, { ...(at.mergeArgs ?? merge.args), ...change });
+            if (error)
+                throw new Error(error.message ?? String(error));
+        }
+    }
+    const targetOf = (at) => (at ? JSON.stringify(at.match) : undefined);
+    /**
+     * Send what is pending, in the order it was queued. Stops at the first
+     * failure: offline, the rest would fail too, and they are all still held.
+     */
+    async function flushPending(at) {
+        const here = targetOf(at);
+        for (const [key, entry] of [...pending]) {
+            if (entry.target !== undefined && entry.target !== here) {
+                pending.delete(key); // Meant for another row; never deliver it here.
+                continue;
+            }
+            try {
+                await send(at, key, entry.raw);
+            }
+            catch {
+                break;
+            }
+            // Only if nothing newer was queued for this key while the request was out.
+            if (pending.get(key) === entry)
+                pending.delete(key);
+        }
+        writePending();
+    }
+    /** A failed write to a queued key: keep it, hold it for the server, carry on. */
+    function holdForLater(key, raw, at) {
+        pending.delete(key); // Re-inserted last, so the queue stays in write order.
+        pending.set(key, { raw, target: targetOf(at) });
+        writePending();
+        writeCache();
+        notify();
+    }
     const store = {
         scope,
         get loaded() {
             return loaded;
+        },
+        pendingKeys() {
+            return [...pending.keys()];
         },
         async load() {
             try {
@@ -133,6 +236,9 @@ function createCloudStore(options) {
                 const at = await addressing();
                 if (!at)
                     return false; // Not resolvable yet; the cache still answers.
+                // Writes made offline go first, so the read below already reflects them.
+                if (pending.size > 0)
+                    await flushPending(at);
                 const blobRow = await client.from(table).select(jsonColumn).match(at.match).maybeSingle();
                 if (!blobRow.error && blobRow.data) {
                     found = true;
@@ -174,6 +280,8 @@ function createCloudStore(options) {
                     cache.clear();
                     for (const [key, value] of next)
                         cache.set(key, value);
+                    // Anything still unsent is this device's latest word on that key.
+                    applyPending();
                     writeCache();
                 }
                 loaded = true;
@@ -196,28 +304,22 @@ function createCloudStore(options) {
         async set(key, raw) {
             const previous = cache.get(key);
             cache.set(key, raw);
+            let at = null;
             try {
-                const at = await addressing();
+                at = await addressing();
                 if (!at)
                     throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not saved.`);
-                const column = columns[key];
-                if (column) {
-                    const { error } = await client
-                        .from(identity.table)
-                        .update({ [column]: raw, updated_at: new Date().toISOString() })
-                        .match(at.identityMatch ?? identity.match);
-                    if (error)
-                        throw new Error(error.message ?? String(error));
-                }
-                else {
-                    const { error } = await client.rpc(merge.fn, { ...(at.mergeArgs ?? merge.args), patch: { [key]: raw } });
-                    if (error)
-                        throw new Error(error.message ?? String(error));
-                }
+                await send(at, key, raw);
+                if (pending.delete(key))
+                    writePending();
                 writeCache();
                 notify();
             }
             catch (cause) {
+                if (queues(key)) {
+                    holdForLater(key, raw, at);
+                    return;
+                }
                 // Roll back, or the screen would show a value nothing is holding.
                 if (previous === undefined)
                     cache.delete(key);
@@ -231,28 +333,22 @@ function createCloudStore(options) {
         async clear(key) {
             const previous = cache.get(key);
             cache.delete(key);
+            let at = null;
             try {
-                const at = await addressing();
+                at = await addressing();
                 if (!at)
                     throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not cleared.`);
-                const column = columns[key];
-                if (column) {
-                    const { error } = await client
-                        .from(identity.table)
-                        .update({ [column]: null, updated_at: new Date().toISOString() })
-                        .match(at.identityMatch ?? identity.match);
-                    if (error)
-                        throw new Error(error.message ?? String(error));
-                }
-                else {
-                    const { error } = await client.rpc(merge.fn, { ...(at.mergeArgs ?? merge.args), remove_keys: [key] });
-                    if (error)
-                        throw new Error(error.message ?? String(error));
-                }
+                await send(at, key, null);
+                if (pending.delete(key))
+                    writePending();
                 writeCache();
                 notify();
             }
             catch (cause) {
+                if (queues(key)) {
+                    holdForLater(key, null, at);
+                    return;
+                }
                 if (previous !== undefined)
                     cache.set(key, previous);
                 writeCache();
@@ -295,7 +391,7 @@ function createAccountStore(client, userId, cacheStorage) {
  * it on `vessels` published the gateway address to every signed-in user of the
  * project, which is not a hypothetical: it was verified before being moved.
  */
-function createVesselStore(client, resolve, cacheStorage) {
+function createVesselStore(client, resolve, cacheStorage, extra = {}) {
     return createCloudStore({
         scope: 'vessel',
         client,
@@ -341,5 +437,6 @@ function createVesselStore(client, resolve, cacheStorage) {
                 legacyKeys: ['sentinel.cloud.vessel.sentinel'],
             }
             : undefined,
+        queueWhenOffline: extra.queueWhenOffline,
     });
 }
