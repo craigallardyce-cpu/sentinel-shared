@@ -450,6 +450,17 @@ Call it **after** every cloud layer has finished `load()`: a setting reads as
 unconfigured while its layer is still loading, and migrating into that would push
 a stale local value over what the account already holds.
 
+**A setting whose meaning changes declares an `upgrade`.** It rewrites a value an
+earlier build stored before `type.parse` sees it, on every read and in
+`migrateLegacyKeys`, and never on a write, which stays strict. The first is the
+apparent wind angle alarm (`alarms.awa_min_deg` / `alarms.awa_max_deg`): it is
+an angle off the bow, 0–180 inclusive, the same on either side, so a "safe
+range" of 30–150 holds on both tacks. Values stored by the older 0–360 editor
+(port = 360 − angle) or the earlier −180–180 declaration fold onto it
+(`upgradeAngleOffBow`): 181–359 becomes 360 − v, a negative its absolute value,
+and anything else outside 0–180 reads as unset. The store is rewritten the next
+time the limit is saved.
+
 **Status: consumed by nobody.** It is deliberately unwired, so it can be reviewed
 and built against without any app changing behaviour.
 

@@ -145,7 +145,7 @@ export function createSettingsStore<D extends Record<string, AnySpec>>(
       return undefined;
     }
     if (raw === undefined || raw === null) return undefined;
-    return definition.type.parse(raw);
+    return definition.type.parse(definition.upgrade ? definition.upgrade(raw) : raw);
   }
 
   function resolveKey(key: string): Resolved<unknown> {

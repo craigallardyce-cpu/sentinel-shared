@@ -5,4 +5,4 @@ export { createSettingsStore } from './store.js';
 export { createAccountStore, createCloudStore, createVesselStore, } from './cloudStore.js';
 export { browserStorage, createDeviceStore, createHostStore, DEFAULT_PREFIX } from './deviceStore.js';
 export { DEFAULT_MARKER_KEY, migrateLegacyKeys } from './migrate.js';
-export { FLEET_SETTINGS } from './fleet.js';
+export { FLEET_SETTINGS, upgradeAngleOffBow } from './fleet.js';

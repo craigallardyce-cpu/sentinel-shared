@@ -34,6 +34,14 @@
  * description of the hull (boat facts and polar), which its own CLAUDE.md keeps
  * on the device on purpose.
  */
+/**
+ * The apparent wind angle alarm's limits used to be stored two other ways:
+ * OceanSentinel's editor took 0-360 clockwise from the bow (port = 360 - angle),
+ * and the registry declared -180-180. Both fold onto the angle off the bow:
+ * 181-359 becomes 360 - v, a negative becomes its absolute value. Anything
+ * else is passed through for `numberType` to accept (0-180) or refuse (unset).
+ */
+export declare function upgradeAngleOffBow(raw: unknown): unknown;
 export declare const FLEET_SETTINGS: import("./registry.js").Registry<{
     'vessel.name': import("./types.js").SettingSpec<string>;
     'vessel.mmsi': import("./types.js").SettingSpec<string>;

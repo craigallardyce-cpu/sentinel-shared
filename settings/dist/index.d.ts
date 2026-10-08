@@ -12,5 +12,5 @@ export { browserStorage, createDeviceStore, createHostStore, DEFAULT_PREFIX } fr
 export type { DeviceStore, DeviceStoreOptions, HostStoreOptions, StorageLike } from './deviceStore.js';
 export { DEFAULT_MARKER_KEY, migrateLegacyKeys } from './migrate.js';
 export type { MigrateLegacyOptions, MigrateLegacyResult } from './migrate.js';
-export { FLEET_SETTINGS } from './fleet.js';
+export { FLEET_SETTINGS, upgradeAngleOffBow } from './fleet.js';
 export type { FleetSettings } from './fleet.js';

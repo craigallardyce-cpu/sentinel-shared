@@ -118,7 +118,7 @@ async function migrateLegacyKeys(options) {
         }
         if (raw === null)
             continue;
-        const parsed = definition.type.parse(raw);
+        const parsed = definition.type.parse(definition.upgrade ? definition.upgrade(raw) : raw);
         if (parsed === undefined) {
             result.unparseable.push(definition.key);
             continue;

@@ -460,3 +460,70 @@ describe('the removed AI model choice', () => {
     expect(FLEET_SETTINGS.has('ai.model')).toBe(false);
   });
 });
+
+describe('the apparent wind angle alarm', () => {
+  const keys = ['alarms.awa_min_deg', 'alarms.awa_max_deg'] as const;
+
+  it('is an angle off the bow, 0 to 180 inclusive, either side', () => {
+    for (const key of keys) {
+      const { type, description } = FLEET_SETTINGS.get(key);
+      expect(type.parse('0'), key).toBe(0);
+      expect(type.parse('180'), key).toBe(180);
+      expect(type.parse('45'), key).toBe(45);
+      expect(type.parse('-1'), key).toBeUndefined();
+      expect(type.parse('181'), key).toBeUndefined();
+      expect(type.parse('270'), key).toBeUndefined();
+      expect(description, key).toMatch(/off the bow/);
+    }
+  });
+
+  it('refuses a write outside 0-180 rather than folding it', async () => {
+    const settings = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [createDeviceStore(memoryStorage(), { app: 'ocean', registry: FLEET_SETTINGS })],
+    });
+    await expect(settings.set('alarms.awa_min_deg', 270, { scope: 'device' })).rejects.toThrow();
+    await expect(settings.set('alarms.awa_min_deg', -30, { scope: 'device' })).rejects.toThrow();
+    await settings.set('alarms.awa_min_deg', 0, { scope: 'device' });
+    expect(settings.get('alarms.awa_min_deg')).toBe(0);
+  });
+
+  it.each([
+    ['30', 30],
+    ['0', 0],
+    ['180', 180],
+    ['181', 179],
+    ['210', 150],
+    ['330', 30],
+    ['359', 1],
+    ['359.5', 0.5],
+    ['-45', 45],
+    ['-180', 180],
+    ['-0.5', 0.5],
+    ['360', undefined],
+    ['400', undefined],
+    ['-181', undefined],
+    ['abc', undefined],
+    ['', undefined],
+  ])('reads a stored %s as %s', (stored, expected) => {
+    const storage = memoryStorage({ alarm_awa_min: stored, 'sentinel.alarms.awa_max_deg': stored });
+    const settings = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [createDeviceStore(storage, { app: 'ocean', registry: FLEET_SETTINGS })],
+    });
+    expect(settings.get('alarms.awa_min_deg')).toBe(expected);
+    expect(settings.get('alarms.awa_max_deg')).toBe(expected);
+  });
+
+  it('rewrites the folded value when it is next saved', async () => {
+    const storage = memoryStorage({ 'sentinel.alarms.awa_max_deg': '300' });
+    const settings = createSettingsStore({
+      registry: FLEET_SETTINGS,
+      stores: [createDeviceStore(storage, { app: 'ocean', registry: FLEET_SETTINGS })],
+    });
+    const value = settings.get('alarms.awa_max_deg');
+    expect(value).toBe(60);
+    await settings.set('alarms.awa_max_deg', value as number, { scope: 'device' });
+    expect(storage.map.get('sentinel.alarms.awa_max_deg')).toBe('60');
+  });
+});
