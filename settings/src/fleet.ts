@@ -50,6 +50,25 @@ import {
   urlType,
 } from './valueTypes.js';
 
+const AWA_DESCRIPTION =
+  'An angle off the bow, 0 to 180 degrees, on either side: 45 means 45 degrees off the bow to port or to starboard.';
+
+/**
+ * The apparent wind angle alarm's limits used to be stored two other ways:
+ * OceanSentinel's editor took 0-360 clockwise from the bow (port = 360 - angle),
+ * and the registry declared -180-180. Both fold onto the angle off the bow:
+ * 181-359 becomes 360 - v, a negative becomes its absolute value. Anything
+ * else is passed through for `numberType` to accept (0-180) or refuse (unset).
+ */
+export function upgradeAngleOffBow(raw: unknown): unknown {
+  const value =
+    typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw.trim()) : NaN;
+  if (!Number.isFinite(value)) return raw;
+  if (value < 0 && value >= -180) return -value;
+  if (value > 180 && value < 360) return 360 - value;
+  return value;
+}
+
 export const FLEET_SETTINGS = createRegistry({
   // ---------------------------------------------------------------------------
   // Vessel — facts about the boat, and the clearest case for having no defaults:
@@ -717,17 +736,21 @@ export const FLEET_SETTINGS = createRegistry({
 
   'alarms.awa_min_deg': defineSetting({
     scopes: ['vessel', 'device'],
-    type: numberType({ min: -180, max: 180 }),
+    type: numberType({ min: 0, max: 180 }),
     label: 'Apparent wind angle alarm, from',
+    description: AWA_DESCRIPTION,
     placeholder: 'degrees',
+    upgrade: upgradeAngleOffBow,
     legacy: { ocean: ['alarm_awa_min'] },
   }),
 
   'alarms.awa_max_deg': defineSetting({
     scopes: ['vessel', 'device'],
-    type: numberType({ min: -180, max: 180 }),
+    type: numberType({ min: 0, max: 180 }),
     label: 'Apparent wind angle alarm, to',
+    description: AWA_DESCRIPTION,
     placeholder: 'degrees',
+    upgrade: upgradeAngleOffBow,
     legacy: { ocean: ['alarm_awa_max'] },
   }),
 

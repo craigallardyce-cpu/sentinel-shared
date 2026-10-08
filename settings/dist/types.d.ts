@@ -134,6 +134,21 @@ export interface SettingSpec<T> {
      * copying them forward and dropping them — is a later, explicit step.
      */
     readonly legacy?: Readonly<Partial<Record<AppName, readonly string[]>>>;
+    /**
+     * Rewrites a value an earlier build stored into the form this declaration
+     * accepts, before `type.parse` sees it.
+     *
+     * For a setting whose meaning was redrawn rather than renamed: the apparent
+     * wind angle alarm was stored as 0-360 (port = 360 - angle) or -180-180, and
+     * is now an angle off the bow, 0-180, either side. Applied to every value read
+     * from a store and to every legacy key `migrateLegacyKeys` carries forward;
+     * never to a write, which stays strict, so a screen still refuses a value
+     * outside the declared range rather than quietly bending it. What it returns
+     * still has to parse; anything that does not is unset, like any other value
+     * this build cannot read. The stored value is rewritten in place the next
+     * time somebody saves the setting.
+     */
+    readonly upgrade?: (raw: unknown) => unknown;
 }
 /** A setting once the registry has attached its key. */
 export interface SettingDefinition<T> extends SettingSpec<T> {

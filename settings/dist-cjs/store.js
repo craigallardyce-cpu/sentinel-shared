@@ -78,7 +78,7 @@ function createSettingsStore(options) {
         }
         if (raw === undefined || raw === null)
             return undefined;
-        return definition.type.parse(raw);
+        return definition.type.parse(definition.upgrade ? definition.upgrade(raw) : raw);
     }
     function resolveKey(key) {
         const definition = registry.get(key);

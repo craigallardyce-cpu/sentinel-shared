@@ -117,6 +117,25 @@ describe('migrating OceanSentinel', () => {
     expect(settings.get('units.metric')).toBe(true);
   });
 
+  it('folds a 0-360 apparent wind angle onto the angle off the bow as it carries it', async () => {
+    const { store, settings, account, vessel, merged } = build({ alarm_awa_min: '330', alarm_awa_max: '-150' });
+    await Promise.all([account.load(), vessel.load()]);
+
+    const result = await migrateLegacyKeys({
+      registry: FLEET_SETTINGS,
+      settings,
+      app: 'ocean',
+      storage: store,
+      writableScopes: ['vessel', 'device'],
+    });
+
+    expect(result.migrated).toEqual({ 'alarms.awa_min_deg': 'device', 'alarms.awa_max_deg': 'device' });
+    expect(result.unparseable).toEqual([]);
+    expect(merged).toEqual([]);
+    expect(store.getItem('sentinel.alarms.awa_min_deg')).toBe('30');
+    expect(store.getItem('sentinel.alarms.awa_max_deg')).toBe('150');
+  });
+
   it('ignores a retired setting an older app version left behind', async () => {
     // ai.model (legacy gemini_model) was retired when the server took over
     // choosing the AI model. Installs still hold it in the account blob and in
