@@ -610,7 +610,7 @@ export const FLEET_SETTINGS = createRegistry({
     2.13.3 must keep resolving until the app has carried them up to the vessel,
     which it can only do once it has read the vessel layer from the server -- on
     a boat that can be weeks after the upgrade. Dropping the scope would switch
-    those alarms off in the meantime. Nothing writes these at `device` any more.
+    those alarms off in the meantime. No screen writes these at `device` any more.
 
     Every threshold below is stored in a CANONICAL unit -- feet, knots, degrees
     -- never in whatever the display happens to be showing. `alarm_depth_min` was
