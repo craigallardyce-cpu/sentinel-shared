@@ -440,6 +440,14 @@ Cloud layers keep an offline cache of their last successful load, so they answer
 on the first render and keep answering with no network — which on a boat is most
 of the time. A live read replaces it wholesale, so it is never authoritative.
 
+A write the server refuses is rolled back and rejects, except for the keys a
+cloud store is given in `queueWhenOffline` (`createVesselStore`'s fourth
+argument). Those are kept and applied at once, persisted as pending, and sent at
+the start of the next `load()` that can reach the row, where they win over
+anything saved meanwhile. OceanSentinel queues its alarm limits this way: they
+belong to the boat, and are usually set with no signal. `pendingKeys()` lists
+what has not reached the server yet.
+
 **Adopting loses nothing, but not for free.** A setting declares where it used to
 live per app, and the device store reads those names when the namespaced key is
 absent. That only covers settings declared at `device` scope, because a store is

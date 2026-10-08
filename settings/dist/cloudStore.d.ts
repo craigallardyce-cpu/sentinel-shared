@@ -118,6 +118,36 @@ export interface CloudStoreOptions {
          */
         legacyKeys?: readonly string[];
     };
+    /**
+     * Keys whose writes are kept when the server cannot take them, and sent later.
+     *
+     * Every other key keeps the default rule -- a write the server refused is
+     * rolled back and the promise rejects, so a settings screen can say it did not
+     * save. That rule is wrong for an alarm limit. Alarm limits belong to the boat,
+     * so they are written to the vessel layer, and a navigator setting one offshore
+     * usually has no connection to write it with. Rolling it back would leave the
+     * alarm on its old limit, or off, after somebody pressed Set; an alarm has to
+     * take its new limit at once and never wait for the network.
+     *
+     * So for a key this answers true for, a failed `set` or `clear` keeps the new
+     * value in the cache (where `get` reads it, and the offline cache persists it),
+     * records the write as pending, resolves rather than rejects, and is sent again
+     * at the start of the next `load()` that can address the row. A pending write
+     * survives a restart. While it is pending, a `load()` that reads the row lays
+     * it back over what the server said, so the value this device set keeps
+     * applying here until it has reached the server.
+     *
+     * Conflict rule, stated because it is a choice: when the pending write is
+     * finally sent, it wins over whatever another device saved in the meantime.
+     * It is the later of the two decisions this device knows about, and the
+     * alternative -- silently discarding a limit a navigator set -- is worse.
+     *
+     * Every failure is treated alike, offline or refused: the client cannot tell a
+     * dropped connection from much else, and holding the limit somebody set is the
+     * safe direction for an alarm. A write the server keeps refusing simply stays
+     * pending, and keeps applying on this device.
+     */
+    queueWhenOffline?: (key: string) => boolean;
 }
 /** Where a lazily-addressed store's row lives, once something has resolved it. */
 export interface Addressing {
@@ -138,6 +168,11 @@ export interface CloudStore extends ScopeStore {
     load(): Promise<boolean>;
     /** False until `load()` has completed once. */
     readonly loaded: boolean;
+    /**
+     * Keys whose last write has not reached the server yet (see
+     * `queueWhenOffline`). Always empty for a store that queues nothing.
+     */
+    pendingKeys(): string[];
 }
 export declare function createCloudStore(options: CloudStoreOptions): CloudStore;
 /**
@@ -161,4 +196,4 @@ export declare function createAccountStore(client: SupabaseLike, userId: string,
 export declare function createVesselStore(client: SupabaseLike, resolve: () => Promise<{
     id: string;
     vesselSlug: string;
-} | null>, cacheStorage?: StorageLike): CloudStore;
+} | null>, cacheStorage?: StorageLike, extra?: Pick<CloudStoreOptions, 'queueWhenOffline'>): CloudStore;
