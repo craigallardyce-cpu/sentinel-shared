@@ -17,6 +17,14 @@
  * crashes fatally in these environments. disableHardwareAcceleration() forces
  * software rendering; the command-line switches avoid spawning a GPU subprocess
  * that would crash. No-op on non-Linux platforms.
+ *
+ * Applied on every Linux machine, not only ChromeOS, and that includes
+ * `no-sandbox`. The 2026-10-08 runtime review asked whether to gate it on
+ * Crostini; the answer was no, untested. An AppImage cannot ship Chromium's
+ * setuid sandbox helper, and distributions that restrict unprivileged user
+ * namespaces (Ubuntu 23.10 onwards, by default) take away the other sandbox
+ * too, so dropping the switch risks the app not starting at all. Change this
+ * only with a launch test of the packaged AppImage on such a distribution.
  */
 function applyLinuxGpuCompatibility(app) {
   if (process.platform !== 'linux') return;
