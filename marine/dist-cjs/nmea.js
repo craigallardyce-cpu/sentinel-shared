@@ -349,13 +349,9 @@ function parseNmeaSentence(sentence) {
         const lr = parts[2] ? parts[2].toUpperCase() : '';
         const speedKnotsStr = parts[3];
         const speedMsStr = parts[5];
-        let angle = null;
-        if (angleStr && lr) {
-            const parsed = parseFloat(angleStr);
-            if (!isNaN(parsed)) {
-                angle = lr === 'L' ? (360 - parsed) % 360 : parsed;
-            }
-        }
+        // Only whether the angle is usable matters: `awa` is built from the raw
+        // field, so a computed 0-360 bearing here would go unused.
+        const hasAngle = Boolean(angleStr && lr) && !isNaN(parseFloat(angleStr));
         let speed = null;
         if (speedKnotsStr) {
             const parsed = parseFloat(speedKnotsStr);
@@ -367,7 +363,7 @@ function parseNmeaSentence(sentence) {
             if (!isNaN(parsed))
                 speed = parsed * 1.94384;
         }
-        if (angle !== null && speed !== null) {
+        if (hasAngle && speed !== null) {
             // VWR is a bow-relative angle too, so like MWV it sets no direction.
             return {
                 awa: angleStr + (lr === 'L' ? '° PORT' : '° STBD'),

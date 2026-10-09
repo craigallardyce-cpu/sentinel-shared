@@ -27,10 +27,27 @@ Projects/
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (48/40 px, a lit `active` state, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField`, `InstrumentCell`, `Tabs`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `AppShell`, `SettingsShell`, `openExternal(url)` and `openUserGuide(section)` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
-| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
+| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes when its `Host` header is local too, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
 | `@mariner-sentinel/charts` | Nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. **Note the scope** — this is the one package published as `@mariner-sentinel/*` rather than `@sentinel/*`, which is a real trap: tooling that matched packages by the `@sentinel/` prefix skipped it entirely until 2026-09-08. See `charts/README.md` | see `charts/README.md` |
+
+
+## `@sentinel/marine`: the NMEA pool's options
+
+`createNmeaPool(options)` takes the socket factories (`createConnection`, and
+`createUdpSocket` for UDP) plus these timings and seams, all optional:
+
+| Option | Default | What it does |
+|---|---|---|
+| `watchdogSeconds` | `8` | Silence for this long on a connected feed destroys the socket and reconnects (OpenCPN's `N_DOG_TIMEOUT`). |
+| `reconnectDelayMs` | `5000` | Fixed delay between reconnection attempts. The pool never gives up while clients or a watch are attached. |
+| `connectTimeoutMs` | `10000` | How long a TCP dial may take. Past it the socket is destroyed and the ordinary close/reconnect path takes over, rather than the OS connect timeout (minutes) during which the watchdog, which starts on connect, is not running. UDP ignores it. |
+| `onSentence`, `shouldKeepAlive`, `normalizeHost`, `log` | none | The per-app seams documented in `marine/src/nmeaPool.ts`. |
+
+A partial line longer than 8 KiB (NMEA 0183 caps a sentence at 82 characters)
+is discarded with a warning rather than held, so a source that never sends a
+line ending cannot grow the buffer without bound.
 
 
 ## `@sentinel/theme`
