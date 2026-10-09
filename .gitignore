@@ -2,3 +2,7 @@ node_modules
 
 # Local Supabase MCP config (points at production project; token via env var)
 .mcp.json
+
+# Local Claude Code state: preview launch config (machine paths) and session worktrees
+.claude/launch.json
+.claude/worktrees/
