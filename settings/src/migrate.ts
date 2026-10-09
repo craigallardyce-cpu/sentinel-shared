@@ -185,10 +185,9 @@ export async function migrateLegacyKeys<D extends Record<string, AnySpec>>(
       result.migrated[definition.key] = target;
     } catch {
       /*
-        Offline, signed out, or refused. Deliberately not marked done below only
-        if nothing at all succeeded would be wrong too -- so the marker is
-        written regardless and the old keys are left in place for a release, which
-        is what makes a second attempt possible rather than necessary.
+        Offline, signed out, or refused. The marker is still written below, so
+        this value is not retried until the marker is bumped; the legacy key
+        stays in storage for that.
       */
     }
   }

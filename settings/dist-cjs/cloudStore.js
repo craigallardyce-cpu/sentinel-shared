@@ -34,11 +34,11 @@ function createCloudStore(options) {
     const listeners = new Set();
     let loaded = false;
     /*
-      One entry per layer per row. The row identity is in the key so that signing
-      in as somebody else, or switching boats, cannot read back the previous
-      account's settings from a stale cache.
-    */
-    /*
+      One entry per layer. A store built with a fixed `match` (the account layer)
+      keys by that row identity, so a store built for another account reads a
+      different entry. A lazily-addressed store keys by scope alone and gives no
+      such protection: callers must `reset()` it when the account changes.
+  
       Keyed on what is known at construction.
   
       A lazily-addressed store has no identity yet -- that is the point -- so its
@@ -137,24 +137,46 @@ function createCloudStore(options) {
     readPending();
     applyPending();
     /*
+      Bumped by `reset()`. Anything that awaited across a reset compares the value
+      it started with and, if it moved, leaves this store's state alone: the
+      answer belongs to the previous account.
+    */
+    let generation = 0;
+    /*
       Resolved once, then reused. A null answer is not cached: it means the client
       could not reach the server or is not signed in yet, and the next call should
       try again rather than leave the layer dead for the session.
+  
+      Calls that arrive while a resolution is in flight share it, so a load and a
+      write fired together at startup make one request, not two.
     */
     let addressed = null;
+    let resolving = null;
     async function addressing() {
-        if (!options.address) {
+        const address = options.address;
+        if (!address) {
             return { match, identityMatch: identity.match, mergeArgs: merge.args };
         }
         if (addressed)
             return addressed;
-        try {
-            addressed = await options.address();
+        if (!resolving) {
+            const started = generation;
+            resolving = (async () => {
+                let answer;
+                try {
+                    answer = await address();
+                }
+                catch {
+                    answer = null;
+                }
+                if (started === generation) {
+                    addressed = answer;
+                    resolving = null;
+                }
+                return answer;
+            })();
         }
-        catch {
-            addressed = null;
-        }
-        return addressed;
+        return resolving;
     }
     const notify = () => {
         for (const listener of listeners)
@@ -196,7 +218,10 @@ function createCloudStore(options) {
      */
     async function flushPending(at) {
         const here = targetOf(at);
+        const started = generation;
         for (const [key, entry] of [...pending]) {
+            if (started !== generation)
+                return; // Reset dropped the queue; stop sending it.
             if (entry.target !== undefined && entry.target !== here) {
                 pending.delete(key); // Meant for another row; never deliver it here.
                 continue;
@@ -230,17 +255,29 @@ function createCloudStore(options) {
             return [...pending.keys()];
         },
         async load() {
+            const started = generation;
             try {
                 const next = new Map();
                 let found = false;
                 const at = await addressing();
+                if (started !== generation)
+                    return false; // Reset while resolving: not ours.
                 if (!at)
                     return false; // Not resolvable yet; the cache still answers.
                 // Writes made offline go first, so the read below already reflects them.
                 if (pending.size > 0)
                     await flushPending(at);
+                /*
+                  Either read failing fails the whole load. Replacing the cache from half
+                  an answer would wipe every key the other half holds -- the gateway
+                  address and alarm limits live in the blob, the boat's name and MMSI in
+                  the identity row -- and `writeCache()` would persist the loss. A row
+                  that is simply absent (null data, no error) is still an answer.
+                */
                 const blobRow = await client.from(table).select(jsonColumn).match(at.match).maybeSingle();
-                if (!blobRow.error && blobRow.data) {
+                if (blobRow.error)
+                    throw new Error(blobRow.error.message ?? String(blobRow.error));
+                if (blobRow.data) {
                     found = true;
                     const blob = blobRow.data[jsonColumn];
                     if (blob && typeof blob === 'object') {
@@ -257,7 +294,9 @@ function createCloudStore(options) {
                         .select(identityColumns)
                         .match(at.identityMatch ?? identity.match)
                         .maybeSingle();
-                    if (!identityRow.error && identityRow.data) {
+                    if (identityRow.error)
+                        throw new Error(identityRow.error.message ?? String(identityRow.error));
+                    if (identityRow.data) {
                         found = true;
                         // Columns win over a same-named blob entry: they are what the rest of
                         // the fleet already reads, so a blob must never shadow one.
@@ -276,6 +315,8 @@ function createCloudStore(options) {
                   internet working rather than silently losing every account and vessel
                   setting it had.
                 */
+                if (started !== generation)
+                    return false; // Reset mid-read: the previous account's answer.
                 if (found) {
                     cache.clear();
                     for (const [key, value] of next)
@@ -294,7 +335,8 @@ function createCloudStore(options) {
                   the same thing to a resolution chain — this layer has nothing — and none
                   of them should stop the app opening.
                 */
-                loaded = true;
+                if (started === generation)
+                    loaded = true;
                 return false;
             }
         },
@@ -302,6 +344,7 @@ function createCloudStore(options) {
             return cache.get(key);
         },
         async set(key, raw) {
+            const started = generation;
             const previous = cache.get(key);
             cache.set(key, raw);
             let at = null;
@@ -310,12 +353,16 @@ function createCloudStore(options) {
                 if (!at)
                     throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not saved.`);
                 await send(at, key, raw);
+                if (started !== generation)
+                    return; // Reset meanwhile: leave the new account's state alone.
                 if (pending.delete(key))
                     writePending();
                 writeCache();
                 notify();
             }
             catch (cause) {
+                if (started !== generation)
+                    throw cause; // Reset dropped it: neither queued nor rolled back.
                 if (queues(key)) {
                     holdForLater(key, raw, at);
                     return;
@@ -331,6 +378,7 @@ function createCloudStore(options) {
             }
         },
         async clear(key) {
+            const started = generation;
             const previous = cache.get(key);
             cache.delete(key);
             let at = null;
@@ -339,12 +387,16 @@ function createCloudStore(options) {
                 if (!at)
                     throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not cleared.`);
                 await send(at, key, null);
+                if (started !== generation)
+                    return;
                 if (pending.delete(key))
                     writePending();
                 writeCache();
                 notify();
             }
             catch (cause) {
+                if (started !== generation)
+                    throw cause;
                 if (queues(key)) {
                     holdForLater(key, null, at);
                     return;
@@ -355,6 +407,30 @@ function createCloudStore(options) {
                 notify();
                 throw cause;
             }
+        },
+        reset() {
+            generation += 1;
+            addressed = null;
+            resolving = null;
+            loaded = false;
+            cache.clear();
+            pending.clear();
+            if (options.cache) {
+                /*
+                  The legacy names go too: they are read whenever the current key is
+                  absent, so leaving one would hand the previous account's boat back on
+                  the next boot with no network.
+                */
+                for (const name of [cacheKey, pendingKey, ...(options.cache.legacyKeys ?? [])]) {
+                    try {
+                        options.cache.storage.removeItem(name);
+                    }
+                    catch {
+                        /* Storage disabled; the in-memory state is already cleared. */
+                    }
+                }
+            }
+            notify();
         },
         subscribe(listener) {
             listeners.add(listener);
