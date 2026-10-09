@@ -22,7 +22,7 @@ Projects/
 | `@sentinel/marine` | Navigation math (haversine, bearing, XTE, CPA/TCPA), NMEA 0183 parsing (including how old a position fix may be and still count as live), AIS/AIVDM decoding, the NMEA gateway rule and the gateway connection pool over either TCP or UDP | all three |
 | `@sentinel/weather` | Weather providers: NWS coverage routing and the Open-Meteo global model used everywhere NWS has no data | OceanSentinel (server + client) |
 | `@sentinel/weather-ui` | NWS alert/forecast React components and helpers, the chart's wind and radar layers, and `WarningsBanner`, the marine-warnings banner over the chart | OceanSentinel, HarborSentinel |
-| `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC, Linux GPU compat, window diagnostics, tray, power-save blocker, the hidden title bar, busy-port handling for an in-process backend, and the Windows installer include `installer.nsh`) | all three |
+| `@sentinel/electron-shell` | Electron main-process building blocks (auto-updater IPC and the periodic update check, Linux GPU compat, window diagnostics, the window-open/navigation guards, tray, power-save blocker, the hidden title bar, busy-port handling and the localhost ownership probe, and the Windows installer include `installer.nsh`) | all three |
 | `@sentinel/auth-ui` | Supabase-backed `AuthScreen` and the `Stepper` input control | all three |
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (48/40 px, a lit `active` state, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField`, `InstrumentCell`, `Tabs`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `AppShell`, `SettingsShell`, `openExternal(url)` and `openUserGuide(section)` | all three |
@@ -539,6 +539,56 @@ on the same port, and then that program, not ours, answers the window's
 The apps need no code of their own for this. A server that is not an
 `http.Server` cannot answer the token, so it is reported `'listening'`
 unverified, as before.
+
+### `probeBackendToken` and `localPageUrl`: the same check for a forked backend
+
+VesselKeeper forks its backend, so it cannot use the registry above. It mints a
+token per start, passes it to the fork, and asks
+`probeBackendToken({ port, token, attempts?, intervalMs?, timeoutMs? })` whether
+`localhost` answers with it. The promise resolves (never rejects) to
+`{ verdict: 'ours' | 'foreign' | 'unverified', at, results, description }`, using
+the same addresses, `Host` header, timings (4 × 250 ms, 1 s timeout) and
+classification as the in-process check; no token gives `'unverified'`.
+`localPageUrl({ title, heading?, paragraphs?, retry? })` builds a `data:` page
+in the same frame as `backendPageUrl`'s, in the app's own words (text is escaped
+for you); `retry: true` adds the Try again button on `window.appBackend.retry()`.
+
+## `@sentinel/electron-shell`: window guards and the periodic update check
+
+Every window carries the preload bridge, so only the app's own page may hold it.
+`installWindowGuards(window, { appUrl, externalSchemes?, shell? })` compares the
+**parsed origin** with `appUrl`'s, not a string prefix (which let
+`http://localhost:3000@evil.example/` through):
+
+- `window.open` / `target=_blank`: the app origin gets a child window; anything
+  else is denied and, if its scheme is in `externalSchemes` (default `http:`,
+  `https:`, `mailto:`), opened in the system browser. `file:`, `ms-settings:`
+  and every other scheme are denied and logged by scheme only.
+- `will-navigate`: the main window cannot leave the app origin; the target is
+  opened externally under the same rule. `data:` navigations proceed (the
+  busy-port pages are `data:`, and are loaded with `loadURL`, which does not emit
+  `will-navigate` anyway).
+
+`setupAutoUpdater({ ..., periodicCheckMs })` replaces the hourly
+`setInterval` each app kept inside `createWindow()`. Set, in a packaged app, it
+runs `checkForUpdatesAndNotify()` once when the app is ready and then every
+`periodicCheckMs`, on one process-wide timer (setting up again does not add a
+second), and catches each failure as a warning. The renderer still hears of a
+failure: electron-updater emits `error` before rejecting, which is forwarded as
+an `updater:event`. Left out, nothing is checked in the background, as before.
+
+Adopting both in `main.cjs`:
+
+```js
+const { installWindowGuards, setupAutoUpdater } = require('@sentinel/electron-shell');
+
+// top level, once (delete the setInterval block in createWindow):
+setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow: () => mainWindow,
+  periodicCheckMs: 60 * 60 * 1000 });
+
+// in createWindow(), in place of the app's own setWindowOpenHandler:
+installWindowGuards(mainWindow, { appUrl: APP_URL });
+```
 
 ## `@sentinel/electron-shell`: the Windows installer include
 

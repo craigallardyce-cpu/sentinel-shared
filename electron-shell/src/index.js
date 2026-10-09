@@ -7,7 +7,9 @@
  * into one function. What's extracted here is genuinely identical across all
  * three apps: the auto-updater IPC wiring, the Linux GPU compatibility guard,
  * the single-instance lock, window diagnostic logging, the DevTools toggle,
- * tray creation, the power save blocker, and the hidden title bar.
+ * tray creation, the power save blocker, and the hidden title bar. The
+ * window-open and navigation guards (windowGuards.js) are shared too: each
+ * app's own external-link handler had the same origin bug.
  */
 
 /**
@@ -89,9 +91,6 @@ function attachWindowDiagnostics(window) {
   window.webContents.on('render-process-gone', (event, details) => {
     console.error('[Window] render-process-gone:', details.reason, details.exitCode);
   });
-  window.webContents.on('crashed', () => {
-    console.error('[Window] Renderer CRASHED');
-  });
   window.webContents.on('console-message', (event, level, message) => {
     if (level >= 2) console.log('[Renderer Console]', message);
   });
@@ -159,8 +158,15 @@ function createAppTray({ iconPath, tooltip, onShow, onQuit }) {
  * @param {() => import('electron').BrowserWindow | null} opts.getMainWindow
  * @param {() => void} [opts.onBeforeInstall] - called just before quitAndInstall
  *   (e.g. VesselKeeper stops its forked backend process here first).
+ * @param {number} [opts.periodicCheckMs] - when set, and the app is packaged,
+ *   checks for updates in the background once now and then every this many ms
+ *   (checkForUpdatesAndNotify), on one process-wide timer. Left out, nothing is
+ *   checked in the background, as before.
  */
-function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeInstall }) {
+function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeInstall, periodicCheckMs }) {
+  if (periodicCheckMs !== undefined && !(Number.isFinite(periodicCheckMs) && periodicCheckMs > 0)) {
+    throw new TypeError('setupAutoUpdater: periodicCheckMs must be a positive number of milliseconds');
+  }
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -239,6 +245,42 @@ function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeIn
     updateDownloaded = true;
     sendUpdaterEvent('downloaded', { version });
   });
+
+  if (periodicCheckMs !== undefined && app.isPackaged) {
+    startPeriodicUpdateCheck({ app, autoUpdater, periodicCheckMs });
+  }
+}
+
+// One timer for the whole process, however many times setupAutoUpdater runs.
+// The apps used to start an interval inside createWindow(), so every re-created
+// window (macOS 'activate') added another.
+let periodicUpdateTimer = null;
+
+/**
+ * One background check now (once the app is ready: electron-updater's network
+ * requests need it), then one every `periodicCheckMs`. A failed check is
+ * caught and logged as a warning here; the renderer already hears of it,
+ * because electron-updater emits 'error' before rejecting, and the 'error'
+ * listener above forwards that as an updater:event.
+ */
+function startPeriodicUpdateCheck({ app, autoUpdater, periodicCheckMs }) {
+  _stopPeriodicUpdateCheck();
+  const whenReady = typeof app.whenReady === 'function' ? () => app.whenReady() : () => Promise.resolve();
+  const check = () => {
+    whenReady()
+      .then(() => autoUpdater.checkForUpdatesAndNotify())
+      .catch((err) => {
+        console.warn('[Updater] Background update check failed:', err?.message || err);
+      });
+  };
+  check();
+  periodicUpdateTimer = setInterval(check, periodicCheckMs);
+  if (typeof periodicUpdateTimer.unref === 'function') periodicUpdateTimer.unref();
+}
+
+function _stopPeriodicUpdateCheck() {
+  if (periodicUpdateTimer) clearInterval(periodicUpdateTimer);
+  periodicUpdateTimer = null;
 }
 
 /**
@@ -319,8 +361,11 @@ const {
   backendWindowContent,
   backendPageUrl,
   portInUseMessage,
-  createBackendWindowGuard
+  createBackendWindowGuard,
+  probeBackendToken,
+  localPageUrl
 } = require('./backendPort.js');
+const { installWindowGuards } = require('./windowGuards.js');
 
 module.exports = {
   applyLinuxGpuCompatibility,
@@ -339,5 +384,9 @@ module.exports = {
   backendWindowContent,
   backendPageUrl,
   portInUseMessage,
-  createBackendWindowGuard
+  createBackendWindowGuard,
+  probeBackendToken,
+  localPageUrl,
+  installWindowGuards,
+  _stopPeriodicUpdateCheck
 };
