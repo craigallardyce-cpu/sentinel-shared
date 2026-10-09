@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { applyLinuxGpuCompatibility, claimSingleInstanceLock, setupAutoUpdater } from '../src/index.js';
+import {
+  applyLinuxGpuCompatibility,
+  attachWindowDiagnostics,
+  claimSingleInstanceLock,
+  setupAutoUpdater,
+  _stopPeriodicUpdateCheck
+} from '../src/index.js';
 
 function fakeApp() {
   return {
@@ -141,6 +147,97 @@ describe('setupAutoUpdater', () => {
       message: 'Updates are checked by the installed app, not a development run.'
     });
     expect(sentEvents.some((e) => e.type === 'error')).toBe(false);
+  });
+});
+
+describe('setupAutoUpdater periodicCheckMs', () => {
+  const HOUR = 60 * 60 * 1000;
+  let app, autoUpdater, warn, unhandled;
+  const onUnhandled = (reason) => unhandled.push(reason);
+
+  // A fresh ipcMain per call: the real one throws on a second handle() for a
+  // channel, but these tests call setupAutoUpdater twice on purpose.
+  const setup = (opts) => setupAutoUpdater({
+    app, autoUpdater, ipcMain: fakeIpcMain(), getMainWindow: () => null, ...opts
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    app = { ...fakeApp(), isPackaged: true, whenReady: vi.fn(() => Promise.resolve()) };
+    autoUpdater = { ...fakeAutoUpdater(), checkForUpdatesAndNotify: vi.fn(async () => null) };
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    unhandled = [];
+    process.on('unhandledRejection', onUnhandled);
+  });
+
+  afterEach(() => {
+    _stopPeriodicUpdateCheck();
+    process.off('unhandledRejection', onUnhandled);
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('starts no timer and checks nothing when left out (as before)', async () => {
+    setup();
+    await vi.advanceTimersByTimeAsync(3 * HOUR);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+  });
+
+  it('starts no timer in an unpackaged run', async () => {
+    app.isPackaged = false;
+    setup({ periodicCheckMs: HOUR });
+    await vi.advanceTimersByTimeAsync(3 * HOUR);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+  });
+
+  it('checks once when the app is ready, then once per period', async () => {
+    setup({ periodicCheckMs: HOUR });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(app.whenReady).toHaveBeenCalled();
+    expect(autoUpdater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2 * HOUR);
+    expect(autoUpdater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps one timer however many times it is set up', async () => {
+    setup({ periodicCheckMs: HOUR });
+    setup({ periodicCheckMs: HOUR });
+    setup({ periodicCheckMs: HOUR });
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(0);
+    const initial = autoUpdater.checkForUpdatesAndNotify.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(autoUpdater.checkForUpdatesAndNotify.mock.calls.length - initial).toBe(1);
+  });
+
+  it('catches a rejecting check: a warning, never an unhandled rejection', async () => {
+    autoUpdater.checkForUpdatesAndNotify = vi.fn(async () => { throw new Error('net::ERR_INTERNET_DISCONNECTED'); });
+    setup({ periodicCheckMs: HOUR });
+    await vi.advanceTimersByTimeAsync(2 * HOUR);
+    // Let Node deliver any unhandled-rejection event before looking.
+    vi.useRealTimers();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(autoUpdater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(3);
+    expect(unhandled).toEqual([]);
+    expect(warn).toHaveBeenCalledWith('[Updater] Background update check failed:', 'net::ERR_INTERNET_DISCONNECTED');
+  });
+
+  it('refuses a period that is not a positive number', () => {
+    for (const periodicCheckMs of [0, -1, NaN, Infinity, '3600000']) {
+      expect(() => setup({ periodicCheckMs })).toThrow(TypeError);
+    }
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('attachWindowDiagnostics', () => {
+  it('listens for render-process-gone and not the removed crashed event', () => {
+    const events = [];
+    attachWindowDiagnostics({ webContents: { on: (event) => events.push(event) } });
+    expect(events).toContain('render-process-gone');
+    expect(events).not.toContain('crashed');
   });
 });
 

@@ -332,8 +332,7 @@ function probeAddress(address, port, token, timeoutMs) {
 }
 
 /** One round over every localhost address: verdict 'ours'|'foreign'|'error'. */
-async function probeLocalhostOnce(port, timeoutMs) {
-  const token = backendIdToken();
+async function probeLocalhostOnce(port, timeoutMs, token = backendIdToken()) {
   const addresses = await localhostAddresses();
   const results = await Promise.all(addresses.map((a) => probeAddress(a, port, token, timeoutMs)));
   const foreign = results.find((r) => r.outcome === 'foreign');
@@ -345,6 +344,53 @@ async function probeLocalhostOnce(port, timeoutMs) {
 
 function describeProbe(results) {
   return results.map((r) => `${r.address} ${r.outcome}${r.detail ? ` (${r.detail})` : ''}`).join(', ');
+}
+
+/**
+ * The ownership check on its own, for a backend that does NOT share Electron's
+ * process (VesselKeeper forks its backend, so it cannot use trackBackendListen's
+ * registry). The caller mints `token`, gives it to its server, and that server
+ * answers GET BACKEND_ID_PATH with it to loopback callers; this asks every
+ * address the window's "localhost" can reach until there is a verdict, with the
+ * same addresses, Host header, timings and classification as the in-process
+ * check above.
+ *
+ *   'ours'       -- every address that answered returned `token`.
+ *   'foreign'    -- some address answered with anything else; `at` names it.
+ *   'unverified' -- no verdict after `attempts` rounds (timeouts, dropped
+ *                   connections, or nothing answering at all), or no token.
+ *
+ * Never rejects.
+ *
+ * @param {object} opts
+ * @param {number} opts.port
+ * @param {string} opts.token
+ * @param {number} [opts.attempts=4]
+ * @param {number} [opts.intervalMs=250]
+ * @param {number} [opts.timeoutMs=1000]
+ * @returns {Promise<{ verdict: 'ours'|'foreign'|'unverified', at: string|undefined,
+ *   results: Array<{ address: string, outcome: 'ours'|'foreign'|'absent'|'error', detail?: string }>,
+ *   description: string }>}
+ */
+async function probeBackendToken({ port, token, attempts, intervalMs, timeoutMs } = {}) {
+  // No token means nothing can be proved either way, so the app URL stays withheld,
+  // rather than an empty body from a healthy server counting as "ours".
+  if (!token) return { verdict: 'unverified', at: undefined, results: [], description: 'no token for this start' };
+  const timing = {
+    attempts: attempts || DEFAULT_VERIFY.attempts,
+    intervalMs: intervalMs === undefined ? DEFAULT_VERIFY.intervalMs : intervalMs,
+    timeoutMs: timeoutMs || DEFAULT_VERIFY.timeoutMs
+  };
+  let results = [];
+  for (let attempt = 1; attempt <= timing.attempts; attempt += 1) {
+    if (attempt > 1) await new Promise((r) => setTimeout(r, timing.intervalMs));
+    const round = await probeLocalhostOnce(port, timing.timeoutMs, token);
+    results = round.results;
+    if (round.verdict === 'ours' || round.verdict === 'foreign') {
+      return { verdict: round.verdict, at: round.at, results, description: describeProbe(results) };
+    }
+  }
+  return { verdict: 'unverified', at: undefined, results, description: describeProbe(results) };
 }
 
 /**
@@ -507,6 +553,36 @@ const RETRY_SCRIPT =
   "if(!window.appBackend||!window.appBackend.retry)return;" +
   "b.disabled=true;b.textContent='Trying…';window.appBackend.retry();});";
 
+/**
+ * A data: URL for a local page of the app's own wording, in the same frame as
+ * backendPageUrl's pages (CSP that loads nothing, the theme's day colours). All
+ * text is escaped here; pass plain strings. Pure.
+ *
+ *   localPageUrl({ title: 'VesselKeeper', paragraphs: ['Starting VesselKeeper…'] })
+ *   localPageUrl({ title: "VesselKeeper couldn't start", heading: "VesselKeeper couldn't start",
+ *                  paragraphs: [PORT_IN_USE_MESSAGE], retry: true })
+ *
+ * `retry` adds the Try again button, which calls window.appBackend.retry() (the
+ * 'backend:retry' channel), exactly as the port-in-use page does. Without it, the
+ * last paragraph has no bottom margin, as on the Starting page.
+ *
+ * @param {object} opts
+ * @param {string} opts.title
+ * @param {string} [opts.heading]
+ * @param {string[]} [opts.paragraphs]
+ * @param {boolean} [opts.retry]
+ */
+function localPageUrl({ title, heading, paragraphs = [], retry = false }) {
+  const last = paragraphs.length - 1;
+  const body =
+    (heading ? `<h1>${escapeHtml(heading)}</h1>` : '') +
+    paragraphs
+      .map((line, i) => (!retry && i === last ? `<p style="margin:0">${escapeHtml(line)}</p>` : `<p>${escapeHtml(line)}</p>`))
+      .join('') +
+    (retry ? '<button id="retry" type="button">Try again</button>' : '');
+  return toDataUrl(page(title, body, retry ? RETRY_SCRIPT : ''));
+}
+
 /** What the user reads when the port is taken. Plain words, for boat owners. */
 function portInUseMessage({ appName, port }) {
   return [
@@ -635,6 +711,8 @@ module.exports = {
   backendPageUrl,
   portInUseMessage,
   createBackendWindowGuard,
+  probeBackendToken,
+  localPageUrl,
   BACKEND_ID_PATH,
   isBackendIdProbe,
   _resetBackendListenRegistry

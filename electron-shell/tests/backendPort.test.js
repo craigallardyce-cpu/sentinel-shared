@@ -12,6 +12,8 @@ import {
   backendPageUrl,
   portInUseMessage,
   createBackendWindowGuard,
+  probeBackendToken,
+  localPageUrl,
   BACKEND_ID_PATH,
   isBackendIdProbe,
   _resetBackendListenRegistry
@@ -65,7 +67,7 @@ describe('index exports', () => {
   it('re-exports the backend-port API from the package root', () => {
     for (const name of ['trackBackendListen', 'getBackendListenState', 'onBackendListenState',
       'retryBackendListen', 'backendWindowContent', 'backendPageUrl', 'portInUseMessage',
-      'createBackendWindowGuard']) {
+      'createBackendWindowGuard', 'probeBackendToken', 'localPageUrl']) {
       expect(typeof shell[name]).toBe('function');
     }
   });
@@ -618,5 +620,83 @@ describe('the ownership route', () => {
     const first = server.emit;
     trackBackendListen(server, { port: 5871, verify: FAST });
     expect(server.emit).toBe(first);
+  });
+});
+
+describe("probeBackendToken (a backend outside Electron's process)", () => {
+  const quick = { attempts: 2, intervalMs: 10, timeoutMs: 500 };
+
+  function tokenServer(answer) {
+    const server = http.createServer((req, res) => {
+      const { status, body } = answer(req.url);
+      res.writeHead(status, { 'Content-Type': 'text/plain' });
+      res.end(body);
+    });
+    return bind(server, 0, HOST).then(() => server.address().port);
+  }
+
+  it('ours: the token comes back from localhost', async () => {
+    const port = await tokenServer((url) => (url === BACKEND_ID_PATH ? { status: 200, body: 'tok-1' } : { status: 404, body: '' }));
+    const result = await probeBackendToken({ port, token: 'tok-1', ...quick });
+    expect(result.verdict).toBe('ours');
+    expect(result.description).toContain('127.0.0.1 ours');
+  });
+
+  it('foreign: something else answers, and where is named', async () => {
+    const port = await tokenServer(() => ({ status: 200, body: '<!doctype html>' }));
+    const result = await probeBackendToken({ port, token: 'tok-2', ...quick });
+    expect(result.verdict).toBe('foreign');
+    expect(result.at).toBe('127.0.0.1');
+  });
+
+  it('unverified: nothing answers, after the bounded attempts', async () => {
+    const port = await freePort();
+    const result = await probeBackendToken({ port, token: 'tok-3', ...quick });
+    expect(result.verdict).toBe('unverified');
+    expect(result.at).toBeUndefined();
+  });
+
+  it('unverified without a token, rather than a false accusation', async () => {
+    const result = await probeBackendToken({ port: 1, token: null, ...quick });
+    expect(result).toEqual({ verdict: 'unverified', at: undefined, results: [], description: 'no token for this start' });
+  });
+
+  it('does not use or disturb the in-process token', async () => {
+    // A tracked in-process server answers with the process token, which is not the caller's.
+    const server = http.createServer((req, res) => res.end('app'));
+    trackBackendListen(server, { port: 1, verify: false });
+    const port = await tokenServer(() => ({ status: 200, body: 'not-this' }));
+    expect((await probeBackendToken({ port, token: 'tok-4', ...quick })).verdict).toBe('foreign');
+  });
+});
+
+describe('localPageUrl', () => {
+  it("builds an error page with the app's own words and Try again", () => {
+    const html = decode(localPageUrl({
+      title: "VesselKeeper couldn't start",
+      heading: "VesselKeeper couldn't start",
+      paragraphs: ['Another program <is> using port 3001.'],
+      retry: true
+    }));
+    expect(html).toContain('<title>VesselKeeper couldn&#39;t start</title>');
+    expect(html).toContain('<h1>VesselKeeper couldn&#39;t start</h1>');
+    expect(html).toContain('<p>Another program &lt;is&gt; using port 3001.</p>');
+    expect(html).toContain('<button id="retry" type="button">Try again</button>');
+    expect(html).toContain('window.appBackend.retry()');
+  });
+
+  it("builds a starting page with no button, matching backendPageUrl's", () => {
+    const own = decode(localPageUrl({ title: 'A', paragraphs: ['Starting A…'] }));
+    expect(own).toBe(decode(backendPageUrl('starting', { appName: 'A', port: 1 })));
+    expect(own).not.toContain('id="retry"');
+    expect(own).not.toContain('<script>');
+  });
+
+  it('cannot reach the network', () => {
+    for (const retry of [false, true]) {
+      const html = decode(localPageUrl({ title: 'T', paragraphs: ['x'], retry }));
+      expect(html).toContain("default-src 'none'");
+      expect(html).not.toMatch(/https?:\/\//);
+    }
   });
 });
