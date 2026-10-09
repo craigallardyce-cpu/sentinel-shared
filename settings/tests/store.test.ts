@@ -297,3 +297,45 @@ describe('keysSetAt', () => {
     expect(settings.keysSetAt('account')).toEqual([]);
   });
 });
+
+describe('dispose', () => {
+  it('unsubscribes from every layer and drops its own listeners', () => {
+    const device = memoryStore('device');
+    const host = memoryStore('host');
+    const settings = createSettingsStore({ registry, stores: [device, host] });
+    const listener = vi.fn();
+    settings.subscribe(listener);
+
+    device.set('display.keep_awake', 'true');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    settings.dispose();
+    listener.mockClear();
+    device.set('display.keep_awake', 'false');
+    host.set('nmea.gateway.port', '10110');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('leaves the layers working for whichever store replaces it', () => {
+    const device = memoryStore('device');
+    const old = createSettingsStore({ registry, stores: [device] });
+    const oldListener = vi.fn();
+    old.subscribe(oldListener);
+    old.dispose();
+
+    const replacement = createSettingsStore({ registry, stores: [device] });
+    const listener = vi.fn();
+    replacement.subscribe(listener);
+    device.set('display.keep_awake', 'true');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(oldListener).not.toHaveBeenCalled();
+    expect(replacement.get('display.keep_awake')).toBe(true);
+  });
+
+  it('is safe to call twice', () => {
+    const settings = createSettingsStore({ registry, stores: [memoryStore('device')] });
+    settings.dispose();
+    expect(() => settings.dispose()).not.toThrow();
+  });
+});

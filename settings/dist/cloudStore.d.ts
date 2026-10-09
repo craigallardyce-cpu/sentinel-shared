@@ -173,6 +173,23 @@ export interface CloudStore extends ScopeStore {
      * `queueWhenOffline`). Always empty for a store that queues nothing.
      */
     pendingKeys(): string[];
+    /**
+     * Forget everything this store knows about the account it was serving. Call
+     * when the signed-in account changes.
+     *
+     * A lazily-addressed store (the vessel layer) resolves its row once and keys
+     * its offline cache by scope alone, so without this it would keep addressing,
+     * and answering from the cache of, the previous account's boat. `reset()`
+     * drops the resolved row (and any resolution in flight), empties the cache in
+     * memory and in storage, drops writes still queued for the server, marks the
+     * store not loaded, and notifies subscribers so values re-resolve. The next
+     * `load()`, `set()` or `clear()` resolves the row afresh.
+     *
+     * Work already in flight when this is called is discarded when it lands: a
+     * `load()` started for the previous account does not fill the cache, and a
+     * failed write for it is neither queued nor rolled back.
+     */
+    reset(): void;
 }
 export declare function createCloudStore(options: CloudStoreOptions): CloudStore;
 /**

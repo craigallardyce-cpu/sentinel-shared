@@ -90,6 +90,15 @@ export interface SettingsStore<D extends Record<string, AnySpec>> {
    * is showing them the boat's answers or their own.
    */
   keysSetAt(scope: Scope): string[];
+  /**
+   * Detach from every layer and drop this store's own listeners.
+   *
+   * A settings store subscribes to each layer it is given, so one that is
+   * replaced -- OceanSentinel builds a new one on sign-in -- would otherwise stay
+   * subscribed, and keep notifying its old listeners, for the life of the app.
+   * Call it on the store being replaced. The layers themselves are not touched.
+   */
+  dispose(): void;
 }
 
 const DESKTOP: PlatformContext = { native: false };
@@ -111,7 +120,11 @@ export function createSettingsStore<D extends Record<string, AnySpec>>(
   const notify = () => {
     for (const listener of listeners) listener();
   };
-  for (const store of stores) store.subscribe?.(notify);
+  const detach: Array<() => void> = [];
+  for (const store of stores) {
+    const unsubscribe = store.subscribe?.(notify);
+    if (unsubscribe) detach.push(unsubscribe);
+  }
 
   function storeFor(key: string, scope: Scope): ScopeStore {
     const definition = registry.get(key);
@@ -225,6 +238,11 @@ export function createSettingsStore<D extends Record<string, AnySpec>>(
       const out: Record<string, unknown> = {};
       for (const definition of registry.all()) out[definition.key] = resolveKey(definition.key).value;
       return out;
+    },
+
+    dispose() {
+      for (const unsubscribe of detach.splice(0)) unsubscribe();
+      listeners.clear();
     },
   };
 }

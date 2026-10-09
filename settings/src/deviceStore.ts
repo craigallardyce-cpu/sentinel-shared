@@ -104,7 +104,7 @@ export function createDeviceStore(storage: StorageLike, options: DeviceStoreOpti
       try {
         storage.setItem(namespaced(key), raw);
       } catch {
-        /* Out of quota or storage disabled. The in-memory value still applies for this session. */
+        /* Out of quota or storage disabled. The value is NOT kept: `get` re-reads storage, so this write is lost. */
       }
     },
 
@@ -177,7 +177,7 @@ export function createHostStore(storage: StorageLike, options: HostStoreOptions 
       try {
         storage.setItem(`${prefix}${key}`, raw);
       } catch {
-        /* Read-only or full; the in-memory value still applies for this session. */
+        /* Read-only or full. The value is NOT kept: `get` re-reads storage, so this write is lost. */
       }
     },
 

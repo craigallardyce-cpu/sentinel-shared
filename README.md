@@ -438,7 +438,25 @@ The `host` layer has no store yet; it lands with the NMEA work.
 
 Cloud layers keep an offline cache of their last successful load, so they answer
 on the first render and keep answering with no network — which on a boat is most
-of the time. A live read replaces it wholesale, so it is never authoritative.
+of the time. A live read replaces it wholesale, so it is never authoritative —
+but only a complete one: if either half of the vessel read fails (the
+configuration blob or the identity row), the load fails and the cache is left
+as it was, so a flaky connection cannot wipe the gateway address, alarm limits
+or the boat's name.
+
+**When the signed-in account changes:**
+
+- **Call `reset()` on each cloud store.** The vessel store works out its row
+  once and keys its cache by scope alone, so without it the store keeps
+  addressing, and answering from the cache of, the previous account's boat.
+  `reset()` forgets the resolved row, empties the cache in memory and in storage,
+  drops writes still queued for the server, and notifies, so values re-resolve
+  and the next `load()` addresses the new account. A `load()` or write for the
+  previous account that is still in flight is discarded when it lands.
+- **Call `dispose()` on a settings store you replace.** `createSettingsStore`
+  subscribes to every layer it is given; `dispose()` unsubscribes from each and
+  drops the store's own listeners, so a store rebuilt on sign-in does not leave
+  the old one attached.
 
 A write the server refuses is rolled back and rejects, except for the keys a
 cloud store is given in `queueWhenOffline` (`createVesselStore`'s fourth

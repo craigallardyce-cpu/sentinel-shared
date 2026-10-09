@@ -87,5 +87,14 @@ export interface SettingsStore<D extends Record<string, AnySpec>> {
      * is showing them the boat's answers or their own.
      */
     keysSetAt(scope: Scope): string[];
+    /**
+     * Detach from every layer and drop this store's own listeners.
+     *
+     * A settings store subscribes to each layer it is given, so one that is
+     * replaced -- OceanSentinel builds a new one on sign-in -- would otherwise stay
+     * subscribed, and keep notifying its old listeners, for the life of the app.
+     * Call it on the store being replaced. The layers themselves are not touched.
+     */
+    dispose(): void;
 }
 export declare function createSettingsStore<D extends Record<string, AnySpec>>(options: SettingsStoreOptions<D>): SettingsStore<D>;

@@ -43,8 +43,12 @@ function createSettingsStore(options) {
         for (const listener of listeners)
             listener();
     };
-    for (const store of stores)
-        store.subscribe?.(notify);
+    const detach = [];
+    for (const store of stores) {
+        const unsubscribe = store.subscribe?.(notify);
+        if (unsubscribe)
+            detach.push(unsubscribe);
+    }
     function storeFor(key, scope) {
         const definition = registry.get(key);
         if (!definition.scopes.includes(scope)) {
@@ -145,6 +149,11 @@ function createSettingsStore(options) {
             for (const definition of registry.all())
                 out[definition.key] = resolveKey(definition.key).value;
             return out;
+        },
+        dispose() {
+            for (const unsubscribe of detach.splice(0))
+                unsubscribe();
+            listeners.clear();
         },
     };
 }
