@@ -16,9 +16,13 @@ exports.createLanPairing = createLanPairing;
  *
  * The model:
  *
- *   - Requests from the machine itself (loopback) pass untouched. That is the
- *     Electron shell and the desktop UI it serves, which is already inside the
- *     trust boundary: it can read the token file directly.
+ *   - Requests from the machine itself (loopback) pass untouched, provided
+ *     their Host header names the machine too (`localhost`, `127.0.0.1` or
+ *     `[::1]`, any port). That is the Electron shell and the desktop UI it
+ *     serves, which is already inside the trust boundary: it can read the token
+ *     file directly. The Host check is what stops DNS rebinding: a web page on
+ *     some other site whose name has been re-pointed at 127.0.0.1 arrives over
+ *     loopback, but with that site's name in Host, so it is treated as LAN.
  *   - Anything arriving over the network presents the pairing token, which the
  *     backend mints once and keeps.
  *
@@ -49,6 +53,38 @@ const node_crypto_1 = __importDefault(require("node:crypto"));
 function isLoopbackAddress(address) {
     const addr = String(address || '');
     return addr === '::1' || addr.startsWith('127.') || addr.startsWith('::ffff:127.');
+}
+/**
+ * Whether a Host header names this machine: `localhost`, `127.0.0.1` or
+ * `[::1]`, case-insensitive, with or without a port.
+ *
+ * Absent counts as not local. HTTP/1.1 requires the header, so a request
+ * without one is not the desktop UI, which always sends it.
+ */
+function isLocalHostHeader(value) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (!raw)
+        return false;
+    let name = String(raw).trim().toLowerCase();
+    if (name.startsWith('[')) {
+        const end = name.indexOf(']');
+        if (end === -1 || !/^(:\d*)?$/.test(name.slice(end + 1)))
+            return false;
+        name = name.slice(0, end + 1);
+    }
+    else {
+        const colon = name.indexOf(':');
+        if (colon !== -1) {
+            if (!/^\d*$/.test(name.slice(colon + 1)))
+                return false;
+            name = name.slice(0, colon);
+        }
+    }
+    return name === 'localhost' || name === '127.0.0.1' || name === '[::1]';
+}
+/** Loopback socket and a local Host header: the machine talking to itself. */
+function isLocalRequest(req) {
+    return isLoopbackAddress(req.socket?.remoteAddress) && isLocalHostHeader(req.headers?.host);
 }
 /** Constant-time compare, so a wrong token cannot be found one character at a time. */
 function timingSafeEquals(a, b) {
@@ -98,7 +134,12 @@ function createLanPairing({ tokenFile }) {
             const dir = node_path_1.default.dirname(tokenFile);
             if (!node_fs_1.default.existsSync(dir))
                 node_fs_1.default.mkdirSync(dir, { recursive: true });
-            node_fs_1.default.writeFileSync(tokenFile, JSON.stringify({ token: minted, createdAt: new Date().toISOString() }, null, 2), 'utf8');
+            // Written beside the target and renamed over it, so a crash or a second
+            // process reading mid-write never sees a half-written file (which would
+            // fail to parse and mint a different token, unpairing every device).
+            const tmpFile = `${tokenFile}.${process.pid}.tmp`;
+            node_fs_1.default.writeFileSync(tmpFile, JSON.stringify({ token: minted, createdAt: new Date().toISOString() }, null, 2), 'utf8');
+            node_fs_1.default.renameSync(tmpFile, tokenFile);
         }
         catch (err) {
             console.error('[LAN Auth] Could not persist pairing token (it will rotate on restart):', err?.message ?? err);
@@ -107,7 +148,7 @@ function createLanPairing({ tokenFile }) {
     }
     /** Shared by the Express guard and the WebSocket upgrade handler. */
     function isAuthorizedRequest(req) {
-        if (isLoopbackAddress(req.socket?.remoteAddress))
+        if (isLocalRequest(req))
             return true;
         const headerToken = req.headers?.['x-sentinel-token'];
         const presented = (Array.isArray(headerToken) ? headerToken[0] : headerToken) || queryToken(req.url);
@@ -132,7 +173,7 @@ function createLanPairing({ tokenFile }) {
      * would hand the credential to exactly the devices the guard exists to stop.
      */
     function pairingTokenHandler(req, res) {
-        if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+        if (!isLocalRequest(req)) {
             res.status(403).json({ error: 'Only readable on the machine running the server.' });
             return;
         }

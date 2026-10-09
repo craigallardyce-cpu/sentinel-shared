@@ -196,6 +196,21 @@ describe('parseNmeaSentence', () => {
     expect(result.awd).toBeUndefined();
   });
 
+  it('reads VWR apparent wind from the raw angle field, port or starboard', () => {
+    // Pins the output exactly, so the validity-only angle check cannot drift
+    // from what the computed bearing it replaced used to allow.
+    expect(parseNmeaSentence(withChecksum('IIVWR,024.5,R,014.7,N,,,,'))).toEqual({ awa: '024.5° STBD', aws: 14.7 });
+    expect(parseNmeaSentence(withChecksum('IIVWR,030.0,l,012.0,N,,,,'))).toEqual({ awa: '030.0° PORT', aws: 12 });
+    expect(parseNmeaSentence(withChecksum('IIVWR,030.0,L,,N,5.0,M,,'))).toEqual({ awa: '030.0° PORT', aws: 5 * 1.94384 });
+  });
+
+  it('rejects a VWR with no usable angle or no side', () => {
+    for (const body of ['IIVWR,,R,014.7,N,,,,', 'IIVWR,abc,R,014.7,N,,,,', 'IIVWR,024.5,,014.7,N,,,,']) {
+      const result = parseNmeaSentence(withChecksum(body));
+      expect(result?.awa).toBeUndefined();
+    }
+  });
+
   it('holds one wind direction across a full MWV/MWV/MWD cycle', () => {
     // The regression in full: one second of a real feed, head to wind. Every
     // sentence used to move w_dir, so it flipped ~160 degrees three times a

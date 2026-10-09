@@ -15,8 +15,14 @@ import type { NmeaSocketLike, NmeaUdpSocketLike, SseClientLike, WsClientLike } f
  * and never depend on a port being free.
  */
 
-/** A socket whose events a test fires by hand. */
-function stubSocket() {
+/**
+ * A socket whose events a test fires by hand.
+ *
+ * With `closeOnDestroy`, `destroy()` emits `close` once, on a microtask, as a
+ * real socket does. The default stub never closes on its own, which is why a
+ * late `close` from a replaced socket went untested until the runtime review.
+ */
+function stubSocket({ closeOnDestroy = false }: { closeOnDestroy?: boolean } = {}) {
   const handlers: Record<string, Array<(arg?: unknown) => void>> = {};
   let destroyed = false;
   const socket: NmeaSocketLike & {
@@ -30,7 +36,9 @@ function stubSocket() {
       return socket;
     },
     destroy() {
+      if (destroyed) return;
       destroyed = true;
+      if (closeOnDestroy) queueMicrotask(() => socket.fire('close'));
     },
     setNoDelay(value: boolean) {
       socket.noDelay = value;
@@ -696,6 +704,187 @@ describe('a UDP listener', () => {
     const { pool, connects } = makePool();
     pool.establish('10.10.10.1', 11102);
     expect(connects).toEqual([{ host: '10.10.10.1', port: 11102 }]);
+  });
+});
+
+/**
+ * A pool whose sockets close when destroyed, as real ones do, and which can be
+ * told never to connect.
+ */
+function makeClosingPool(
+  options: Partial<Parameters<typeof createNmeaPool>[0]> = {},
+  { autoConnect = true }: { autoConnect?: boolean } = {}
+) {
+  const sockets: ReturnType<typeof stubSocket>[] = [];
+  const connects: Array<{ host: string; port: number }> = [];
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const pool = createNmeaPool({
+    createConnection: (target, onConnect) => {
+      connects.push(target);
+      const socket = stubSocket({ closeOnDestroy: true });
+      sockets.push(socket);
+      if (autoConnect) queueMicrotask(onConnect);
+      return socket;
+    },
+    log,
+    ...options,
+  });
+  return { pool, sockets, connects, log };
+}
+
+/**
+ * The runtime review of 2026-10 (S-01 to S-04, S-15): faults that only show
+ * once a destroyed socket really does emit `close`, late.
+ */
+describe('sockets that close when destroyed', () => {
+  const KEY = '10.10.10.1:11102';
+
+  it('ignores the old socket after closeIfEmpty and an immediate re-establish (S-01)', async () => {
+    const { pool, sockets } = makeClosingPool({ watchdogSeconds: 8 });
+    pool.establish('10.10.10.1', 11102);
+    await vi.advanceTimersByTimeAsync(0);
+
+    pool.closeIfEmpty(KEY);
+    // Same key again before the old socket's close has arrived.
+    const entry = pool.establish('10.10.10.1', 11102);
+    await vi.advanceTimersByTimeAsync(0); // old close, then new connect
+
+    expect(sockets).toHaveLength(2);
+    expect(pool.entries.get(KEY)).toBe(entry);
+    expect(entry.socket).toBe(sockets[1]);
+    expect(entry.isSocketConnected).toBe(true);
+
+    // A late error and late data from the old socket do not touch the new entry.
+    sockets[0].fire('error', { message: 'stale' });
+    expect(entry.isSocketConnected).toBe(true);
+    expect(entry.lastLoggedErrorMsg).toBe('');
+    const sse = sseClient();
+    entry.clients.add(sse);
+    sockets[0].fire('data', '$GPRMC,stale*00\r\n');
+    expect(sse.written).toEqual([]);
+
+    // The new socket's watchdog is still running: silence trips it.
+    expect(sockets[1].destroyed).toBe(false);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(sockets[1].destroyed).toBe(true);
+  });
+
+  it('does not resurrect an entry after a watchdog trip with nothing attached (S-02)', async () => {
+    const { pool, sockets, connects } = makeClosingPool({ watchdogSeconds: 8, reconnectDelayMs: 5000 });
+    pool.establish('10.10.10.1', 11102);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(8000); // watchdog destroys; close follows
+    expect(sockets[0].destroyed).toBe(true);
+    expect(pool.entries.has(KEY)).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(connects).toHaveLength(1);
+    expect(pool.entries.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('still reconnects after a watchdog trip while a watch keeps it alive', async () => {
+    // The destroyed socket stays in the entry until the reconnect fires, so its
+    // close is still current and must still schedule the reconnect.
+    const { pool, sockets, connects } = makeClosingPool({
+      watchdogSeconds: 8,
+      reconnectDelayMs: 5000,
+      shouldKeepAlive: () => true,
+    });
+    pool.establish('10.10.10.1', 11102);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(connects).toHaveLength(2);
+    expect(pool.entries.get(KEY)?.socket).toBe(sockets[1]);
+    expect(pool.entries.get(KEY)?.isSocketConnected).toBe(true);
+  });
+
+  it('bounds a partial line that never ends, and recovers on the next sentence (S-03)', async () => {
+    const { pool, sockets, log } = makeClosingPool();
+    const entry = pool.establish('10.10.10.1', 11102);
+    const sse = sseClient();
+    entry.clients.add(sse);
+
+    sockets[0].fire('data', 'x'.repeat(10 * 1024));
+
+    expect(entry.buffer.length).toBeLessThanOrEqual(8192);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(String(log.warn.mock.calls[0][0])).not.toContain('xxxx');
+
+    sockets[0].fire('data', '$GPRMC,ok*00\r\n');
+    expect(sse.written).toEqual(['data: $GPRMC,ok*00\n\n']);
+  });
+
+  it('abandons a dial that never connects, and reconnects while a client waits (S-04)', async () => {
+    const { pool, sockets, connects, log } = makeClosingPool(
+      { connectTimeoutMs: 3000, reconnectDelayMs: 1000 },
+      { autoConnect: false }
+    );
+    const entry = pool.establish('10.10.10.1', 11102);
+    entry.clients.add(sseClient());
+
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(sockets[0].destroyed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets[0].destroyed).toBe(true);
+    expect(log.warn).toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(connects).toHaveLength(2);
+    expect(pool.entries.get(KEY)?.socket).toBe(sockets[1]);
+
+    // The reconnect attempt is under the same timeout.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(sockets[1].destroyed).toBe(true);
+  });
+
+  it('leaves a socket that connected in time alone (S-04)', async () => {
+    const { pool, sockets } = makeClosingPool({ connectTimeoutMs: 3000, watchdogSeconds: 60 });
+    pool.establish('10.10.10.1', 11102);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(sockets[0].destroyed).toBe(false);
+  });
+
+  it('leaves nothing behind when createConnection throws (S-15)', async () => {
+    let fail = true;
+    const pool = createNmeaPool({
+      createConnection: (_target, onConnect) => {
+        if (fail) throw new Error('bad address');
+        queueMicrotask(onConnect);
+        return stubSocket({ closeOnDestroy: true });
+      },
+    });
+
+    expect(() => pool.establish('10.10.10.1', 11102)).toThrow('bad address');
+    expect(pool.entries.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // And the key is usable again rather than wedged.
+    fail = false;
+    const entry = pool.establish('10.10.10.1', 11102);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(entry.isSocketConnected).toBe(true);
+  });
+
+  it('serialises a sentence once for every WebSocket client (S-16)', () => {
+    const { pool, sockets } = makeClosingPool();
+    const entry = pool.establish('10.10.10.1', 11102);
+    const a = wsClient();
+    const b = wsClient();
+    entry.wsClients.add(a);
+    entry.wsClients.add(b);
+    const stringify = vi.spyOn(JSON, 'stringify');
+
+    sockets[0].fire('data', '$GPRMC,one*00\r\n');
+
+    expect(stringify).toHaveBeenCalledTimes(1);
+    stringify.mockRestore();
+    expect(a.sent).toEqual(b.sent);
   });
 });
 

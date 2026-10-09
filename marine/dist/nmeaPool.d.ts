@@ -153,6 +153,14 @@ export interface NmeaPoolOptions {
     watchdogSeconds?: number;
     /** Seam 1. Fixed delay between reconnection attempts; the pool never gives up. */
     reconnectDelayMs?: number;
+    /**
+     * How long a TCP dial may take before the socket is destroyed and the usual
+     * close-and-reconnect path takes over. Without it a gateway that silently
+     * drops the connection attempt leaves the OS's own connect timeout (minutes)
+     * in charge, and the watchdog never starts because it starts on connect. UDP
+     * has no connect step and ignores this. Default 10000.
+     */
+    connectTimeoutMs?: number;
     /** Seam 2. Every complete sentence, before it is broadcast. */
     onSentence?(sentence: string): void;
     /**

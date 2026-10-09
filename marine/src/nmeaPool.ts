@@ -161,6 +161,14 @@ export interface NmeaPoolOptions {
   watchdogSeconds?: number;
   /** Seam 1. Fixed delay between reconnection attempts; the pool never gives up. */
   reconnectDelayMs?: number;
+  /**
+   * How long a TCP dial may take before the socket is destroyed and the usual
+   * close-and-reconnect path takes over. Without it a gateway that silently
+   * drops the connection attempt leaves the OS's own connect timeout (minutes)
+   * in charge, and the watchdog never starts because it starts on connect. UDP
+   * has no connect step and ignores this. Default 10000.
+   */
+  connectTimeoutMs?: number;
   /** Seam 2. Every complete sentence, before it is broadcast. */
   onSentence?(sentence: string): void;
   /**
@@ -247,6 +255,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     createUdpSocket,
     watchdogSeconds = 8,
     reconnectDelayMs = 5000,
+    connectTimeoutMs = 10000,
     onSentence,
     shouldKeepAlive,
     normalizeHost = (value: string) => value,
@@ -271,6 +280,13 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     return found;
   }
 
+  /**
+   * A partial line longer than this is not a sentence on its way: NMEA 0183
+   * caps one at 82 characters. It is a source sending something without line
+   * endings, and holding on to it would grow without bound.
+   */
+  const MAX_PARTIAL_LINE = 8192;
+
   function keepAlive(key: string): boolean {
     if (!shouldKeepAlive) return false;
     try {
@@ -292,22 +308,30 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     conn.buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
     const lines = conn.buffer.split(/\r?\n/);
     conn.buffer = lines.pop() ?? '';
+    if (conn.buffer.length > MAX_PARTIAL_LINE) {
+      log.warn(`[NMEA Pool] Discarded ${conn.buffer.length} characters with no line ending on ${key}.`);
+      conn.buffer = '';
+    }
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || (!trimmed.startsWith('$') && !trimmed.startsWith('!'))) continue;
 
+      // Serialised once per sentence, not once per client.
+      const sse = `data: ${trimmed}\n\n`;
       for (const client of conn.clients) {
         try {
-          client.write(`data: ${trimmed}\n\n`);
+          client.write(sse);
         } catch {
           /* Client already gone; the close handler will remove it. */
         }
       }
+      let wsPayload: string | null = null;
       for (const wsClient of conn.wsClients) {
         if (wsClient.readyState !== 1) continue;
         try {
-          wsClient.send(JSON.stringify({ type: 'nmea', sentence: trimmed }));
+          wsPayload ??= JSON.stringify({ type: 'nmea', sentence: trimmed });
+          wsClient.send(wsPayload);
         } catch {
           /* As above. */
         }
@@ -331,6 +355,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   function notify(key: string, sse: string, ws: Record<string, unknown>): void {
     const conn = entries.get(key);
     if (!conn) return;
+    const wsPayload = JSON.stringify(ws);
     for (const client of conn.clients) {
       try {
         client.write(sse);
@@ -341,7 +366,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     for (const wsClient of conn.wsClients) {
       if (wsClient.readyState !== 1) continue;
       try {
-        wsClient.send(JSON.stringify(ws));
+        wsClient.send(wsPayload);
       } catch {
         /* As above. */
       }
@@ -349,7 +374,10 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   }
 
   function stopWatchdog(key: string): void {
-    const t = getTimers(key);
+    // `get`, not `getTimers`: stopping must not re-create the timers of a key
+    // that drop or closeIfEmpty has just removed.
+    const t = timers.get(key);
+    if (!t) return;
     if (t.watchdogInterval) {
       host.clearInterval(t.watchdogInterval);
       t.watchdogInterval = null;
@@ -388,11 +416,13 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   }
 
   function feedWatchdog(key: string): void {
-    getTimers(key).watchdogCounter = watchdogSeconds;
+    const t = timers.get(key);
+    if (t) t.watchdogCounter = watchdogSeconds;
   }
 
   function clearReconnectTimer(key: string): void {
-    const t = getTimers(key);
+    const t = timers.get(key);
+    if (!t) return;
     if (t.reconnectTimer) {
       host.clearTimeout(t.reconnectTimer);
       t.reconnectTimer = null;
@@ -424,10 +454,46 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     }, reconnectDelayMs);
   }
 
+  /**
+   * Dial, and give up on the dial after `connectTimeoutMs`.
+   *
+   * Giving up is a `destroy()`, so what follows is the same close (and, with
+   * clients or a watch attached, the same reconnect) as any other failed
+   * connection; there is no second recovery path to keep in step.
+   */
+  function dial(key: string, target: { host: string; port: number }, onConnect: () => void): NmeaSocketLike {
+    let connected = false;
+    let timer: unknown = null;
+    const clear = () => {
+      if (timer) {
+        host.clearTimeout(timer);
+        timer = null;
+      }
+    };
+    const socket = createConnection(target, () => {
+      connected = true;
+      clear();
+      onConnect();
+    });
+    if (!connected) {
+      timer = host.setTimeout(() => {
+        timer = null;
+        log.warn(`[NMEA Pool] No connection to ${key} after ${connectTimeoutMs}ms. Abandoning this attempt.`);
+        try {
+          socket.destroy();
+        } catch {
+          /* Already gone. */
+        }
+      }, connectTimeoutMs);
+      socket.on('close', clear);
+    }
+    return socket;
+  }
+
   function attemptReconnect(key: string, targetHost: string, targetPort: number): void {
     log.info(`[NMEA Pool] Attempting reconnection to ${key}.`);
     try {
-      const socket = createConnection({ host: targetHost, port: targetPort }, () => {
+      const socket = dial(key, { host: targetHost, port: targetPort }, () => {
         log.info(`[NMEA Pool] Reconnected to ${key}.`);
         const conn = entries.get(key);
         if (conn) {
@@ -601,12 +667,33 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
   }
 
   function attachHandlers(socket: NmeaSocketLike, key: string): void {
+    /*
+      A socket's events speak for its key only while it is still that key's
+      socket. Once closeIfEmpty or drop has removed the entry, or a reconnect or
+      a fresh establish has put another socket in it, a late event from the old
+      one must not touch the new entry: its close would stop the new watchdog
+      and could delete the entry outright. Every path assigns the entry's socket
+      before calling this, so the check holds from the first event. During a
+      watchdog trip the entry keeps the destroyed socket until the reconnect
+      fires, so that socket's close is still current, as it must be.
+    */
+    const isCurrent = () => entries.get(key)?.socket === socket;
+
     socket.on('data', (chunk) => {
+      if (!isCurrent()) return;
       feedWatchdog(key);
       broadcast(key, chunk);
     });
 
     socket.on('error', (error) => {
+      if (!isCurrent()) {
+        try {
+          socket.destroy();
+        } catch {
+          /* Already gone. */
+        }
+        return;
+      }
       const message = error?.message ?? String(error);
       log.error(`[NMEA Pool] Socket error on ${key}: ${message}`);
       const conn = entries.get(key);
@@ -631,6 +718,7 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
     });
 
     socket.on('close', () => {
+      if (!isCurrent()) return;
       log.info(`[NMEA Pool] Connection closed for ${key}.`);
       stopWatchdog(key);
 
@@ -641,6 +729,9 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       if (conn.clients.size > 0 || conn.wsClients.size > 0 || keepAlive(key)) {
         scheduleReconnect(key);
       } else {
+        // A reconnect scheduled earlier (by the watchdog, say) would otherwise
+        // fire after this and resurrect an entry with no target behind it.
+        clearReconnectTimer(key);
         entries.delete(key);
         timers.delete(key);
         targets.delete(key);
@@ -681,15 +772,22 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       }
 
       log.info(`[NMEA Pool] Establishing connection to ${key}.`);
-      const socket = createConnection({ host: resolvedHost, port: Number(port) }, () => {
-        log.info(`[NMEA Pool] Connected to ${key}.`);
-        const conn = entries.get(key);
-        if (conn) {
-          conn.isSocketConnected = true;
-          conn.lastLoggedErrorMsg = '';
-        }
-        startWatchdog(key);
-      });
+      let socket: NmeaSocketLike;
+      try {
+        socket = dial(key, { host: resolvedHost, port: Number(port) }, () => {
+          log.info(`[NMEA Pool] Connected to ${key}.`);
+          const conn = entries.get(key);
+          if (conn) {
+            conn.isSocketConnected = true;
+            conn.lastLoggedErrorMsg = '';
+          }
+          startWatchdog(key);
+        });
+      } catch (error) {
+        // As for UDP above: no socket means no entry, so the caller hears of it.
+        targets.delete(key);
+        throw error;
+      }
 
       configureSocket(socket);
       const entry = newEntry(socket);
@@ -707,14 +805,17 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       log.info(`[NMEA Pool] Nothing attached to ${key}. Closing.`);
       stopWatchdog(key);
       clearReconnectTimer(key);
+      // Forget the key before destroying: a socket may emit 'close'
+      // synchronously from destroy() (the UDP adapter does), and that event
+      // must find nothing current to act on.
+      entries.delete(key);
+      timers.delete(key);
+      targets.delete(key);
       try {
         conn.socket.destroy();
       } catch {
         /* Already gone. */
       }
-      entries.delete(key);
-      timers.delete(key);
-      targets.delete(key);
     },
 
     drop(key) {
@@ -741,15 +842,16 @@ export function createNmeaPool(options: NmeaPoolOptions): NmeaPool {
       conn.clients.clear();
       conn.wsClients.clear();
       conn.isSocketConnected = false;
+
+      // Before destroy(), for the reason closeIfEmpty gives.
+      entries.delete(key);
+      timers.delete(key);
+      targets.delete(key);
       try {
         conn.socket.destroy();
       } catch {
         /* Already gone. */
       }
-
-      entries.delete(key);
-      timers.delete(key);
-      targets.delete(key);
       log.info(`[NMEA Pool] Dropped ${key} because the configured address changed.`);
     },
 

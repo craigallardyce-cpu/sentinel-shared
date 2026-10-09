@@ -7,8 +7,9 @@
   object rather than failing loudly: HarborSentinel's server bundle is CJS and
   would have started, imported nothing, and thrown on the first call.
 
-  @sentinel/settings carries the same file. Generated here rather than committed
-  and hoped for, so a clean build cannot lose it.
+  @sentinel/settings and @sentinel/marine commit this file by hand instead.
+  Generated here rather than committed and hoped for, so a clean build cannot
+  lose it.
 */
 import { writeFileSync } from 'node:fs';
 
