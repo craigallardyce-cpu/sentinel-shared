@@ -35,6 +35,18 @@ export interface Breach {
     limit: number;
     /** True where this particular limit was not being broken at departure. */
     isNew: boolean;
+    /**
+     * True where the forecast the passage was filed against had a value here to
+     * compare with.
+     *
+     * Separate from `isNew` because "not new" covers two different facts: the
+     * old forecast had this too, or the old forecast does not reach this place
+     * and hour at all. A passage re-checked a few days out runs past the end of
+     * the forecast it was filed against, and calling everything out there
+     * "known" told the skipper a gale they had never seen was one they had
+     * already accepted.
+     */
+    compared: boolean;
 }
 export interface Hazard {
     lat: number;
@@ -58,6 +70,11 @@ export interface Hazard {
      * would answer yes and say nothing.
      */
     isNew: boolean;
+    /**
+     * True where every breach here could be checked against the filed forecast.
+     * False with `isNew` false means nobody can say whether this was known.
+     */
+    compared: boolean;
 }
 export interface HazardScan {
     hazards: Hazard[];
@@ -150,6 +167,11 @@ export interface Advisory {
     headline: Hazard | null;
     /** True when the headline is something that was not in the original plan. */
     headlineIsNew: boolean;
+    /**
+     * True when the headline could be checked against the filed forecast. When
+     * it is false, `headlineIsNew` being false means "unknown", not "known".
+     */
+    headlineCompared: boolean;
     scan: HazardScan;
     corridor: Corridor;
     /** Hours this route takes against the plan as filed, where both are known. */

@@ -65,6 +65,18 @@ export interface Breach {
   limit: number;
   /** True where this particular limit was not being broken at departure. */
   isNew: boolean;
+  /**
+   * True where the forecast the passage was filed against had a value here to
+   * compare with.
+   *
+   * Separate from `isNew` because "not new" covers two different facts: the
+   * old forecast had this too, or the old forecast does not reach this place
+   * and hour at all. A passage re-checked a few days out runs past the end of
+   * the forecast it was filed against, and calling everything out there
+   * "known" told the skipper a gale they had never seen was one they had
+   * already accepted.
+   */
+  compared: boolean;
 }
 
 export interface Hazard {
@@ -89,6 +101,11 @@ export interface Hazard {
    * would answer yes and say nothing.
    */
   isNew: boolean;
+  /**
+   * True where every breach here could be checked against the filed forecast.
+   * False with `isNew` false means nobody can say whether this was known.
+   */
+  compared: boolean;
 }
 
 export interface HazardScan {
@@ -117,14 +134,14 @@ function breachesAt(
   const out: Breach[] = [];
   const w = samplers.wind(lat, lon, timeMs);
   if (w && Number.isFinite(w.speedKts) && w.speedKts >= limits.windKts) {
-    out.push({ kind: 'wind', value: Math.round(w.speedKts * 10) / 10, limit: limits.windKts, isNew: false });
+    out.push({ kind: 'wind', value: Math.round(w.speedKts * 10) / 10, limit: limits.windKts, isNew: false, compared: false });
   }
   if (w && w.gustKts !== null && w.gustKts !== undefined && w.gustKts >= limits.gustKts) {
-    out.push({ kind: 'gust', value: Math.round(w.gustKts * 10) / 10, limit: limits.gustKts, isNew: false });
+    out.push({ kind: 'gust', value: Math.round(w.gustKts * 10) / 10, limit: limits.gustKts, isNew: false, compared: false });
   }
   const s = samplers.waves?.(lat, lon, timeMs);
   if (s && Number.isFinite(s.heightM) && s.heightM >= limits.waveM) {
-    out.push({ kind: 'sea', value: Math.round(s.heightM * 10) / 10, limit: limits.waveM, isNew: false });
+    out.push({ kind: 'sea', value: Math.round(s.heightM * 10) / 10, limit: limits.waveM, isNew: false, compared: false });
   }
   return out;
 }
@@ -174,9 +191,19 @@ export function scanHazards(
       };
       const before = breachesAt(leg.lat, leg.lon, timeMs, options.plannedWith, softened);
       const nearlyBrokenBefore = new Set(before.map((b) => b.kind));
-      for (const b of breaches) b.isNew = !nearlyBrokenBefore.has(b.kind);
+      // Only where the old forecast actually covers this place and hour. Its
+      // samplers return null outside their grid, and reading that null as
+      // "calm back then" would call every hazard beyond the end of the filed
+      // forecast new — the opposite mistake to the one this guards against.
+      const hadWind = Boolean(options.plannedWith.wind(leg.lat, leg.lon, timeMs));
+      const hadSea = Boolean(options.plannedWith.waves?.(leg.lat, leg.lon, timeMs));
+      for (const b of breaches) {
+        b.compared = b.kind === 'sea' ? hadSea : hadWind;
+        b.isNew = b.compared && !nearlyBrokenBefore.has(b.kind);
+      }
     }
     const isNew = breaches.some((b) => b.isNew);
+    const compared = breaches.every((b) => b.compared);
 
     hazards.push({
       lat: leg.lat,
@@ -184,7 +211,8 @@ export function scanHazards(
       time: leg.time,
       hoursAway: Math.round(((timeMs - now) / 3_600_000) * 10) / 10,
       breaches,
-      isNew
+      isNew,
+      compared
     });
   }
 
@@ -403,6 +431,11 @@ export interface Advisory {
   headline: Hazard | null;
   /** True when the headline is something that was not in the original plan. */
   headlineIsNew: boolean;
+  /**
+   * True when the headline could be checked against the filed forecast. When
+   * it is false, `headlineIsNew` being false means "unknown", not "known".
+   */
+  headlineCompared: boolean;
   scan: HazardScan;
   corridor: Corridor;
   /** Hours this route takes against the plan as filed, where both are known. */
@@ -431,6 +464,7 @@ export function buildAdvisory(
   return {
     headline,
     headlineIsNew: Boolean(headline?.isNew),
+    headlineCompared: Boolean(headline?.compared),
     scan,
     corridor,
     costHours:

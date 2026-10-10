@@ -21,14 +21,14 @@ function breachesAt(lat, lon, timeMs, samplers, limits) {
     const out = [];
     const w = samplers.wind(lat, lon, timeMs);
     if (w && Number.isFinite(w.speedKts) && w.speedKts >= limits.windKts) {
-        out.push({ kind: 'wind', value: Math.round(w.speedKts * 10) / 10, limit: limits.windKts, isNew: false });
+        out.push({ kind: 'wind', value: Math.round(w.speedKts * 10) / 10, limit: limits.windKts, isNew: false, compared: false });
     }
     if (w && w.gustKts !== null && w.gustKts !== undefined && w.gustKts >= limits.gustKts) {
-        out.push({ kind: 'gust', value: Math.round(w.gustKts * 10) / 10, limit: limits.gustKts, isNew: false });
+        out.push({ kind: 'gust', value: Math.round(w.gustKts * 10) / 10, limit: limits.gustKts, isNew: false, compared: false });
     }
     const s = samplers.waves?.(lat, lon, timeMs);
     if (s && Number.isFinite(s.heightM) && s.heightM >= limits.waveM) {
-        out.push({ kind: 'sea', value: Math.round(s.heightM * 10) / 10, limit: limits.waveM, isNew: false });
+        out.push({ kind: 'sea', value: Math.round(s.heightM * 10) / 10, limit: limits.waveM, isNew: false, compared: false });
     }
     return out;
 }
@@ -73,17 +73,27 @@ export function scanHazards(route, samplers, options = {}) {
             };
             const before = breachesAt(leg.lat, leg.lon, timeMs, options.plannedWith, softened);
             const nearlyBrokenBefore = new Set(before.map((b) => b.kind));
-            for (const b of breaches)
-                b.isNew = !nearlyBrokenBefore.has(b.kind);
+            // Only where the old forecast actually covers this place and hour. Its
+            // samplers return null outside their grid, and reading that null as
+            // "calm back then" would call every hazard beyond the end of the filed
+            // forecast new — the opposite mistake to the one this guards against.
+            const hadWind = Boolean(options.plannedWith.wind(leg.lat, leg.lon, timeMs));
+            const hadSea = Boolean(options.plannedWith.waves?.(leg.lat, leg.lon, timeMs));
+            for (const b of breaches) {
+                b.compared = b.kind === 'sea' ? hadSea : hadWind;
+                b.isNew = b.compared && !nearlyBrokenBefore.has(b.kind);
+            }
         }
         const isNew = breaches.some((b) => b.isNew);
+        const compared = breaches.every((b) => b.compared);
         hazards.push({
             lat: leg.lat,
             lon: leg.lon,
             time: leg.time,
             hoursAway: Math.round(((timeMs - now) / 3600000) * 10) / 10,
             breaches,
-            isNew
+            isNew,
+            compared
         });
     }
     // Worst is judged on how far over the limit a breach is, in proportion —
@@ -257,6 +267,7 @@ export function buildAdvisory(route, scan, corridor, filedEtaHours = null) {
     return {
         headline,
         headlineIsNew: Boolean(headline?.isNew),
+        headlineCompared: Boolean(headline?.compared),
         scan,
         corridor,
         costHours: filedEtaHours !== null && Number.isFinite(route.etaHours)
