@@ -178,6 +178,40 @@ describe('scanHazards', () => {
     expect(genuinely.hazards.every((h) => h.isNew)).toBe(true);
   });
 
+  it('does not call anything new or known beyond the end of the filed forecast', () => {
+    // The filed forecast stops 24 hours in. Its samplers answer null after
+    // that, and null is "no forecast", not "calm" — so a gale out there is
+    // neither new nor known; it was never compared.
+    const cutoff = T0 + 24 * 3_600_000;
+    const short = {
+      wind: ((lat, lon, t) => (t <= cutoff ? { speedKts: 14, directionDeg: 0, gustKts: 18 } : null)) as WindSampler,
+      waves: ((lat, lon, t) => (t <= cutoff ? { heightM: 1, directionDeg: 90, periodS: 8 } : null)) as WaveSampler
+    };
+    const scan = scanHazards(route(), gale, { plannedWith: short });
+    const inside = scan.hazards.filter((h) => Date.parse(h.time) <= cutoff);
+    const beyond = scan.hazards.filter((h) => Date.parse(h.time) > cutoff);
+    expect(inside.length).toBeGreaterThan(0);
+    expect(beyond.length).toBeGreaterThan(0);
+    expect(inside.every((h) => h.isNew && h.compared)).toBe(true);
+    expect(beyond.every((h) => !h.isNew && !h.compared)).toBe(true);
+  });
+
+  it('marks nothing compared when there is no filed forecast at all', () => {
+    const scan = scanHazards(route(), gale);
+    expect(scan.hazards.every((h) => !h.compared && h.breaches.every((b) => !b.compared))).toBe(true);
+  });
+
+  it('can compare the wind while the sea goes unchecked', () => {
+    // A filed forecast with wind but no marine grid: the wind can be judged,
+    // the sea cannot.
+    const scan = scanHazards(route(), gale, { plannedWith: { wind: steadyWind(14, 0) } });
+    const h = scan.worst!;
+    expect(h.breaches.find((b) => b.kind === 'wind')!.compared).toBe(true);
+    expect(h.breaches.find((b) => b.kind === 'sea')!.compared).toBe(false);
+    expect(h.compared).toBe(false);
+    expect(h.isNew).toBe(true);
+  });
+
   it('reports how far ahead the trouble is', () => {
     const scan = scanHazards(route(), gale, { now: T0 });
     expect(scan.soonest!.hoursAway).toBeGreaterThanOrEqual(0);
@@ -216,6 +250,15 @@ describe('buildAdvisory', () => {
     const advisory = buildAdvisory(r, scan, buildCorridor(r, DEST), null);
     expect(advisory.headline).not.toBeNull();
     expect(advisory.headlineIsNew).toBe(false);
+    expect(advisory.headlineCompared).toBe(true);
+  });
+
+  it('says when the headline could not be checked against the plan', () => {
+    const gale = { wind: steadyWind(36, 0), waves: steadySea(1) };
+    const r = route({ retainFronts: true, frontIntervalSteps: 6 });
+    const advisory = buildAdvisory(r, scanHazards(r, gale), buildCorridor(r, DEST), null);
+    expect(advisory.headlineIsNew).toBe(false);
+    expect(advisory.headlineCompared).toBe(false);
   });
 
   it('has no headline for a passage with nothing wrong with it', () => {
