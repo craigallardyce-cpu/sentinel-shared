@@ -14,31 +14,31 @@ not here.
 
 ## A session started on this repository decides its role first
 
-Craig starts fleet work from claude.ai/code or the phone as a cloud session on
-`sentinel-shared`, and does not repeat the instructions each time. So, before
-doing anything else, decide from the shape of the task:
+Fleet work runs from the claude.ai Project "Mariner Sentinel": its coordinator
+starts one thread per initiative, and that thread does the work in every repo
+it needs. The procedure is Craig's account skill `fleet-coordinator-projects`,
+which replaced `skills/fleet-coordinator/` on 2026-10-16 (the old skill, with
+its dated incidents and worker costs, is in this repository's history at
+`02f0fb7`). Before doing anything else, decide from the shape of the task:
 
 - **It touches any other repository** -- an app, the website, `docs-kb`,
-  `admin-app` -- or it is a roadmap item: **you are the fleet coordinator.**
-  Read `skills/fleet-coordinator/SKILL.md` now and follow it. You decide,
-  delegate, review and hand off; you do not edit app code yourself, and you do
-  not merge. Coordinator sessions run on **Opus 5.5**: Craig picks it when he
-  starts the session, and if you find yourself coordinating on another model,
-  say so in your first reply so he can switch with `/model opus`.
+  `admin-app` -- or it is a roadmap item: load `fleet-coordinator-projects` and
+  follow it. You plan, change each repo on its own PR, review your own diffs and
+  hand off; you do not merge. These sessions run on **Opus 5.5**; if you find
+  yourself on another model, say so in your first reply so Craig can switch.
+  A session started outside the Project sees only the repo it was started from,
+  so it attaches the others with `add_repo` first.
 - **It is confined to this repository** -- a package, a skill, this file, the
-  drift checker: do it here, directly, on a branch with a PR. A worker session
-  for a single-repo change costs more than the change (see the skill's costs).
+  drift checker: do it here, directly, on a branch with a PR.
 - **Not sure which**: grep every fleet repo for where the change really lives
   (the skill's §1) before deciding. The roadmap's wording has pointed at the
-  wrong surface before. A cloud session can reach only the repo it started
-  from until it attaches the others, so do the skill's §0 first — otherwise
-  that grep silently covers one repository.
+  wrong surface before.
 
 **Either way, a cloud session opens with a loose-ends check.** It is cloned
 fresh from GitHub, so what it holds is current, but it cannot see Craig's PC and
-it does not know what other sessions left open. Before the task, attach every
-fleet repo read-only (the fleet-coordinator skill's §0; attaching is one call a
-repo) and report, in a few lines:
+it does not know what other sessions left open. Before the task, with every
+fleet repo in reach (a Project thread already has them all), report, in a few
+lines:
 
 - open PRs in each repo, with their age;
 - branches ahead of `main` with no PR.
@@ -123,10 +123,10 @@ reproduce this layout before anything builds.
   the author's. This repository is public, its minutes are free, and its CI
   stays as it is. The Website's nightly `fleet-health.yml` also stays (about a
   minute a day, and the only full-fleet check that runs by itself).
-- **A change that spans repositories is run by a coordinator session**, which
-  decomposes it, spawns one worker session per repo, reviews the diffs and
-  closes the roadmap item: `skills/fleet-coordinator/SKILL.md`. Worker sessions
-  spend from the same usage window as the session that spawned them.
+- **A change that spans repositories is run by one Project thread**, which
+  finds where it lives, changes each repo on its own PR, reviews the diffs and
+  closes the roadmap item: the `fleet-coordinator-projects` skill. Any
+  sub-workers it starts spend from the same usage window as the thread.
 - **`.env` files are never committed.** Check `.gitignore` covers a new one
   before adding it in any project. It has happened once (OceanSentinel's
   `backend/.env`, since untracked); treat anything that reached history as
@@ -192,7 +192,7 @@ reproduce this layout before anything builds.
   wording, or `Customer-visible: none`. Nothing compares `docs-kb` with the
   apps, and between 11 and 14 September 2026 forty merges left it wrong in
   both directions for four days before anyone looked. The line is how the
-  coordinator's closing pass (`skills/fleet-coordinator/SKILL.md` §7) finds
+  coordinator's closing pass (`fleet-coordinator-projects` §8) finds
   the knowledge-base, copy-inventory and FAQ edits a change owes; a merge
   that nobody coordinated owes the same edits, so its author makes them or
   files them on the roadmap.
