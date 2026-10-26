@@ -275,22 +275,22 @@ something then broke.
    run on the sentinel-shared PR before it merges. A pin must point
    at a commit **published** on `origin/main`; one that exists only locally
    produces no build at all, in all three apps at once.
-4. Exercise `build.yml` with `workflow_dispatch` first. Its release job is
-   guarded to tag pushes, so a manual run builds and verifies without publishing
-   — which means **it proves compilation and never publication**. `Upload Build
-   Artifacts` and the whole `release` job are both guarded to `refs/tags/v`, so a
-   dry run skips them: every step between a packaged installer and a published
-   release is structurally untestable until the tag exists. On 2026-09-15 three
-   green dry runs were followed by three failed tag builds — all nine platform
-   jobs compiled and packaged, then every artifact upload failed on the account's
-   Actions storage quota, which skipped `Create Release` and published nothing.
-   So a green dry run licenses the tag; it is not evidence the release will land.
-   Leave the `platforms` input at `linux`: it is the cheap smoke test, and the
-   Windows leg first runs on the tag.
-   Since 2.12.0 the Linux leg also launches the built AppImage headless and
-   fails unless a window appears (`sentinel-shared/scripts/smoke-launch-linux.sh`),
-   so a green Linux dry run now proves the app starts there, not just that it
-   packaged. It proves nothing about Windows or macOS; step 6 covers those.
+4. No dry run before the tag. Since 2026-10-26 a release goes straight to the
+   tag, to save Actions minutes: the tag build runs the same Linux leg a dry run
+   would, including the headless AppImage launch
+   (`sentinel-shared/scripts/smoke-launch-linux.sh`, which fails unless a window
+   appears), plus Windows. A compile, packaging or Linux launch failure therefore
+   shows up on the tag, and is fixed with a patch version. A `workflow_dispatch`
+   run of `build.yml` is still available when Craig asks for one: its release job
+   is guarded to tag pushes, and the `platforms` input defaults to `linux`.
+   Either way a green build **proves compilation and never publication**.
+   `Upload Build Artifacts` and the whole `release` job are both guarded to
+   `refs/tags/v`, so every step between a packaged installer and a published
+   release is untestable until the tag exists. On 2026-09-15 three green dry
+   runs were followed by three failed tag builds: every artifact upload failed
+   on the account's Actions storage quota, which skipped `Create Release` and
+   published nothing. Linux proves nothing about Windows or macOS; step 6
+   covers those.
 5. Tag `vX.Y.Z` and push the tag. Desktop installers publish to GitHub
    Releases, which each app's auto-updater reads. Read the release, not the
    workflow's green tick: `Create Release` is *skipped* rather than failed when a
