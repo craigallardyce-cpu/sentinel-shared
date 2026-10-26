@@ -128,7 +128,9 @@ catches this.
    Android `versionName`/`versionCode`, and electron-builder). Keep all three aligned.
 3. If shared code changed, bump the pinned `sentinel-shared` SHA in all three
    `.github/workflows/build.yml` — otherwise releases ship the old shared code.
-4. Exercise the pipeline **without publishing** first:
+4. No dry run by default (since 2026-10-26, to save Actions minutes): the tag
+   build repeats the same Linux build plus Windows. Only when Craig asks for one,
+   exercise the pipeline **without publishing**:
    ```bash
    gh workflow run build.yml --repo craigallardyce-cpu/<App> --ref main
    ```
