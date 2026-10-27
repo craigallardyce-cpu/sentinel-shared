@@ -8,6 +8,7 @@ import { UpdatePanel } from './UpdatePanel';
 import { ScopeBadge } from './ScopeBadge';
 import { Tabs } from './Tabs';
 import { Button } from './Button';
+import { isNativePlatform } from './useAppUpdater';
 /*
   The Settings dialog (fit-and-finish X5; SettingsDayAfter / SettingsNightAfter).
 
@@ -102,5 +103,5 @@ function renderDisplay({ appName, nightMode, onNightModeChange, dayBrightness, o
 }
 /** About, shared by both layouts. */
 function renderAbout({ appName, appIcon, shownVersion, about, }, hideTitle = false) {
-    return (_jsx(SettingsSection, { title: "About", hideTitle: hideTitle, children: _jsxs("div", { className: cn('flex items-start gap-3 py-4', ROW_DIVIDER), children: [appIcon && _jsx("span", { className: "flex h-10 w-10 items-center justify-center rounded-md bg-cyan-dim text-cyan shrink-0", children: appIcon }), _jsxs("div", { className: "min-w-0 text-[13px]", children: [_jsxs("p", { className: "font-sans text-[15px] font-semibold text-text-primary", children: [appName, " ", shownVersion && _jsxs("span", { className: "font-mono font-medium text-text-muted", children: ["v", shownVersion] })] }), _jsxs("p", { className: "text-text-muted mt-1", children: ["Part of the MarinerSentinel fleet \u00B7", ' ', _jsx("a", { href: "https://marinersentinel.com", target: "_blank", rel: "noreferrer", className: "text-cyan hover:underline", children: "marinersentinel.com" })] }), about] })] }) }));
+    return (_jsx(SettingsSection, { title: "About", hideTitle: hideTitle, children: _jsxs("div", { className: cn('flex items-start gap-3 py-4', ROW_DIVIDER), children: [appIcon && _jsx("span", { className: "flex h-10 w-10 items-center justify-center rounded-md bg-cyan-dim text-cyan shrink-0", children: appIcon }), _jsxs("div", { className: "min-w-0 text-[13px]", children: [_jsxs("p", { className: "font-sans text-[15px] font-semibold text-text-primary", children: [appName, " ", shownVersion && _jsxs("span", { className: "font-mono font-medium text-text-muted", children: ["v", shownVersion] })] }), _jsxs("p", { className: "text-text-muted mt-1", children: ["Part of the MarinerSentinel fleet \u00B7", ' ', isNativePlatform() ? (_jsx("span", { children: "marinersentinel.com" })) : (_jsx("a", { href: "https://marinersentinel.com", target: "_blank", rel: "noreferrer", className: "text-cyan hover:underline", children: "marinersentinel.com" }))] }), about] })] }) }));
 }

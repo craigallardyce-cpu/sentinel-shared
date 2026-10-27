@@ -1,7 +1,7 @@
 import React from 'react';
 import { type ModalSize } from './Modal';
 import type { SettingSource } from './ScopeBadge';
-import type { AppUpdater } from './useAppUpdater';
+import { type AppUpdater } from './useAppUpdater';
 export interface SettingsSectionProps {
     title: React.ReactNode;
     /**

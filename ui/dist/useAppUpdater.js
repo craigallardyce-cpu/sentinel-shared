@@ -8,7 +8,7 @@ const isAbsoluteUrl = (u) => !!u && /^https?:\/\//i.test(u);
  * is aliased in that app's Vite config, and this package deliberately has no
  * dependencies beyond React and lucide.
  */
-const isNativePlatform = () => {
+export const isNativePlatform = () => {
     if (typeof window === 'undefined')
         return false;
     const cap = window.Capacitor;
