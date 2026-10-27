@@ -8,7 +8,7 @@ import { ScopeBadge } from './ScopeBadge';
 import type { SettingSource } from './ScopeBadge';
 import { Tabs } from './Tabs';
 import { Button } from './Button';
-import type { AppUpdater } from './useAppUpdater';
+import { isNativePlatform, type AppUpdater } from './useAppUpdater';
 
 /*
   The Settings dialog (fit-and-finish X5; SettingsDayAfter / SettingsNightAfter).
@@ -464,9 +464,18 @@ function renderAbout({
           </p>
           <p className="text-text-muted mt-1">
             Part of the MarinerSentinel fleet ·{' '}
-            <a href="https://marinersentinel.com" target="_blank" rel="noreferrer" className="text-cyan hover:underline">
-              marinersentinel.com
-            </a>
+            {/*
+              Plain text in a store build: the home page is the shop, and a
+              Play app that sells nothing may not link to where it is sold.
+              Each app's own account link, which is allowed, sits in `about`.
+            */}
+            {isNativePlatform() ? (
+              <span>marinersentinel.com</span>
+            ) : (
+              <a href="https://marinersentinel.com" target="_blank" rel="noreferrer" className="text-cyan hover:underline">
+                marinersentinel.com
+              </a>
+            )}
           </p>
           {about}
         </div>

@@ -729,3 +729,60 @@ describe('AuthScreen — legacy storage migration', () => {
     expect(storage.size()).toBe(0);
   });
 });
+
+/*
+  A Play build sells nothing and may not point anywhere else to pay. The
+  desktop keeps the website's checkout steps; a native build says only that the
+  account has no plan, and keeps account management.
+*/
+describe('AuthScreen — store builds say nothing about buying', () => {
+  function renderScreen(session: any) {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+  }
+
+  it('gives the website checkout steps on a desktop', async () => {
+    renderScreen({ user: { id: 'user-1', email: 'skipper@example.com' } });
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('Choose a subscription plan and complete checkout.')).toBeInTheDocument();
+  });
+
+  it('names no website, plan choice or payment on a native build', async () => {
+    platform.isNative = true;
+    renderScreen({ user: { id: 'user-1', email: 'skipper@example.com' } });
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/marinersentinel\.com/i);
+    expect(text).not.toMatch(/checkout|payment|subscription plan|choose a/i);
+    expect(screen.getByText(/unlocks by itself as soon as this account has an active plan/)).toBeInTheDocument();
+    expect(screen.getByText('Check Again')).toBeInTheDocument();
+    expect(screen.getByText('Sign Out')).toBeInTheDocument();
+  });
+
+  it('keeps the website billing line at sign-up on a desktop only', async () => {
+    renderScreen(null);
+    await screen.findByText('Sign in to continue');
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    expect(screen.getByText(/Billing setup is handled externally on our website/)).toBeInTheDocument();
+    cleanup();
+
+    platform.isNative = true;
+    renderScreen(null);
+    await screen.findByText('Sign in to continue');
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    expect(screen.getByText('Creating an account registers your credentials.')).toBeInTheDocument();
+    expect(screen.queryByText(/Billing setup/)).not.toBeInTheDocument();
+  });
+});

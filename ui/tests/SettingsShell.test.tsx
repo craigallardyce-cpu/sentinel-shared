@@ -57,3 +57,25 @@ describe('SettingsShell header', () => {
     expect(dot).toHaveAttribute('title', 'Set on this device only, overriding anything broader.');
   });
 });
+
+/*
+  The About line names the website. A Play build sells nothing in-app and may
+  not link to where plans are sold, so there it is text, not a link.
+*/
+describe('SettingsShell About website link', () => {
+  it('links to the website on a desktop', () => {
+    shell();
+    expect(screen.getByRole('link', { name: 'marinersentinel.com' })).toHaveAttribute('href', 'https://marinersentinel.com');
+  });
+
+  it('names the website without linking to it in a native build', () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    try {
+      shell();
+      expect(screen.getByText('marinersentinel.com')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'marinersentinel.com' })).toBeNull();
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
+  });
+});

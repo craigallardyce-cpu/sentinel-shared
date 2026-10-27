@@ -189,6 +189,18 @@ export function AuthScreen({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
+  /*
+    A store build says nothing about buying. Plans are sold on the website, and
+    Google Play does not allow an app that sells nothing in-app to send people
+    elsewhere to pay, or to word anything as an invitation to (Payments policy,
+    consumption-only apps). Account management -- the device-limit message, a
+    link to the account page -- is allowed and stays.
+
+    Every native build counts, not just Android: there is no iPhone build yet,
+    and outside the US Apple's rule is the same. The iPhone port is where a US
+    storefront may get the website link back.
+  */
+  const storeBuild = Capacitor.isNativePlatform();
 
   useEffect(() => {
     if (!legacyStorageKey) return;
@@ -660,17 +672,29 @@ export function AuthScreen({
             </p>
           </div>
 
-          <div className="bg-bg-panel/60 p-4 rounded-xl border border-border-color/50 text-body-sm text-text-secondary leading-relaxed space-y-3">
-            <p className="font-semibold text-text-primary">To activate this device and unlock access:</p>
-            <ol className="list-decimal pl-4 space-y-2">
-              <li>Open your web browser and visit <strong className="text-cyan">marinersentinel.com</strong>.</li>
-              <li>Sign in using your registered email: <strong>{email}</strong>.</li>
-              <li>Choose a subscription plan and complete checkout.</li>
-            </ol>
-            <p className="text-[13px] text-text-muted italic mt-2 animate-pulse">
-              This app will detect your payment and unlock automatically in the background...
-            </p>
-          </div>
+          {storeBuild ? (
+            <div className="bg-bg-panel/60 p-4 rounded-xl border border-border-color/50 text-body-sm text-text-secondary leading-relaxed space-y-3">
+              <p>
+                {email && <>You are signed in as <strong>{email}</strong>. </>}
+                If your plan is on another account, sign out and sign in with that one.
+              </p>
+              <p className="text-[13px] text-text-muted italic mt-2 animate-pulse">
+                This app unlocks by itself as soon as this account has an active plan...
+              </p>
+            </div>
+          ) : (
+            <div className="bg-bg-panel/60 p-4 rounded-xl border border-border-color/50 text-body-sm text-text-secondary leading-relaxed space-y-3">
+              <p className="font-semibold text-text-primary">To activate this device and unlock access:</p>
+              <ol className="list-decimal pl-4 space-y-2">
+                <li>Open your web browser and visit <strong className="text-cyan">marinersentinel.com</strong>.</li>
+                <li>Sign in using your registered email: <strong>{email}</strong>.</li>
+                <li>Choose a subscription plan and complete checkout.</li>
+              </ol>
+              <p className="text-[13px] text-text-muted italic mt-2 animate-pulse">
+                This app will detect your payment and unlock automatically in the background...
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3">
             <div className="flex gap-3">
@@ -771,7 +795,9 @@ export function AuthScreen({
 
             {isRegistering && (
               <p className="text-[13px] text-text-secondary text-center leading-relaxed px-4">
-                Billing setup is handled externally on our website. Creating an account registers your credentials.
+                {storeBuild
+                  ? 'Creating an account registers your credentials.'
+                  : 'Billing setup is handled externally on our website. Creating an account registers your credentials.'}
               </p>
             )}
 

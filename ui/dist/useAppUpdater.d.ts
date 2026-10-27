@@ -69,6 +69,14 @@ export interface AppUpdater {
     install: () => Promise<void>;
 }
 /**
+ * Capacitor's injected global. Present only inside a native WebView, so it
+ * distinguishes a phone from a browser without importing `@capacitor/core` —
+ * which matters: a new runtime import here breaks every consuming app until it
+ * is aliased in that app's Vite config, and this package deliberately has no
+ * dependencies beyond React and lucide.
+ */
+export declare const isNativePlatform: () => boolean;
+/**
  * Can an update check succeed on this device?
  *
  * Three cases, and the third is the one this exists for:
