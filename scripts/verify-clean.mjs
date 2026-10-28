@@ -100,8 +100,16 @@ export function resolveCommit(repoDir, ref) {
 export function canonicalRepoName(repoDir) {
   const r = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: repoDir, encoding: 'utf8' });
   const common = r.status === 0 ? r.stdout.trim() : '';
-  return common ? basename(dirname(common)) : basename(repoDir);
+  const name = common ? basename(dirname(common)) : basename(repoDir);
+  // A cloud session clones each app under its lower-case remote name
+  // (`harborsentinel`), but check-fleet-drift.mjs finds apps by their exact
+  // folder name, so a scratch copy under that spelling fails as "No Sentinel
+  // apps found" after every test has passed.
+  return FLEET_APP_NAMES.find((n) => n.toLowerCase() === name.toLowerCase()) ?? name;
 }
+
+/** The app folder names check-fleet-drift.mjs looks for beside sentinel-shared. */
+const FLEET_APP_NAMES = ['HarborSentinel', 'OceanSentinel', 'VesselKeeper'];
 
 export function extract(repoDir, ref, dest, scratch, mustExist = 'package.json') {
   mkdirSync(dest, { recursive: true });
