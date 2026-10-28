@@ -287,6 +287,37 @@ export function isPhoneOnlyTwelve(src, hit, namedSteps = new Set(), floor = TYPE
   return false;
 }
 
+/** The marker that records a hand-written type size as a decision, not drift. */
+export const TYPE_SIZE_APPROVED = 'type-size-approved';
+
+/**
+ * Whether the hand-written type size at `index` carries a
+ * `type-size-approved: why` comment, either on its own line or in the comment
+ * directly above it (a `//` run, a block comment, or a JSX `{/* … *\/}` child).
+ * `code` is `src` with comments blanked, offsets kept, which is how a comment
+ * line is told from code. A blank line or any code ends the search, so one
+ * marker covers one site, and the reason is required: a bare marker approves
+ * nothing.
+ *
+ * This only silences the burndown count. A size under the floor fails whatever
+ * a comment says (smallTypeClasses), apart from VesselKeeper's phone-only 12.
+ */
+export function isApprovedTypeSize(src, code, index) {
+  const marker = new RegExp(`${TYPE_SIZE_APPROVED}\\s*:\\s*\\S`);
+  const srcLines = src.split('\n');
+  const codeLines = code.split('\n');
+  let line = src.slice(0, index).split('\n').length - 1;
+  if (marker.test(srcLines[line])) return true;
+  for (line -= 1; line >= 0; line--) {
+    if (!srcLines[line].trim()) return false;
+    // What is left of the line once its comments are blanked: nothing, or the
+    // braces of a JSX comment child.
+    if (!/^[\s{}]*$/.test(codeLines[line] ?? '')) return false;
+    if (marker.test(srcLines[line])) return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Buttons.
 // ---------------------------------------------------------------------------

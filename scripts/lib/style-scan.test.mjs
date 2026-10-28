@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   jsxTagEnd, buttonLabel, glowsIn, arbitraryShadowValue, shadowDeclarations,
-  smallTypeClasses, isPhoneOnlyTwelve, enclosingString,
+  smallTypeClasses, isPhoneOnlyTwelve, enclosingString, isApprovedTypeSize,
 } from './style-scan.mjs';
 
 /*
@@ -122,4 +122,22 @@ test('enclosingString finds the quoted string around an offset on its line', () 
   assert.deepEqual(enclosingString(src, src.indexOf('y')), [3, 6]);
   assert.deepEqual(enclosingString(src, src.indexOf('q')), [10, 13]);
   assert.equal(enclosingString(src, src.indexOf(',')), null);
+});
+
+test('isApprovedTypeSize: a type-size-approved comment on the line or directly above it', () => {
+  // The checker's own blanking: comments to spaces, newlines and offsets kept.
+  const blank = (src) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:])(\/\/[^\n]*)/g, (_, a, b) => a + ' '.repeat(b.length));
+  const ok = (src) => isApprovedTypeSize(src, blank(src), src.indexOf('text-['));
+  assert.equal(ok('// type-size-approved: why\n<t className="text-[15px]">'), true, 'line comment above');
+  assert.equal(ok('// type-size-approved: why\n// and more\n<t className="text-[15px]">'), true, 'a run of line comments');
+  assert.equal(ok('<p>\n  {/* type-size-approved: why */}\n  <t className="text-[15px]">'), true, 'JSX comment child');
+  assert.equal(ok('/**\n * Heading.\n * type-size-approved: why\n */\nexport const H = "text-[15px]";'), true, 'block comment');
+  assert.equal(ok('<t className="text-[15px]"> {/* type-size-approved: why */}'), true, 'same line');
+  assert.equal(ok('<t className="text-[15px]">'), false, 'no comment');
+  assert.equal(ok('// type-size-approved:\n<t className="text-[15px]">'), false, 'no reason');
+  assert.equal(ok('// type-size-approved: why\n\n<t className="text-[15px]">'), false, 'a blank line between');
+  assert.equal(ok('// type-size-approved: why\nconst a = 1;\n<t className="text-[15px]">'), false, 'code between');
+  assert.equal(ok('// a comment\n<t className="text-[15px]">'), false, 'a comment without the marker');
 });
