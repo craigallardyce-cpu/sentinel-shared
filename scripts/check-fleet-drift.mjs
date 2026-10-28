@@ -30,7 +30,7 @@ import { findCheckoutRef } from './lib/yaml-scan.mjs';
 import { declarationsIn, rangesByDep, compareWithPublished, unknownEntries, canonicalFrom } from './lib/aligned-deps.mjs';
 import {
   jsxTagEnd, buttonLabel, glowsIn, arbitraryShadowValue, shadowDeclarations,
-  smallTypeClasses, isPhoneOnlyTwelve, TYPE_FLOOR,
+  smallTypeClasses, isPhoneOnlyTwelve, TYPE_FLOOR, isApprovedTypeSize, TYPE_SIZE_APPROVED,
 } from './lib/style-scan.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1444,7 +1444,12 @@ for (const app of presentApps) {
       }
     }
 
-    for (const _ of src.matchAll(ARBITRARY_TEXT)) arbitraryText++;
+    // Counted in code, not src: a class named in a comment is prose, not a use.
+    // A size someone decided on says so in a `type-size-approved: why` comment
+    // and leaves the count (Craig, 2026-10-28: VesselKeeper's eleven).
+    for (const m of code.matchAll(ARBITRARY_TEXT)) {
+      if (!isApprovedTypeSize(src, code, m.index)) arbitraryText++;
+    }
 
     // Deprecated names, for the post-release deletion.
     for (const d of DEPRECATED_NAMES) {
@@ -1578,7 +1583,8 @@ for (const app of presentApps) {
   if (arbitraryText) {
     warn('type', `${app.name}: ${arbitraryText} hand-written text-[Npx] value(s). Any under the ${TYPE_FLOOR}px ` +
       `floor is reported as a failure; the rest are a burndown count, not a fault — prefer the named steps in ` +
-      `@sentinel/theme/type.css as these are touched.`);
+      `@sentinel/theme/type.css as these are touched, or record a deliberate size with a ` +
+      `\`${TYPE_SIZE_APPROVED}: why\` comment on its line or directly above it.`);
   }
   if (shippedFlags.length) {
     fail('flag', `${app.name}: ${shippedFlags.length} debug/bypass switch(es) that a build can still contain — ` +
