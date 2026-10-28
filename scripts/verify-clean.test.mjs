@@ -84,6 +84,23 @@ test('canonicalRepoName names a repo and its worktrees after the main checkout',
   }
 });
 
+test('canonicalRepoName gives a lower-case app clone the folder name the drift checker expects', async () => {
+  const { rmSync, mkdirSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const { root } = await tempRepo();
+  try {
+    for (const [folder, expected] of [['harborsentinel', 'HarborSentinel'], ['oceansentinel', 'OceanSentinel'], ['vesselkeeper', 'VesselKeeper'], ['marinersentinel-website', 'marinersentinel-website']]) {
+      const dir = join(root, folder);
+      mkdirSync(dir);
+      execFileSync('git', ['init', '-q'], { cwd: dir });
+      assert.equal(canonicalRepoName(dir), expected);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('extract unpacks a git archive into dest via a relative tar path', async () => {
   const { rmSync, existsSync } = await import('node:fs');
   const { join } = await import('node:path');
