@@ -99,9 +99,25 @@ function attachWindowDiagnostics(window) {
   window.webContents.on('render-process-gone', (event, details) => {
     console.error('[Window] render-process-gone:', details.reason, details.exitCode);
   });
-  window.webContents.on('console-message', (event, level, message) => {
-    if (level >= 2) console.log('[Renderer Console]', message);
+  // One named parameter: Electron warns about the deprecated form by the
+  // listener's arity, and a rest parameter does not count towards it.
+  window.webContents.on('console-message', (event, ...legacy) => {
+    if (isWarningOrError(event, legacy[0])) {
+      console.log('[Renderer Console]', typeof event?.message === 'string' ? event.message : legacy[1]);
+    }
   });
+}
+
+/**
+ * Electron 35 moved console-message's details onto the event and made `level`
+ * a string ('debug' | 'info' | 'warning' | 'error'); the positional arguments,
+ * where `level` was 0-3 and 2 meant warning, are deprecated. Reading the event
+ * first keeps the deprecation warning out of the log on current Electron, and
+ * the fallback keeps an app still on an older major logging as before.
+ */
+function isWarningOrError(event, legacyLevel) {
+  if (typeof event?.level === 'string') return event.level === 'warning' || event.level === 'error';
+  return legacyLevel >= 2;
 }
 
 /** Enables F12 / Ctrl+Shift+I to toggle DevTools on a BrowserWindow. */
