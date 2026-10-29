@@ -4,6 +4,7 @@ import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut } from 'lucide-re
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
 import { refreshEntitlements, clearEntitlements, fetchEntitlements, writeEntitlements, readLapsedTrialEnd } from './entitlements';
+import { resolveDeviceIdentity } from './deviceIdentity';
 const DAY_MS = 24 * 60 * 60 * 1000;
 function readOfflineGrant(storage, accessStorageKey) {
     try {
@@ -65,16 +66,6 @@ function isOfflineFailure(error) {
     return (error.name === 'AuthRetryableFetchError' ||
         error.status === 0 ||
         /failed to fetch|network|offline/i.test(String(error.message || '')));
-}
-async function resolveDeviceIdentity(fetchMachineId) {
-    if (Capacitor.isNativePlatform()) {
-        const info = await Device.getId();
-        const platformName = Capacitor.getPlatform() === 'ios' ? 'iOS Phone/Tablet' : 'Android Phone/Tablet';
-        return { machineId: info.identifier, platformName };
-    }
-    const { machineId } = await fetchMachineId();
-    const platform = navigator.userAgent.includes('Windows') ? 'Windows' : navigator.userAgent.includes('Mac') ? 'Mac' : 'Linux';
-    return { machineId, platformName: `${platform} Desktop` };
 }
 export function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode = false, offlineGraceDays = 0 }) {
     const [email, setEmail] = useState('');
@@ -307,7 +298,15 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
                 }
                 // Enforce hardware device limits
                 try {
-                    const { machineId, platformName } = await resolveDeviceIdentity(fetchMachineId);
+                    const { machineId, platformName } = await resolveDeviceIdentity({
+                        isNative: Capacitor.isNativePlatform(),
+                        nativePlatform: Capacitor.getPlatform(),
+                        getNativeId: () => Device.getId(),
+                        fetchMachineId,
+                        hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+                        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+                        storage
+                    });
                     // A slot is a DEVICE, held across the whole fleet: the subscription covers
                     // every app it includes, so five devices means five machines that may run
                     // any of them, not five per app.

@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
 import type { Entitlements } from './entitlements';
 import { refreshEntitlements, clearEntitlements, fetchEntitlements, writeEntitlements, readLapsedTrialEnd } from './entitlements';
+import { resolveDeviceIdentity } from './deviceIdentity';
 
 /**
  * Structural (not imported) subset of Supabase's SupabaseClient — avoids a
@@ -50,7 +51,12 @@ export interface AuthScreenProps {
   productId: string;
   supabase: SupabaseClientLike;
   isConfigured: boolean;
-  /** Resolves the local hardware footprint used for device-limit enforcement (desktop only; native platforms use Capacitor's Device.getId() instead). */
+  /**
+   * Reads this computer's hardware id from the app's own backend, for the device
+   * limit. Called only when the page was loaded from this computer (the desktop
+   * app, or a browser on the boat computer); native uses Device.getId() and a
+   * browser elsewhere on the LAN gets an id of its own (deviceIdentity.ts).
+   */
   fetchMachineId: () => Promise<{ machineId: string }>;
   onAuthenticated: () => void;
   /**
@@ -151,17 +157,6 @@ function isOfflineFailure(error: any): boolean {
     error.status === 0 ||
     /failed to fetch|network|offline/i.test(String(error.message || ''))
   );
-}
-
-async function resolveDeviceIdentity(fetchMachineId: () => Promise<{ machineId: string }>) {
-  if (Capacitor.isNativePlatform()) {
-    const info = await Device.getId();
-    const platformName = Capacitor.getPlatform() === 'ios' ? 'iOS Phone/Tablet' : 'Android Phone/Tablet';
-    return { machineId: info.identifier, platformName };
-  }
-  const { machineId } = await fetchMachineId();
-  const platform = navigator.userAgent.includes('Windows') ? 'Windows' : navigator.userAgent.includes('Mac') ? 'Mac' : 'Linux';
-  return { machineId, platformName: `${platform} Desktop` };
 }
 
 export function AuthScreen({
@@ -430,7 +425,15 @@ export function AuthScreen({
 
         // Enforce hardware device limits
         try {
-          const { machineId, platformName } = await resolveDeviceIdentity(fetchMachineId);
+          const { machineId, platformName } = await resolveDeviceIdentity({
+            isNative: Capacitor.isNativePlatform(),
+            nativePlatform: Capacitor.getPlatform(),
+            getNativeId: () => Device.getId(),
+            fetchMachineId,
+            hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            storage
+          });
 
           // A slot is a DEVICE, held across the whole fleet: the subscription covers
           // every app it includes, so five devices means five machines that may run
