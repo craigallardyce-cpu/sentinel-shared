@@ -305,7 +305,10 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
                         fetchMachineId,
                         hostname: typeof window !== 'undefined' ? window.location.hostname : '',
                         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-                        storage
+                        storage,
+                        cookies: typeof document !== 'undefined'
+                            ? { read: () => document.cookie, write: (cookie) => { document.cookie = cookie; } }
+                            : undefined
                     });
                     // A slot is a DEVICE, held across the whole fleet: the subscription covers
                     // every app it includes, so five devices means five machines that may run

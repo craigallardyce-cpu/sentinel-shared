@@ -25,6 +25,15 @@ export interface DeviceIdentityEnv {
     hostname: string;
     userAgent: string;
     storage: StorageLike;
+    /**
+     * The page's cookies (`document.cookie`), when there is a document. A cookie
+     * is scoped to the host and not the port, so every fleet app a browser opens
+     * from one boat computer reads the same one; localStorage is per port.
+     */
+    cookies?: {
+        read(): string;
+        write(cookie: string): void;
+    };
     /** Defaults to crypto.randomUUID. */
     newId?: () => string;
 }
@@ -42,12 +51,14 @@ export declare function isLoopbackHost(hostname: string): boolean;
  * - The desktop app, and any browser on the boat computer itself: the
  *   computer's hardware id, read from the app's own backend.
  * - A browser anywhere else -- the cockpit tablet that loads the app FROM the
- *   boat computer over the LAN: an id of its own, minted once and kept in this
- *   browser's storage. Asking the backend here returned the boat computer's
- *   id, so every tablet paired to one boat counted as that one computer.
+ *   boat computer over the LAN: an id of its own, minted once and kept in a
+ *   cookie for that host, so HarborSentinel and OceanSentinel opened from one
+ *   boat computer share it although they run on different ports, and in this
+ *   app's storage as well. Asking the backend here returned the boat
+ *   computer's id, so every tablet paired to one boat counted as that one
+ *   computer.
  *
- * A browser's id lasts as long as its site data. Clearing it, or opening a
- * fleet app on another port (another origin), registers a new device, which
- * the owner can revoke on the account page.
+ * A browser's id lasts as long as its site data. Clearing it registers a new
+ * device, which the owner can revoke on the account page.
  */
 export declare function resolveDeviceIdentity(env: DeviceIdentityEnv): Promise<DeviceIdentity>;

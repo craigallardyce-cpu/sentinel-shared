@@ -64,4 +64,33 @@ describe('resolveDeviceIdentity', () => {
     expect(a.machineId).not.toBe(b.machineId);
     expect(a.machineId).toMatch(/^browser-[0-9a-f-]{32,36}$/);
   });
+
+  it('shares one id between fleet apps opened from one boat computer, through the host cookie', async () => {
+    // Two apps on two ports: separate localStorage, one cookie jar for the host.
+    let jar = '';
+    const cookies = {
+      read: () => jar,
+      write: (c: string) => {
+        const [pair] = c.split(';');
+        const name = pair.split('=')[0];
+        const rest = jar.split('; ').filter((p) => p && !p.startsWith(`${name}=`));
+        jar = [...rest, pair].join('; ');
+      }
+    };
+    const harbor = await resolveDeviceIdentity(env({ hostname: '192.168.1.20', storage: memoryStorage(), cookies }));
+    const ocean = await resolveDeviceIdentity(env({ hostname: '192.168.1.20', storage: memoryStorage(), cookies }));
+    expect(ocean.machineId).toBe(harbor.machineId);
+  });
+
+  it('carries on when cookies are refused', async () => {
+    const storage = memoryStorage();
+    const cookies = {
+      read: () => { throw new Error('blocked'); },
+      write: () => { throw new Error('blocked'); }
+    };
+    const first = await resolveDeviceIdentity(env({ hostname: 'boat-pc.local', storage, cookies, newId: () => 'x' }));
+    const again = await resolveDeviceIdentity(env({ hostname: 'boat-pc.local', storage, cookies, newId: () => 'y' }));
+    expect(first.machineId).toBe('browser-x');
+    expect(again.machineId).toBe('browser-x');
+  });
 });
