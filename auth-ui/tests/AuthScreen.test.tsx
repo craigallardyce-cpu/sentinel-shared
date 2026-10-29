@@ -786,3 +786,60 @@ describe('AuthScreen — store builds say nothing about buying', () => {
     expect(screen.queryByText(/Billing setup/)).not.toBeInTheDocument();
   });
 });
+
+describe('AuthScreen — age confirmation at sign-up', () => {
+  function renderSignUp() {
+    const supabase = makeMockSupabase({ session: null });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+    return supabase;
+  }
+
+  async function openSignUp() {
+    await screen.findByText('Sign in to continue');
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    fireEvent.change(screen.getByPlaceholderText('captain@vessel.com'), { target: { value: 'skipper@example.com' } });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'correct-horse' } });
+  }
+
+  it('asks for the age confirmation on the sign-up form only', async () => {
+    renderSignUp();
+    await screen.findByText('Sign in to continue');
+    expect(screen.queryByText(/18 or older/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    expect(screen.getByLabelText(/I'm 18 or older, or the age of majority where I live/)).toBeInTheDocument();
+  });
+
+  it('does not register an account until the box is ticked', async () => {
+    const supabase = renderSignUp();
+    await openSignUp();
+    fireEvent.submit(screen.getByText('Register Account').closest('form')!);
+    expect(supabase.auth.signUp).not.toHaveBeenCalled();
+    expect(await screen.findByText(/confirm that you are 18 or older/)).toBeInTheDocument();
+  });
+
+  it('records when the age was confirmed on the new account', async () => {
+    // No session comes back, so the form announces the registration with alert().
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const supabase = renderSignUp();
+    await openSignUp();
+    fireEvent.click(screen.getByLabelText(/I'm 18 or older/));
+    fireEvent.submit(screen.getByText('Register Account').closest('form')!);
+    await waitFor(() => expect(supabase.auth.signUp).toHaveBeenCalledTimes(1));
+    const args = supabase.auth.signUp.mock.calls[0][0];
+    expect(args.email).toBe('skipper@example.com');
+    expect(typeof args.options.data.age_confirmed_at).toBe('string');
+    expect(Number.isNaN(Date.parse(args.options.data.age_confirmed_at))).toBe(false);
+  });
+});

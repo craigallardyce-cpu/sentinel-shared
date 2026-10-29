@@ -95,6 +95,9 @@ export interface AuthScreenProps {
      */
     offlineGraceDays?: number;
 }
+/** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
+export declare const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
+export declare const AGE_REQUIRED_MESSAGE = "To create an account, confirm that you are 18 or older, or the age of majority where you live.";
 /**
  * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
  * Exported so apps can show the remaining allowance alongside their offline indicator.
