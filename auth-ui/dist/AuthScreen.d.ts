@@ -62,7 +62,12 @@ export interface AuthScreenProps {
     productId: string;
     supabase: SupabaseClientLike;
     isConfigured: boolean;
-    /** Resolves the local hardware footprint used for device-limit enforcement (desktop only; native platforms use Capacitor's Device.getId() instead). */
+    /**
+     * Reads this computer's hardware id from the app's own backend, for the device
+     * limit. Called only when the page was loaded from this computer (the desktop
+     * app, or a browser on the boat computer); native uses Device.getId() and a
+     * browser elsewhere on the LAN gets an id of its own (deviceIdentity.ts).
+     */
     fetchMachineId: () => Promise<{
         machineId: string;
     }>;
