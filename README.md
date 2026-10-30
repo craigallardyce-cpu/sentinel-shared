@@ -683,7 +683,8 @@ work was not paying for itself. What was learned is worth more than the code was
   through such a contract means adding a native SQLite module — importing the exact
   problem H6 exists to remove, since native modules cannot run under Capacitor.
   Node's built-in `node:sqlite` would avoid that but needs Node >= 22.5, and
-  Electron 32 ships Node 20.
+  Electron 32, which the apps ran then, shipped Node 20. (Since the Electron 45
+  upgrade of October 2026 the desktop apps run Node 24, so that one obstacle is gone.)
 - **A non-native driver must run in a Web Worker.** Measured in a real browser, not
   read from docs: OPFS itself works on the main thread (`getDirectory` succeeds) but
   `FileSystemFileHandle.createSyncAccessHandle` is not exposed there, and SQLite's
@@ -711,7 +712,7 @@ three apps keep their own persistence, which is duplication but not a defect.
 |---|---|
 | `scripts/check-fleet-drift.mjs` | Drift checker. Its scope comes from the app directories beside `sentinel-shared`, not from where you run it, so a machine with all three checkouts always gets the full fleet. The per-app scope is CI's, which checks out one app and this repo. Also runs in each app's CI on every push. The floor, glow and status-button rules also read the shared packages' own `src/` (every package with `.tsx`, `.jsx` or `.css` there; not `dist/`, not tests), reported as `sentinel-shared/<package>`, because a component here is drawn in all three apps. |
 | `fleet-version.json` | The one fleet version the three apps release on. The drift checker compares each app's root `package.json` against it, which is what lets version alignment run in an app's CI, where only that app and this repo are checked out. Bump it in the same set as the apps' own versions. |
-| `fleet-dependencies.json` | The range every app must declare for each package in the checker's `ALIGNED_DEPS` (React, Capacitor, Supabase and the rest), so dependency alignment runs in an app's CI too, where one app is checked out. Generated, not hand-edited: `node sentinel-shared/scripts/check-fleet-drift.mjs --write-fleet-dependencies` from a full-fleet checkout, which refuses while the apps disagree. |
+| `fleet-dependencies.json` | The range every app must declare for each package in the checker's `ALIGNED_DEPS` (React, Capacitor, Supabase, Electron and the rest), so dependency alignment runs in an app's CI too, where one app is checked out. Generated, not hand-edited: `node sentinel-shared/scripts/check-fleet-drift.mjs --write-fleet-dependencies` from a full-fleet checkout, which refuses while the apps disagree. |
 | `scripts/smoke-launch-linux.sh` | Launches a built Linux AppImage under Xvfb and passes when a window opens and the app stays up; kills the app's whole process tree afterwards. Called from the ubuntu leg of each app's `build.yml`, so a release is gated on the artifact actually starting. The header holds the exact step and its apt packages (`xvfb`, `xdotool`). Its tests skip where those are not installed. |
 | `scripts/lib/` | Matching helpers the checker uses, kept separate so they can be unit tested. |
 | `scripts/**/*.test.mjs` | Tests for the checker, on `node:test` — no install, no dependencies. Run them with `node --test "scripts/**/*.test.mjs"`; the quoted glob is required, as `node --test scripts/` tries to execute the directory as a module. |

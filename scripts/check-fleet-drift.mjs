@@ -59,6 +59,9 @@ const ALIGNED_DEPS = [
   'react', 'react-dom', 'lucide-react', 'motion',
   '@capacitor/core', '@capacitor/device', '@capacitor/android',
   '@supabase/supabase-js', 'tailwindcss',
+  // The desktop shell: @sentinel/electron-shell is written against one Electron
+  // major, and the three apps release as one, so they move together.
+  'electron', 'electron-builder', 'electron-updater',
 ];
 
 // Modules that were extracted into @sentinel/*. A local file matching these names
