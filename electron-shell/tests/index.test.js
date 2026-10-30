@@ -239,6 +239,44 @@ describe('attachWindowDiagnostics', () => {
     expect(events).toContain('render-process-gone');
     expect(events).not.toContain('crashed');
   });
+
+  describe('console-message', () => {
+    let log;
+    let handler;
+    beforeEach(() => {
+      log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const handlers = {};
+      attachWindowDiagnostics({ webContents: { on: (event, fn) => { handlers[event] = fn; } } });
+      handler = handlers['console-message'];
+      log.mockClear();
+    });
+    afterEach(() => log.mockRestore());
+
+    it('reads the level and message from the event (Electron 35+)', () => {
+      handler({ level: 'warning', message: 'careful' });
+      handler({ level: 'error', message: 'broken' });
+      handler({ level: 'info', message: 'chatter' });
+      handler({ level: 'debug', message: 'noise' });
+      expect(log.mock.calls).toEqual([
+        ['[Renderer Console]', 'careful'],
+        ['[Renderer Console]', 'broken']
+      ]);
+    });
+
+    it('takes one named parameter, so Electron does not log the deprecation', () => {
+      expect(handler.length).toBe(1);
+    });
+
+    it('still reads the positional arguments of older Electron', () => {
+      handler({}, 2, 'careful');
+      handler({}, 3, 'broken');
+      handler({}, 1, 'chatter');
+      expect(log.mock.calls).toEqual([
+        ['[Renderer Console]', 'careful'],
+        ['[Renderer Console]', 'broken']
+      ]);
+    });
+  });
 });
 
 describe('claimSingleInstanceLock', () => {

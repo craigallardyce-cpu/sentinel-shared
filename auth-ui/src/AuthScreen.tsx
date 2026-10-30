@@ -96,6 +96,10 @@ interface OfflineGrant {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
+export const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
+export const AGE_REQUIRED_MESSAGE = 'To create an account, confirm that you are 18 or older, or the age of majority where you live.';
+
 function readOfflineGrant(storage: StorageLike, accessStorageKey: string): OfflineGrant | null {
   try {
     const raw = storage.getItem(`${accessStorageKey}_offline_grant`);
@@ -177,6 +181,16 @@ export function AuthScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+  /*
+    The Privacy Policy (section 11) sets the minimum age at 18, or the age of
+    majority where the person lives if that is higher (19 in some provinces and
+    the territories), and Gemini's terms require 18 while it still transcribes
+    VHF audio. Sign-up asks for no birth date: the person confirms the line
+    below, and the time they did is kept on the account as
+    `age_confirmed_at` in its user metadata. The website's sign-up form asks
+    the same thing in the same words.
+  */
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [hasNoSubscription, setHasNoSubscription] = useState(false);
   // Epoch ms when this device's last-known trial for the product ended, if it
   // has; drives the no-plan screen's subtitle and nothing else.
@@ -581,6 +595,10 @@ export function AuthScreen({
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ageConfirmed) {
+      setError(AGE_REQUIRED_MESSAGE);
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -591,7 +609,8 @@ export function AuthScreen({
         password,
         options: {
           data: {
-            full_name: defaultName
+            full_name: defaultName,
+            age_confirmed_at: new Date().toISOString()
           }
         }
       });
@@ -791,6 +810,19 @@ export function AuthScreen({
             </div>
           </div>
 
+          {isRegistering && (
+            <label className="flex items-start gap-3 text-body-sm text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(e) => setAgeConfirmed(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-cyan cursor-pointer"
+                required
+              />
+              <span>{AGE_CONFIRMATION_LABEL}</span>
+            </label>
+          )}
+
           <div className="space-y-4">
             <button
               type="submit"
@@ -813,6 +845,7 @@ export function AuthScreen({
                 type="button"
                 onClick={() => {
                   setIsRegistering(!isRegistering);
+                  setAgeConfirmed(false);
                   setError('');
                 }}
                 className="text-body-sm font-semibold text-cyan hover:text-cyan transition-colors"
