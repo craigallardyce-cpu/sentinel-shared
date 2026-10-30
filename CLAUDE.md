@@ -279,8 +279,11 @@ something then broke.
    tag, to save Actions minutes: the tag build runs the same Linux leg a dry run
    would, including the headless AppImage launch
    (`sentinel-shared/scripts/smoke-launch-linux.sh`, which fails unless a window
-   appears), plus Windows. A compile, packaging or Linux launch failure therefore
-   shows up on the tag, and is fixed with a patch version. A `workflow_dispatch`
+   appears), plus Windows with its own launch check
+   (`sentinel-shared/scripts/smoke-launch-windows.ps1`: the last published
+   release is installed and left running, the new installer goes over it, and
+   the new app must open a window). A compile, packaging or launch failure on
+   either therefore shows up on the tag, and is fixed with a patch version. A `workflow_dispatch`
    run of `build.yml` is still available when Craig asks for one: its release job
    is guarded to tag pushes, and the `platforms` input defaults to `linux`.
    Either way a green build **proves compilation and never publication**.
@@ -289,8 +292,8 @@ something then broke.
    release is untestable until the tag exists. On 2026-09-15 three green dry
    runs were followed by three failed tag builds: every artifact upload failed
    on the account's Actions storage quota, which skipped `Create Release` and
-   published nothing. Linux proves nothing about Windows or macOS; step 6
-   covers those.
+   published nothing. Neither launch check proves anything about macOS, or
+   about signing in; step 6 covers those.
 5. Tag `vX.Y.Z` and push the tag. Desktop installers publish to GitHub
    Releases, which each app's auto-updater reads. Read the release, not the
    workflow's green tick: `Create Release` is *skipped* rather than failed when a
@@ -303,10 +306,11 @@ something then broke.
 6. Launch the published Windows installer by hand, and the macOS one when it was
    built, once each: install
    over the previous version, confirm the window opens, sign-in completes and
-   About shows the new version. Nothing automated does this for those two
-   platforms, and a build that packages is not a build that starts: the
-   Supabase-configuration failure survived four releases because nobody launched
-   an installer.
+   About shows the new version. On Windows the tag build has already installed
+   over the previous release and seen the window open (since 2026-10-30); what
+   is left by hand is signing in and About. Nothing automated touches macOS, and
+   a build that packages is not a build that starts: the Supabase-configuration
+   failure survived four releases because nobody launched an installer.
 
 Android bundles and the Play Console upload run on a machine with the Android
 SDK and the signing keystore; the private `sentinel-fleet-play-release` skill
