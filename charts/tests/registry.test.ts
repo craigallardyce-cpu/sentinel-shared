@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createChartRegistry, tileBboxMeters } from '../src/registry.js';
+import { createChartRegistry, tileBboxMeters, PROXY_MAX_ZOOM } from '../src/registry.js';
 
 describe('licensing posture', () => {
   it('withdraws the unlicensed basemaps once a key is supplied', () => {
@@ -107,5 +107,56 @@ describe('tile URL construction', () => {
   it('marks the blank layer as rendering nothing', () => {
     const none = createChartRegistry().describe().find((p) => p.id === 'none');
     expect(none?.renders).toBe(false);
+  });
+});
+
+describe('the tile proxy option', () => {
+  const PROXY = 'https://marinersentinel.com/api/tiles/';
+
+  it('fetches the licensed basemaps through the proxy and withdraws the unlicensed pair', () => {
+    const r = createChartRegistry({ tileProxy: PROXY });
+    const ids = r.active.map((p) => p.id);
+    expect(ids).toContain('maptiler_satellite');
+    expect(ids).toContain('maptiler_streets');
+    expect(ids).not.toContain('osm');
+    expect(ids).not.toContain('satellite');
+    expect(r.basemapSource).toBe('proxy');
+    expect(r.proxyBase).toBe('https://marinersentinel.com/api/tiles');
+    expect(r.hasLicensedBasemap).toBe(true);
+  });
+
+  it('builds proxy URLs, caps the zoom at the proxy limit, and marks the layer proxied', () => {
+    const r = createChartRegistry({ tileProxy: PROXY });
+    const sat = r.getProvider('maptiler_satellite')!;
+    expect(sat.build!(12, 1206, 1539)).toBe('https://marinersentinel.com/api/tiles/maptiler_satellite/12/1206/1539.png');
+    expect(sat.maxZoom).toBeLessThanOrEqual(PROXY_MAX_ZOOM);
+    expect(sat.proxied).toBe(true);
+    expect(createChartRegistry({ tileProxy: PROXY, proxyMaxZoom: 14 }).getProvider('maptiler_streets')!.maxZoom).toBe(14);
+  });
+
+  it('keeps everything else as the keyed registry has it, in the same order', () => {
+    const keyed = createChartRegistry({ maptilerKey: 'k' });
+    const proxied = createChartRegistry({ tileProxy: PROXY });
+    expect(proxied.active.map((p) => p.id)).toEqual(keyed.active.map((p) => p.id));
+    const keyedSat = keyed.getProvider('maptiler_satellite')!;
+    const proxiedSat = proxied.getProvider('maptiler_satellite')!;
+    expect(proxiedSat.label).toBe(keyedSat.label);
+    expect(proxiedSat.attribution).toBe(keyedSat.attribution);
+    expect(proxied.getProvider('noaa_enc')!.proxied).toBeUndefined();
+  });
+
+  it('lets a key win over the proxy, and treats an empty proxy as none', () => {
+    const both = createChartRegistry({ maptilerKey: 'k', tileProxy: PROXY });
+    expect(both.basemapSource).toBe('maptiler');
+    expect(both.proxyBase).toBeNull();
+    expect(both.getProvider('maptiler_satellite')!.proxied).toBeUndefined();
+    const none = createChartRegistry({ tileProxy: '  ' });
+    expect(none.basemapSource).toBe('none');
+    expect(none.active.map((p) => p.id)).toContain('osm');
+  });
+
+  it('never sends the proxied layers anywhere but the proxy', () => {
+    const r = createChartRegistry({ tileProxy: PROXY });
+    expect(JSON.stringify(r.describe())).not.toMatch(/api\.maptiler\.com/);
   });
 });

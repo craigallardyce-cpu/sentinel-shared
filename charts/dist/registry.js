@@ -15,6 +15,9 @@
  *
  * The MapTiler Free plan is additionally non-commercial and requires the MapTiler logo to be
  * displayed; a paid plan needs only the "© MapTiler" credit carried in the attribution below.
+ *
+ * A host with no key can name a tile proxy that holds one (`tileProxy`). The licensed layers
+ * then come from the proxy and the unlicensed pair is withdrawn just as a key withdraws it.
  */
 const MERCATOR_MAX = 20037508.3427892;
 /** Web Mercator bbox for an XYZ tile, as the Esri MapServer export endpoints expect. */
@@ -66,8 +69,23 @@ export function maritimeChartService(baseUrl) {
 }
 /** Providers withdrawn once a licensed basemap is configured. */
 const UNLICENSED_IDS = new Set(['osm', 'satellite']);
-/** Providers available only when a MapTiler key is supplied. */
+/** Providers available only with a MapTiler key, or through a tile proxy. */
 const MAPTILER_IDS = new Set(['maptiler_satellite', 'maptiler_streets']);
+/** The zoom above which the MarinerSentinel tile proxy answers 403 (its PUBLIC_MAX_ZOOM). */
+export const PROXY_MAX_ZOOM = 16;
+/**
+ * A licensed layer fetched through a proxy: the registry's own descriptor, so its
+ * label, attribution and coverage cannot drift, with only the URL and the zoom
+ * ceiling replaced. The proxy's path is always .png, whatever image type it returns.
+ */
+function proxiedProvider(provider, base, maxZoom) {
+    return {
+        ...provider,
+        maxZoom: Math.min(provider.maxZoom, maxZoom),
+        build: (z, x, y) => `${base}/${provider.id}/${z}/${x}/${y}.png`,
+        proxied: true,
+    };
+}
 function buildProviders(options) {
     const key = options.maptilerKey ?? '';
     return [
@@ -198,10 +216,17 @@ function coversPoint(provider, lat, lon) {
  * agree on variable names.
  */
 export function createChartRegistry(options = {}) {
-    const hasLicensedBasemap = Boolean(options.maptilerKey);
     const all = buildProviders(options);
-    // Licensed basemaps replace the unlicensed ones rather than sitting alongside them.
-    const active = all.filter((p) => hasLicensedBasemap ? !UNLICENSED_IDS.has(p.id) : !MAPTILER_IDS.has(p.id));
+    // A key wins over the proxy: a developer's machine with a key fetches MapTiler directly.
+    const proxyBase = options.maptilerKey ? '' : (options.tileProxy ?? '').trim().replace(/\/+$/, '');
+    const basemapSource = options.maptilerKey ? 'maptiler' : proxyBase ? 'proxy' : 'none';
+    const hasLicensedBasemap = basemapSource !== 'none';
+    const proxyMaxZoom = options.proxyMaxZoom ?? PROXY_MAX_ZOOM;
+    // Licensed basemaps replace the unlicensed ones rather than sitting alongside them,
+    // in the same order whether they come from a key or through the proxy.
+    const active = all
+        .filter((p) => (hasLicensedBasemap ? !UNLICENSED_IDS.has(p.id) : !MAPTILER_IDS.has(p.id)))
+        .map((p) => (basemapSource === 'proxy' && MAPTILER_IDS.has(p.id) ? proxiedProvider(p, proxyBase, proxyMaxZoom) : p));
     const byId = new Map(active.map((p) => [p.id, p]));
     const fallbackId = options.fallbackId ?? (hasLicensedBasemap ? 'maptiler_satellite' : 'satellite');
     const getProvider = (id) => byId.get(id) ?? null;
@@ -209,6 +234,8 @@ export function createChartRegistry(options = {}) {
         all,
         active,
         hasLicensedBasemap,
+        basemapSource,
+        proxyBase: basemapSource === 'proxy' ? proxyBase : null,
         getProvider,
         selectBaseProvider(lat, lon) {
             if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {

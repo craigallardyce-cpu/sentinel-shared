@@ -58,6 +58,12 @@ export interface ChartProvider {
     covers?: CoverageTest;
     /** `null` for providers that render nothing, such as a deliberate blank background. */
     build: ((z: number, x: number, y: number, opts?: TileOptions) => string) | null;
+    /**
+     * True for a licensed layer fetched through a host's tile proxy (`tileProxy`)
+     * rather than with a key. A host must refuse a request above `maxZoom` before
+     * it reaches the proxy, which answers 403 there.
+     */
+    proxied?: boolean;
 }
 /** The serialisable view sent to clients — omits functions and anything server-side. */
 export interface ProviderDescriptor {
@@ -84,13 +90,29 @@ export interface RegistryOptions {
     noaaCellCoverage?: CoverageTest;
     /** Provider used when nothing of higher authority covers a position. */
     fallbackId?: string;
+    /**
+     * Base URL of a tile proxy that holds the MapTiler key server-side, such as the
+     * MarinerSentinel website's `/api/tiles`. Used only when there is no
+     * `maptilerKey`: the licensed basemaps are then fetched from
+     * `<tileProxy>/<id>/<z>/<x>/<y>.png` and the unlicensed fallbacks are withdrawn,
+     * exactly as a key would withdraw them. An empty string disables it. A trailing
+     * slash is ignored.
+     */
+    tileProxy?: string;
+    /** The highest zoom the proxy serves (its PUBLIC_MAX_ZOOM). Default 16. */
+    proxyMaxZoom?: number;
 }
+/** Where the licensed basemaps come from: a key, a tile proxy, or nowhere. */
+export type BasemapSource = 'maptiler' | 'proxy' | 'none';
 export interface ChartRegistry {
     /** Every provider defined, regardless of whether it is currently usable. */
     all: ChartProvider[];
     /** Those usable given the configuration — what callers should serve and display. */
     active: ChartProvider[];
     hasLicensedBasemap: boolean;
+    basemapSource: BasemapSource;
+    /** The proxy base URL in use, without a trailing slash, or `null`. */
+    proxyBase: string | null;
     getProvider(id: string): ChartProvider | null;
     /** Best base layer for a position: official charts where they exist, imagery elsewhere. */
     selectBaseProvider(lat: number, lon: number): ChartProvider | null;

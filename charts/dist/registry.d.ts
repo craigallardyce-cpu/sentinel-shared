@@ -15,6 +15,9 @@
  *
  * The MapTiler Free plan is additionally non-commercial and requires the MapTiler logo to be
  * displayed; a paid plan needs only the "© MapTiler" credit carried in the attribution below.
+ *
+ * A host with no key can name a tile proxy that holds one (`tileProxy`). The licensed layers
+ * then come from the proxy and the unlicensed pair is withdrawn just as a key withdraws it.
  */
 import type { ChartRegistry, RegistryOptions, TileOptions } from './types.js';
 /** Web Mercator bbox for an XYZ tile, as the Esri MapServer export endpoints expect. */
@@ -24,6 +27,8 @@ export declare function tileBboxMeters(z: number, x: number, y: number): string;
  * numbering and the same ECDIS display_params contract, so one builder serves both.
  */
 export declare function maritimeChartService(baseUrl: string): (z: number, x: number, y: number, opts?: TileOptions) => string;
+/** The zoom above which the MarinerSentinel tile proxy answers 403 (its PUBLIC_MAX_ZOOM). */
+export declare const PROXY_MAX_ZOOM = 16;
 /**
  * Builds a registry for one host.
  *
