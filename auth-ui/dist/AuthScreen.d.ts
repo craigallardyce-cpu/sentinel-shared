@@ -100,6 +100,13 @@ export interface AuthScreenProps {
      */
     offlineGraceDays?: number;
 }
+/**
+ * The website's Delete account dialog, the same address each app's Settings
+ * links to. Google Play requires a way to delete the account from inside the
+ * app, and someone whose plan has ended never reaches Settings: this screen is
+ * all they see, so it offers the link too.
+ */
+export declare const DELETE_ACCOUNT_URL = "https://marinersentinel.com/account#delete-account";
 /** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
 export declare const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
 export declare const AGE_REQUIRED_MESSAGE = "To create an account, confirm that you are 18 or older, or the age of majority where you live.";

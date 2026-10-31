@@ -1,6 +1,6 @@
 import type { StorageLike } from './storage';
 import React, { useState, useEffect } from 'react';
-import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut } from 'lucide-react';
+import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut, Trash2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
 import type { Entitlements } from './entitlements';
@@ -95,6 +95,28 @@ interface OfflineGrant {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The website's Delete account dialog, the same address each app's Settings
+ * links to. Google Play requires a way to delete the account from inside the
+ * app, and someone whose plan has ended never reaches Settings: this screen is
+ * all they see, so it offers the link too.
+ */
+export const DELETE_ACCOUNT_URL = 'https://marinersentinel.com/account#delete-account';
+
+/**
+ * Opened the way `openExternal` in @sentinel/ui opens it (a new window, which
+ * the Electron shell and the Android WebView hand to the system browser).
+ * Inlined rather than imported so this package takes no new runtime import,
+ * which every app would then have to alias.
+ */
+function openDeleteAccount(): void {
+  try {
+    window.open(DELETE_ACCOUNT_URL, '_blank', 'noopener,noreferrer');
+  } catch {
+    /* nothing else to try; the website's Account page is the other way in */
+  }
+}
 
 /** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
 export const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
@@ -251,6 +273,9 @@ export function AuthScreen({
     // Check active session on mount
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (session) {
+        // Opened with a stored session, nobody typed an email: the no-plan
+        // screen names the account, so take it from the session.
+        if (session.user?.email) setEmail((typed) => typed || session.user.email);
         checkAccess(session.user.id);
         return;
       }
@@ -741,6 +766,18 @@ export function AuthScreen({
                 Sign Out
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={openDeleteAccount}
+              className="w-full text-body-sm text-text-secondary hover:text-red font-semibold py-2 flex items-center justify-center gap-2 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete account
+            </button>
+            <p className="-mt-2 text-[13px] text-text-muted text-center">
+              Opens our website, where you sign in again to confirm.
+            </p>
 
             {allowOfflineMode && (
               <>

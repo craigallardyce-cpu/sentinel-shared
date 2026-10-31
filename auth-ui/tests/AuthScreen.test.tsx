@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { AuthScreen } from '../src/AuthScreen';
+import { AuthScreen, DELETE_ACCOUNT_URL } from '../src/AuthScreen';
 import { memoryStorage } from './memoryStorage';
 import { writeEntitlements } from '../src/entitlements';
 
@@ -784,6 +784,48 @@ describe('AuthScreen — store builds say nothing about buying', () => {
     fireEvent.click(screen.getByText("Don't have an account? Create one"));
     expect(screen.getByText('Creating an account registers your credentials.')).toBeInTheDocument();
     expect(screen.queryByText(/Billing setup/)).not.toBeInTheDocument();
+  });
+});
+
+describe('AuthScreen — Delete account on the no-plan screen', () => {
+  function renderNoPlan() {
+    const supabase = makeMockSupabase({ session: { user: { id: 'user-1', email: 'skipper@example.com' } }, subscriptions: [] });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+  }
+
+  it('opens the website deletion dialog, the address Settings uses', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    renderNoPlan();
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Delete account'));
+    expect(open).toHaveBeenCalledWith('https://marinersentinel.com/account#delete-account', '_blank', 'noopener,noreferrer');
+    expect(DELETE_ACCOUNT_URL).toBe('https://marinersentinel.com/account#delete-account');
+    open.mockRestore();
+  });
+
+  it('names the signed-in account when the app opened with a stored session', async () => {
+    renderNoPlan();
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('skipper@example.com')).toBeInTheDocument();
+  });
+
+  it('is offered on a native build too, where Play requires it', async () => {
+    platform.isNative = true;
+    renderNoPlan();
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('Delete account')).toBeInTheDocument();
   });
 });
 
