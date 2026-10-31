@@ -371,4 +371,62 @@ describe('getOpenMeteoForecast', () => {
     await getOpenMeteoForecast(43.55, 7.02);
     expect(calls.length).toBe(afterFirst);
   });
+
+  /*
+    The alerts probe has its own cache. It used to ride in the forecast's
+    20 minutes, so one failed probe read "Couldn't check" for 20 minutes after
+    NWS came back (docs-kb ROADMAP).
+  */
+  describe('the alerts probe cache', () => {
+    const at = (ms: number) => vi.setSystemTime(new Date(Date.UTC(2026, 9, 31, 12, 0, 0) + ms));
+    const nwsCalls = () => calls.filter((u) => u.includes('api.weather.gov')).length;
+    const forecastCalls = () => calls.filter((u) => u.startsWith('https://api.open-meteo.com/')).length;
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      at(0);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('asks NWS again a minute after a failed probe, without refetching the forecast', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine(), alertsThrows: true });
+      const first = await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true });
+      expect(first.alertsStatus).toBe('unavailable');
+
+      // Within the minute: the failure stands, nothing is asked.
+      at(30 * 1000);
+      expect((await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true })).alertsStatus).toBe('unavailable');
+      expect(nwsCalls()).toBe(1);
+
+      // NWS recovers. After the minute the probe runs again and the warning shows,
+      // while the forecast is still served from its own 20-minute cache.
+      const recorded = calls;
+      stubFetch({ forecast: buildForecast(), marine: buildMarine(), alerts: alertFeature() });
+      calls = recorded;
+      at(61 * 1000);
+      const recovered = await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true });
+      expect(recovered.alertsStatus).toBe('ok');
+      expect(recovered.alerts.map((a: any) => a.event)).toEqual(['Gale Warning']);
+      expect(nwsCalls()).toBe(2);
+      expect(forecastCalls()).toBe(1);
+    });
+
+    it('keeps an answer for five minutes, then asks again', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true });
+      at(4 * 60 * 1000);
+      await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true });
+      expect(nwsCalls()).toBe(1);
+      at(5 * 60 * 1000 + 1);
+      await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true });
+      expect(nwsCalls()).toBe(2);
+      expect(forecastCalls()).toBe(1);
+    });
+
+    it('does not answer a probing call with a cached "not requested"', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      expect((await getOpenMeteoForecast(43.55, 7.02)).alertsStatus).toBe('not-requested');
+      expect((await getOpenMeteoForecast(43.55, 7.02, { probeNwsAlerts: true })).alertsStatus).toBe('ok');
+      expect(forecastCalls()).toBe(1);
+    });
+  });
 });
