@@ -162,6 +162,10 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
         // Check active session on mount
         supabase.auth.getSession().then(({ data: { session }, error }) => {
             if (session) {
+                // Opened with a stored session, nobody typed an email: the no-plan
+                // screen names the account, so take it from the session.
+                if (session.user?.email)
+                    setEmail((typed) => typed || session.user.email);
                 checkAccess(session.user.id);
                 return;
             }

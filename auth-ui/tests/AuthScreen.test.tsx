@@ -815,6 +815,12 @@ describe('AuthScreen — Delete account on the no-plan screen', () => {
     open.mockRestore();
   });
 
+  it('names the signed-in account when the app opened with a stored session', async () => {
+    renderNoPlan();
+    expect(await screen.findByText('No active plan')).toBeInTheDocument();
+    expect(screen.getByText('skipper@example.com')).toBeInTheDocument();
+  });
+
   it('is offered on a native build too, where Play requires it', async () => {
     platform.isNative = true;
     renderNoPlan();
