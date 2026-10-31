@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ForecastTimeline, { ForecastPeriod } from './ForecastTimeline';
 import { formatSyncDateTime } from './weatherUtils';
 import { nwsSentenceCase } from './nwsText';
+import { parseNwsTime } from '@sentinel/weather';
 
 export interface WeatherAlert {
   event: string;
@@ -24,6 +25,14 @@ export interface WeatherAlert {
    * name for a call NWS did not make.
    */
   senderName?: string;
+  /**
+   * For an advisory the app inferred from forecast wording, the name of the
+   * forecast period it came from ("Tonight", "Fri through Sat Night"). Set by
+   * the app, never by NWS. A marine zone forecast's periods carry no times, so
+   * such an advisory has no end the app can state; the panel names the period
+   * instead of claiming "Until further notice".
+   */
+  forecastPeriod?: string;
 }
 
 export interface WeatherData {
@@ -180,7 +189,18 @@ export default function AlertsPanel({
   const BADGE = 'inline-flex items-center gap-1 h-6 px-2 rounded-full border text-label whitespace-nowrap';
   const SECTION_TITLE = `text-headline-md ${textColorPrimary}`;
   const selected = hasAlerts ? weatherData.alerts![selectedAlertIndex] : undefined;
-  const when = (iso: string) => new Date(iso).toLocaleString();
+  /* A time NWS (or an app) sent, or null when it is absent or malformed, so a
+     bad timestamp drops the line instead of printing "Invalid Date". */
+  const when = (iso: string | undefined) => parseNwsTime(iso)?.toLocaleString() ?? null;
+  /* An end that is not given means two different things. NWS leaving `ends`
+     empty is NWS saying "until further notice". An advisory the app inferred
+     from the forecast has an end too; the app just does not know it. */
+  const untilText = (alert: WeatherAlert): string => {
+    if (alert.senderName) return 'Until further notice';
+    return alert.forecastPeriod ? `Not given. Inferred from the forecast for ${alert.forecastPeriod}` : 'Not given';
+  };
+  const selectedEffective = selected ? when(selected.effective) : null;
+  const selectedEnds = selected ? when(selected.ends) : null;
   /* The place and zone this panel already shows, so NWS capitals text names
      them as written ("Block Island Sound", not "block island sound"). */
   const placeNames = [weatherData.locName, weatherData.marineZone];
@@ -356,7 +376,7 @@ export default function AlertsPanel({
                               <ChevronRight className="shrink-0 mt-0.5" size={16} strokeWidth={1.75} aria-hidden />
                             </span>
                             <span className="block text-body-sm text-text-muted">
-                              Severity: {alert.severity || 'Moderate'}
+                              Severity: {alert.severity || 'Not given'}
                             </span>
                           </button>
                         ))}
@@ -409,22 +429,22 @@ export default function AlertsPanel({
                             <dl className={`grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t ${borderDividerClass}`}>
                               <div className="flex flex-col gap-1">
                                 <dt className={`text-label ${textColorMuted}`}>Severity</dt>
-                                <dd className={`text-body-md font-semibold ${textColorRed}`}>{selected.severity || 'Moderate'}</dd>
+                                <dd className={`text-body-md font-semibold ${textColorRed}`}>{selected.severity || 'Not given'}</dd>
                               </div>
                               <div className="flex flex-col gap-1">
                                 <dt className={`text-label ${textColorMuted}`}>Urgency</dt>
-                                <dd className={`text-body-md font-semibold ${textColorSecondary}`}>{selected.urgency || 'Immediate'}</dd>
+                                <dd className={`text-body-md font-semibold ${textColorSecondary}`}>{selected.urgency || 'Not given'}</dd>
                               </div>
-                              {selected.effective && (
+                              {selectedEffective && (
                                 <div className="flex flex-col gap-1">
                                   <dt className={`text-label ${textColorMuted}`}>Effective</dt>
-                                  <dd className={`text-data-mono-lg ${textColorSecondary}`}>{when(selected.effective)}</dd>
+                                  <dd className={`text-data-mono-lg ${textColorSecondary}`}>{selectedEffective}</dd>
                                 </div>
                               )}
                               <div className="flex flex-col gap-1">
                                 <dt className={`text-label ${textColorMuted}`}>Effective until</dt>
-                                <dd className={selected.ends ? `text-data-mono-lg ${textColorSecondary}` : `text-body-md ${textColorSecondary}`}>
-                                  {selected.ends ? when(selected.ends) : 'Until further notice'}
+                                <dd className={selectedEnds ? `text-data-mono-lg ${textColorSecondary}` : `text-body-md ${textColorSecondary}`}>
+                                  {selectedEnds ?? untilText(selected)}
                                 </dd>
                               </div>
                             </dl>

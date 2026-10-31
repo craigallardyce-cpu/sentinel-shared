@@ -18,6 +18,14 @@ export interface WeatherAlert {
      * name for a call NWS did not make.
      */
     senderName?: string;
+    /**
+     * For an advisory the app inferred from forecast wording, the name of the
+     * forecast period it came from ("Tonight", "Fri through Sat Night"). Set by
+     * the app, never by NWS. A marine zone forecast's periods carry no times, so
+     * such an advisory has no end the app can state; the panel names the period
+     * instead of claiming "Until further notice".
+     */
+    forecastPeriod?: string;
 }
 export interface WeatherData {
     locName?: string;

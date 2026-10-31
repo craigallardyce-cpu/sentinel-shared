@@ -1,7 +1,7 @@
 import React from 'react';
 import { Wind } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getWindRotation, getHighestWindValue, formatTempRangeString } from './weatherUtils';
+import { getWindRotation, getHighestWindValue, formatTempRangeString, NOT_GIVEN } from './weatherUtils';
 import { windBandColor } from './windScale';
 import { nwsSentenceCase, windUnitKt } from './nwsText';
 
@@ -138,9 +138,13 @@ export default function ForecastTimeline({
 
             <dl className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
               <Field label="Max wind" value={windUnitKt(period.windRange)} note="incl. gusts" mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
-              <Field label="Direction" value={period.windDirection || 'Variable'} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+              {/* A value the forecast did not give says so. A marine zone
+                  forecast carries no temperature or precipitation, and "None"
+                  read as a forecast of no rain; "Variable" is a wind, not a
+                  missing direction. */}
+              <Field label="Direction" value={period.windDirection || NOT_GIVEN} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
               <Field label="Temperature" value={formatTempRangeString(period.tempRange, tempUnit)} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
-              <Field label="Precipitation" value={period.precipChance || 'None'} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
+              <Field label="Precipitation" value={period.precipChance || NOT_GIVEN} mutedClass={textMutedClass} primaryClass={textPrimaryClass} />
             </dl>
 
             {period.reason && (
@@ -195,7 +199,9 @@ export default function ForecastTimeline({
 
           {(p.tempRange || p.precipChance) && (
             <div className={`flex items-center justify-between gap-3 pt-1.5 border-t ${borderDividerClass}`}>
-              <span className={`${VALUE} ${textOrangeClass}`}>{formatTempRangeString(p.tempRange, tempUnit)}</span>
+              {p.tempRange ? (
+                <span className={`${VALUE} ${textOrangeClass}`}>{formatTempRangeString(p.tempRange, tempUnit)}</span>
+              ) : <span />}
               {p.precipChance ? (
                 <span className={`text-body-sm ${textCyanClass}`}>
                   Precip <span className="font-mono font-medium">{p.precipChance}</span>

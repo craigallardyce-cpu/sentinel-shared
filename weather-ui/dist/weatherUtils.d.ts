@@ -24,4 +24,6 @@ export declare function getWeatherIcon(reasonText: string | undefined, theme?: W
  * once the reading is old enough for it to matter.
  */
 export declare function formatSyncDateTime(timestamp: number | null | undefined): string;
+/** What the forecast cards say for a value the forecast did not give. */
+export declare const NOT_GIVEN = "Not given";
 export declare function formatTempRangeString(tempRangeStr: string | undefined, targetUnit: string): string;

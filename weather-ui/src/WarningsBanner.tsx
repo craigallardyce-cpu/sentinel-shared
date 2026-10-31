@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, CloudOff, Minimize2, TriangleAlert } from 'lucide-react';
+import { parseNwsTime } from '@sentinel/weather';
 
 /*
   The marine-warnings banner: one component for HarborSentinel and OceanSentinel.
@@ -316,9 +317,8 @@ export function formatCheckAge(checkedAt: number | null | undefined, now: number
 }
 
 function formatWhen(iso: string | null | undefined, withDate: boolean): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
+  const d = parseNwsTime(iso);
+  if (!d) return null;
   return d.toLocaleString(undefined, withDate
     ? { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
     : { weekday: 'short', hour: '2-digit', minute: '2-digit' });
