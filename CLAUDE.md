@@ -167,8 +167,8 @@ reproduce this layout before anything builds.
   every bare import a shared package makes, the dev server's `fs.allow` reaching this repo, local re-copies of extracted
   modules, Android parity and `applicationId` vs Electron `appId`, OceanSentinel's
   backend-dep mirroring, stale or unpublished `sentinel-shared` SHA pins, palette
-  integrity, the installed `sentinel-check` skill, settings drift and theme
-  adoption. It is part of each app's `npm run verify`, run at the same per-app
+  integrity, the installed `sentinel-check` skill, settings drift, theme
+  adoption and the open-source licence list each build ships. It is part of each app's `npm run verify`, run at the same per-app
   scope CI gave it, so what `verify-clean` reports is what CI would have.
 
   **Version and dependency alignment run per-push without the siblings**: each
