@@ -676,10 +676,16 @@ const NOT_CONSUMED = ['scripts/', 'skills/', '*.md', '.gitignore'];
  * that cannot be determined (no git, shallow clone) -- in which case callers
  * fall back to the tip and simply warn slightly more often.
  */
-const releaseHead = shallow ? null : git([
+const packagesHead = shallow ? null : git([
   'rev-list', '-n', '1', 'origin/main', '--', '.',
   ...NOT_CONSUMED.map((p) => `:(exclude)${p}`),
 ]);
+// The one script an app's own build runs (section 13), so a change to it is a
+// change every release must carry, though the rest of scripts/ is not.
+const CONSUMED_SCRIPTS = ['scripts/generate-licences.mjs'];
+const scriptsHead = shallow ? null : git(['rev-list', '-n', '1', 'origin/main', '--', ...CONSUMED_SCRIPTS]);
+const releaseHead = !packagesHead || !scriptsHead ? packagesHead || scriptsHead
+  : git(['merge-base', '--is-ancestor', packagesHead, scriptsHead]) !== null ? scriptsHead : packagesHead;
 
 for (const app of presentApps) {
   const wf = path.join(ROOT, app.name, '.github/workflows/build.yml');
@@ -1685,6 +1691,24 @@ for (const e of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
     fail('type', `${who}: ${smallType.length} type size(s) below the ${TYPE_FLOOR}px floor in a shared ` +
       `package's UI, which all three apps draw. The one exception is VesselKeeper's 12px below sm, written ` +
       `\`text-[12px] sm:text-[13px]\`: ${sample(smallType)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 13. Open-source licences. Terms of Service §5 says each app lists its
+//     open-source components' licences, and @sentinel/ui's About card reads
+//     them from the file licencesPlugin() (scripts/generate-licences.mjs)
+//     writes into the build. An app whose Vite config drops the plugin ships an
+//     About card that says the list is missing, and nothing else would notice.
+// ---------------------------------------------------------------------------
+for (const app of presentApps) {
+  const cfg = path.join(ROOT, app.name, app.viteConfig);
+  if (!exists(cfg)) continue;
+  const src = readText(cfg);
+  if (!/generate-licences\.mjs['"]/.test(src) || !/\blicencesPlugin\s*\(/.test(src)) {
+    fail('licences', `${app.name}: ${app.viteConfig} does not add licencesPlugin() from ` +
+      `sentinel-shared/scripts/generate-licences.mjs, so the About card's open-source licence list ` +
+      `would be missing from the build (Terms of Service §5)`);
   }
 }
 

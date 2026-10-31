@@ -145,5 +145,5 @@ export declare function formatPosition(lat: number, lon: number): string;
  * return value so the UI cannot tell which source answered.
  */
 export declare function getOpenMeteoForecast(lat: number, lon: number, options?: ForecastOptions): Promise<MarineForecast>;
-/** Test seam: drop memoised forecasts. */
+/** Test seam: drop memoised forecasts and alerts probes. */
 export declare function clearForecastCache(): void;

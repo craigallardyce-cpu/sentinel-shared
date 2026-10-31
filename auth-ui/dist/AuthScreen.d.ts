@@ -99,6 +99,12 @@ export interface AuthScreenProps {
      * This gate is a licensing decision, not a security boundary.
      */
     offlineGraceDays?: number;
+    /**
+     * The Terms version sign-up asks the person to agree to. Defaults to
+     * `TERMS_VERSION`, which is what every app should use; a test passes one to
+     * see the box before the Terms are published. Null shows no box.
+     */
+    termsVersion?: string | null;
 }
 /**
  * The website's Delete account dialog, the same address each app's Settings
@@ -110,9 +116,28 @@ export declare const DELETE_ACCOUNT_URL = "https://marinersentinel.com/account#d
 /** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
 export declare const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
 export declare const AGE_REQUIRED_MESSAGE = "To create an account, confirm that you are 18 or older, or the age of majority where you live.";
+/** The two documents the sign-up agreement links to, on the website. */
+export declare const TERMS_URL = "https://marinersentinel.com/terms";
+export declare const PRIVACY_URL = "https://marinersentinel.com/privacy";
+/**
+ * The Terms of Service in force, named by the "last updated" date at the top of
+ * the published Terms, and recorded on the account beside the time it was
+ * agreed to (`terms_version`, `terms_accepted_at` in its user metadata).
+ *
+ * `null` until the Terms are published, and while it is null sign-up shows no
+ * agreement box: the website's /terms page is still an outline that says no
+ * terms are in force, and agreeing to it would mean nothing (Terms TD10;
+ * docs-kb ROADMAP, "I agree to the Terms of Service and Privacy Policy").
+ * Publishing the Terms sets this to their date, in the same change as the
+ * website's `TERMS_VERSION` in `src/content/flags.ts`, and every later material
+ * change to the Terms moves both. Apps pick it up at the next release's pin bump.
+ */
+export declare const TERMS_VERSION: string | null;
+export declare const TERMS_AGREEMENT_LABEL = "I agree to the Terms of Service and Privacy Policy.";
+export declare const TERMS_REQUIRED_MESSAGE = "To create an account, agree to the Terms of Service and Privacy Policy.";
 /**
  * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
  * Exported so apps can show the remaining allowance alongside their offline indicator.
  */
 export declare function offlineGraceRemaining(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number): number;
-export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays }: AuthScreenProps): React.JSX.Element;
+export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays, termsVersion }: AuthScreenProps): React.JSX.Element;

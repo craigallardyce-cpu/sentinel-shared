@@ -46,6 +46,17 @@ const MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine';
 
 /** Forecasts refresh hourly upstream; this keeps us a good citizen of a free API. */
 const CACHE_TTL_MS = 20 * 60 * 1000;
+/*
+  The NWS alerts probe keeps its own, shorter cache.
+  ---------------------------------------------------------------------------
+  It used to ride in the forecast's 20-minute cache, alertsStatus and all, so
+  one failed probe read "Couldn't check" for 20 minutes after NWS recovered,
+  and a warning issued in that window waited as long. A warning is the one
+  part of a forecast a watch acts on at once, so an answer is kept for five
+  minutes, and a failed probe for one, so the next request asks again soon.
+*/
+const ALERTS_TTL_MS = 5 * 60 * 1000;
+const ALERTS_RETRY_MS = 60 * 1000;
 const FORECAST_TIMEOUT_MS = 8000;
 const MARINE_TIMEOUT_MS = 5000;
 
@@ -331,8 +342,33 @@ async function fetchMarineHourly(lat: number, lon: number): Promise<MarineHourly
   }
 }
 
-const cache = new Map<string, { at: number; value: MarineForecast }>();
-const cacheKey = (lat: number, lon: number) => `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
+/**
+ * The forecast without its alerts, keyed on position and the options that change
+ * its content. The alerts are added per call from `alertsCache`.
+ */
+const cache = new Map<string, { at: number; value: Omit<MarineForecast, 'alerts' | 'alertsStatus'> }>();
+const positionKey = (lat: number, lon: number) => `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
+/** A probe's answer: the alerts, or `null` when it got none. */
+const alertsCache = new Map<string, { at: number; alerts: any[] | null }>();
+
+async function probeAlertsCached(lat: number, lon: number, userAgent: string): Promise<any[] | null> {
+  const key = positionKey(lat, lon);
+  const hit = alertsCache.get(key);
+  if (hit && Date.now() - hit.at < (hit.alerts === null ? ALERTS_RETRY_MS : ALERTS_TTL_MS)) {
+    return hit.alerts;
+  }
+  const alerts = await fetchNwsAlerts(lat, lon, userAgent);
+  alertsCache.set(key, { at: Date.now(), alerts });
+  return alerts;
+}
+
+/** The result's alerts fields, from a probe's answer (or no probe). */
+function alertsFields(probeNwsAlerts: boolean, probed: any[] | null): Pick<MarineForecast, 'alerts' | 'alertsStatus'> {
+  // `alerts` keeps its old shape for every existing consumer; `alertsStatus`
+  // carries what that shape cannot say.
+  if (!probeNwsAlerts) return { alerts: [], alertsStatus: 'not-requested' };
+  return probed === null ? { alerts: [], alertsStatus: 'unavailable' } : { alerts: probed, alertsStatus: 'ok' };
+}
 
 /**
  * Active NWS alerts for a point, or `null` when the check did not get an
@@ -393,10 +429,13 @@ export async function getOpenMeteoForecast(
   } = options;
   const tempSymbol = temperatureUnit === 'fahrenheit' ? '°F' : '°C';
   const precipVariable = precipMode === 'probability' ? 'precipitation_probability' : 'precipitation';
-  const key = cacheKey(lat, lon);
+  // The unit and the precipitation mode change the forecast's text, so they are
+  // part of the key; the alerts probe is not, because it is cached on its own.
+  const key = `${positionKey(lat, lon)}|${temperatureUnit}|${precipMode}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return cached.value;
+    const probed = probeNwsAlerts ? await probeAlertsCached(lat, lon, nwsUserAgent) : null;
+    return { ...cached.value, ...alertsFields(probeNwsAlerts, probed) };
   }
 
   const forecastUrl =
@@ -524,19 +563,7 @@ export async function getOpenMeteoForecast(
     });
   }
 
-  // `alerts` keeps its old shape for every existing consumer; `alertsStatus`
-  // carries what that shape cannot say.
-  let alerts: any[] = [];
-  let alertsStatus: AlertsStatus = 'not-requested';
-  if (probeNwsAlerts) {
-    const probed = await fetchNwsAlerts(lat, lon, nwsUserAgent);
-    if (probed === null) {
-      alertsStatus = 'unavailable';
-    } else {
-      alerts = probed;
-      alertsStatus = 'ok';
-    }
-  }
+  const probed = probeNwsAlerts ? await probeAlertsCached(lat, lon, nwsUserAgent) : null;
 
   const overallRisk: 'low' | 'moderate' | 'high' = periods.some((p) => p.riskLevel === 'high')
     ? 'high'
@@ -544,15 +571,13 @@ export async function getOpenMeteoForecast(
       ? 'moderate'
       : 'low';
 
-  const value: MarineForecast = {
+  const value: Omit<MarineForecast, 'alerts' | 'alertsStatus'> = {
     summary: `Offshore Bulletin for ${position}`,
     overallRisk,
     periods,
     source: marine
       ? 'Open-Meteo global model with marine sea state'
       : 'Open-Meteo global model',
-    alerts,
-    alertsStatus,
     // NWS zone ids are meaningless outside US waters; null so the UI omits the
     // zone label rather than printing "Zone GLOBAL".
     marineZone: null,
@@ -563,10 +588,11 @@ export async function getOpenMeteoForecast(
   };
 
   cache.set(key, { at: Date.now(), value });
-  return value;
+  return { ...value, ...alertsFields(probeNwsAlerts, probed) };
 }
 
-/** Test seam: drop memoised forecasts. */
+/** Test seam: drop memoised forecasts and alerts probes. */
 export function clearForecastCache(): void {
   cache.clear();
+  alertsCache.clear();
 }

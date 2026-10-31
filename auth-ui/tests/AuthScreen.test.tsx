@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { AuthScreen, DELETE_ACCOUNT_URL } from '../src/AuthScreen';
+import { AuthScreen, DELETE_ACCOUNT_URL, TERMS_VERSION, TERMS_URL, TERMS_REQUIRED_MESSAGE, PRIVACY_URL } from '../src/AuthScreen';
 import { memoryStorage } from './memoryStorage';
 import { writeEntitlements } from '../src/entitlements';
 
@@ -883,5 +883,80 @@ describe('AuthScreen — age confirmation at sign-up', () => {
     expect(args.email).toBe('skipper@example.com');
     expect(typeof args.options.data.age_confirmed_at).toBe('string');
     expect(Number.isNaN(Date.parse(args.options.data.age_confirmed_at))).toBe(false);
+  });
+});
+
+describe('AuthScreen — Terms agreement at sign-up (Terms TD10)', () => {
+  function renderSignUp(termsVersion?: string | null) {
+    const supabase = makeMockSupabase({ session: null });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+        {...(termsVersion === undefined ? {} : { termsVersion })}
+      />
+    );
+    return supabase;
+  }
+
+  async function openSignUp() {
+    await screen.findByText('Sign in to continue');
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    fireEvent.change(screen.getByPlaceholderText('captain@vessel.com'), { target: { value: 'skipper@example.com' } });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'correct-horse' } });
+    fireEvent.click(screen.getByLabelText(/I'm 18 or older/));
+  }
+
+  it('shows no agreement box until the Terms are published', async () => {
+    expect(TERMS_VERSION).toBeNull();
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const supabase = renderSignUp();
+    await openSignUp();
+    expect(screen.queryByText(/I agree to the/)).not.toBeInTheDocument();
+    fireEvent.submit(screen.getByText('Register Account').closest('form')!);
+    await waitFor(() => expect(supabase.auth.signUp).toHaveBeenCalledTimes(1));
+    const data = supabase.auth.signUp.mock.calls[0][0].options.data;
+    expect(data.terms_version).toBeUndefined();
+    expect(data.terms_accepted_at).toBeUndefined();
+  });
+
+  it('does not register an account until the Terms box is ticked', async () => {
+    const supabase = renderSignUp('2027-05-01');
+    await openSignUp();
+    fireEvent.submit(screen.getByText('Register Account').closest('form')!);
+    expect(supabase.auth.signUp).not.toHaveBeenCalled();
+    expect(await screen.findByText(TERMS_REQUIRED_MESSAGE)).toBeInTheDocument();
+  });
+
+  it('records which Terms were agreed to, and when', async () => {
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const supabase = renderSignUp('2027-05-01');
+    await openSignUp();
+    fireEvent.click(screen.getByLabelText(/I agree to the/));
+    fireEvent.submit(screen.getByText('Register Account').closest('form')!);
+    await waitFor(() => expect(supabase.auth.signUp).toHaveBeenCalledTimes(1));
+    const data = supabase.auth.signUp.mock.calls[0][0].options.data;
+    expect(data.terms_version).toBe('2027-05-01');
+    expect(data.terms_accepted_at).toBe(data.age_confirmed_at);
+  });
+
+  it('opens each document on the website without ticking the box', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    renderSignUp('2027-05-01');
+    await openSignUp();
+    fireEvent.click(screen.getByText('Terms of Service'));
+    fireEvent.click(screen.getByText('Privacy Policy'));
+    expect(open.mock.calls.map((c) => c[0])).toEqual([TERMS_URL, PRIVACY_URL]);
+    expect(screen.getByLabelText(/I agree to the/)).not.toBeChecked();
+    // The sentence itself still ticks it.
+    fireEvent.click(screen.getByText(/I agree to the/));
+    expect(screen.getByLabelText(/I agree to the/)).toBeChecked();
   });
 });

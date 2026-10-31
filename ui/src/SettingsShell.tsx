@@ -1,4 +1,5 @@
 import React from 'react';
+import { OpenSourceLicences } from './OpenSourceLicences';
 import { cn } from './cn';
 import { Modal, type ModalSize } from './Modal';
 import { Toggle } from './Toggle';
@@ -514,6 +515,7 @@ function renderAbout({
             )}
           </p>
           {about}
+          <OpenSourceLicences appName={appName} />
         </div>
       </div>
     </SettingsSection>
