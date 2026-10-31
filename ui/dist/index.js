@@ -12,6 +12,7 @@ export { UnitField } from './UnitField';
 export { Stepper } from './Stepper';
 export { InstrumentCell } from './InstrumentCell';
 export { Tabs } from './Tabs';
+export { MenuPanel, MenuItem, MenuDivider, useDismiss } from './Menu';
 export { useAppUpdater } from './useAppUpdater';
 export { UpdatePanel } from './UpdatePanel';
 export { ScopeBadge, ClearOverride } from './ScopeBadge';

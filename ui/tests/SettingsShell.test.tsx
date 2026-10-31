@@ -79,3 +79,59 @@ describe('SettingsShell About website link', () => {
     }
   });
 });
+
+describe('SettingsShell initialTab and initialFocus', () => {
+  const TABS = [
+    { id: 'vessel', label: 'Vessel', content: <SettingsRow label="Boat name"><input aria-label="Boat name" /></SettingsRow> },
+    {
+      id: 'alerts',
+      label: 'Alerts & sync',
+      content: <SettingsRow label="Alarm sound"><button type="button" id="alarm-sound">Sound on</button></SettingsRow>,
+    },
+  ];
+  const tabbed = (props: Partial<React.ComponentProps<typeof SettingsShell>> = {}) => (
+    <SettingsShell open onClose={() => {}} appName="TestApp" version="1.0.0" tabs={TABS} {...props} />
+  );
+  const selected = () => screen.getByRole('tab', { selected: true }).textContent;
+
+  it('opens on the first tab without one', () => {
+    render(tabbed());
+    expect(selected()).toBe('Vessel');
+  });
+
+  it('opens on the tab it names, with that panel showing', () => {
+    render(tabbed({ initialTab: 'alerts' }));
+    expect(selected()).toBe('Alerts & sync');
+    expect(screen.getByText('Sound on')).toBeVisible();
+  });
+
+  it('applies it again on the next open, and keeps the last tab when none is named', () => {
+    const { rerender } = render(tabbed({ open: false }));
+    rerender(tabbed({ open: true, initialTab: 'alerts' }));
+    expect(selected()).toBe('Alerts & sync');
+    rerender(tabbed({ open: false }));
+    rerender(tabbed({ open: true }));
+    expect(selected()).toBe('Alerts & sync');
+  });
+
+  it('focuses the control it names after the dialog has made its own first focus', async () => {
+    render(tabbed({ initialTab: 'alerts', initialFocus: 'alarm-sound' }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(document.getElementById('alarm-sound')).toHaveFocus();
+  });
+});
+
+describe('SettingsRow under a wide control', () => {
+  it('wraps, so a control that will not fit beside the label goes under it instead of squeezing it', () => {
+    const { container } = render(
+      <SettingsRow label="Row density" description="How tightly packed rows are.">
+        <span>two buttons</span>
+      </SettingsRow>,
+    );
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.className).toContain('flex-wrap');
+    const label = row.firstElementChild as HTMLElement;
+    expect(label.className).toContain('basis-48');
+    expect(label.className).toContain('flex-1');
+  });
+});

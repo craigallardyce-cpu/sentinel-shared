@@ -23,6 +23,8 @@ export type { StepperProps } from './Stepper';
 export { InstrumentCell } from './InstrumentCell';
 export type { InstrumentCellProps, InstrumentTone } from './InstrumentCell';
 export { Tabs } from './Tabs';
+export { MenuPanel, MenuItem, MenuDivider, useDismiss } from './Menu';
+export type { MenuPanelProps, MenuItemProps } from './Menu';
 export type { TabsProps, TabItem } from './Tabs';
 export { useAppUpdater } from './useAppUpdater';
 export type { AppUpdater, UpdateState, UpdateStatus, UseAppUpdaterOptions, AppUpdaterApi } from './useAppUpdater';
