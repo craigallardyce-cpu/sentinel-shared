@@ -86,6 +86,12 @@ export interface AuthScreenProps {
    * This gate is a licensing decision, not a security boundary.
    */
   offlineGraceDays?: number;
+  /**
+   * The Terms version sign-up asks the person to agree to. Defaults to
+   * `TERMS_VERSION`, which is what every app should use; a test passes one to
+   * see the box before the Terms are published. Null shows no box.
+   */
+  termsVersion?: string | null;
 }
 
 /** Shape stored under `${accessStorageKey}_offline_grant`. */
@@ -110,17 +116,42 @@ export const DELETE_ACCOUNT_URL = 'https://marinersentinel.com/account#delete-ac
  * Inlined rather than imported so this package takes no new runtime import,
  * which every app would then have to alias.
  */
-function openDeleteAccount(): void {
+function openWebsitePage(url: string): void {
   try {
-    window.open(DELETE_ACCOUNT_URL, '_blank', 'noopener,noreferrer');
+    window.open(url, '_blank', 'noopener,noreferrer');
   } catch {
     /* nothing else to try; the website's Account page is the other way in */
   }
 }
 
+function openDeleteAccount(): void {
+  openWebsitePage(DELETE_ACCOUNT_URL);
+}
+
 /** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
 export const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
 export const AGE_REQUIRED_MESSAGE = 'To create an account, confirm that you are 18 or older, or the age of majority where you live.';
+
+/** The two documents the sign-up agreement links to, on the website. */
+export const TERMS_URL = 'https://marinersentinel.com/terms';
+export const PRIVACY_URL = 'https://marinersentinel.com/privacy';
+
+/**
+ * The Terms of Service in force, named by the "last updated" date at the top of
+ * the published Terms, and recorded on the account beside the time it was
+ * agreed to (`terms_version`, `terms_accepted_at` in its user metadata).
+ *
+ * `null` until the Terms are published, and while it is null sign-up shows no
+ * agreement box: the website's /terms page is still an outline that says no
+ * terms are in force, and agreeing to it would mean nothing (Terms TD10;
+ * docs-kb ROADMAP, "I agree to the Terms of Service and Privacy Policy").
+ * Publishing the Terms sets this to their date, in the same change as the
+ * website's `TERMS_VERSION` in `src/content/flags.ts`, and every later material
+ * change to the Terms moves both. Apps pick it up at the next release's pin bump.
+ */
+export const TERMS_VERSION: string | null = null;
+export const TERMS_AGREEMENT_LABEL = 'I agree to the Terms of Service and Privacy Policy.';
+export const TERMS_REQUIRED_MESSAGE = 'To create an account, agree to the Terms of Service and Privacy Policy.';
 
 function readOfflineGrant(storage: StorageLike, accessStorageKey: string): OfflineGrant | null {
   try {
@@ -198,7 +229,8 @@ export function AuthScreen({
   desktopRequiresFeature,
   legacyStorageKey,
   allowOfflineMode = false,
-  offlineGraceDays = 0
+  offlineGraceDays = 0,
+  termsVersion = TERMS_VERSION
 }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -213,6 +245,8 @@ export function AuthScreen({
     the same thing in the same words.
   */
   const [ageConfirmed, setAgeConfirmed] = useState(false);
+  // Terms TD10: a second box beside the age, once there are Terms to agree to.
+  const [termsAgreed, setTermsAgreed] = useState(false);
   const [hasNoSubscription, setHasNoSubscription] = useState(false);
   // Epoch ms when this device's last-known trial for the product ended, if it
   // has; drives the no-plan screen's subtitle and nothing else.
@@ -624,18 +658,25 @@ export function AuthScreen({
       setError(AGE_REQUIRED_MESSAGE);
       return;
     }
+    if (termsVersion && !termsAgreed) {
+      setError(TERMS_REQUIRED_MESSAGE);
+      return;
+    }
     setLoading(true);
     setError('');
 
     try {
       const defaultName = email.split('@')[0];
+      const now = new Date().toISOString();
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: defaultName,
-            age_confirmed_at: new Date().toISOString()
+            age_confirmed_at: now,
+            // Which Terms, and when: the evidence a clickwrap rests on.
+            ...(termsVersion ? { terms_version: termsVersion, terms_accepted_at: now } : {})
           }
         }
       });
@@ -858,6 +899,43 @@ export function AuthScreen({
               />
               <span>{AGE_CONFIRMATION_LABEL}</span>
             </label>
+          )}
+
+          {isRegistering && termsVersion && (
+            <div className="flex items-start gap-3 text-body-sm text-text-secondary">
+              <input
+                type="checkbox"
+                checked={termsAgreed}
+                onChange={(e) => setTermsAgreed(e.target.checked)}
+                aria-label={TERMS_AGREEMENT_LABEL}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-cyan cursor-pointer"
+                required
+              />
+              {/*
+                Not a <label>: a button inside one is labelled by it too, so the
+                box would share its name with both links. The sentence ticks
+                the box itself, except where a link was pressed. The links open
+                the system browser, as the delete link does; Play allows them in
+                a store build, since neither sells anything.
+              */}
+              <span
+                className="cursor-pointer"
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button')) return;
+                  setTermsAgreed((v) => !v);
+                }}
+              >
+                I agree to the{' '}
+                <button type="button" onClick={() => openWebsitePage(TERMS_URL)} className="text-cyan hover:underline">
+                  Terms of Service
+                </button>{' '}
+                and{' '}
+                <button type="button" onClick={() => openWebsitePage(PRIVACY_URL)} className="text-cyan hover:underline">
+                  Privacy Policy
+                </button>
+                .
+              </span>
+            </div>
           )}
 
           <div className="space-y-4">
