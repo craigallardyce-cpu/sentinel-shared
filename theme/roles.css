@@ -114,11 +114,8 @@
      thing in all three apps and do not move when Tailwind changes its defaults.
      See tokens.css for which size belongs to which kind of surface: 8px for a
      control (`rounded-md`), 16px for a floating surface (`rounded-xl`), full for
-     pills and dots. sm, default and lg are deprecated aliases of md. */
-  --radius-sm: var(--radius-sm);
-  --radius-default: var(--radius-default);
+     pills and dots. */
   --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
   --radius-full: var(--radius-full);
 }

@@ -32,12 +32,6 @@ export interface ShellTab {
    * leaves no room, with the full text still the accessible name.
    */
   label: React.ReactNode;
-  /**
-   * @deprecated Ignored. The phone tab bar shows the full `label` (fit-and-finish
-   * V8): an abbreviation is a second name for one place. Use `tabLabelPx={12}`
-   * on AppShell where the full labels need the room.
-   */
-  shortLabel?: React.ReactNode;
   icon: React.ReactNode;
   badge?: number;
   /**
@@ -87,25 +81,6 @@ export function HeaderButton({ icon, active = false, label, className, ...rest }
   );
 }
 
-/**
- * Groups the header's status items. It draws nothing of its own any more: a
- * status is a dot and a word, and the bordered box this used to draw around
- * the pills was a box around a box (fit-and-finish X3). Kept so no app has to
- * change; an app can drop it and pass its StatusPills straight to `headerStatus`.
- *
- * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
- * status band actually holds, so a group that will not shrink makes the band's
- * own `min-w-0` a lie: the band never gets narrower than the pills, and its
- * `overflow-hidden` guillotines them instead. A flex item will not go below its
- * min-content size either, and a pill's min-content is its whole label because
- * the label does not wrap; `min-w-0` is what overrides that. Shrinking then
- * stops at each child's own floor: `StatusPill` carries a min-width of its dot
- * and padding, so it ellipsises down to a dot and stops.
- */
-export function HeaderGroup({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn('flex items-center gap-4 select-none min-w-0', className)}>{children}</div>;
-}
-
 export interface AppShellProps {
   appName: string;
   /** Brand glyph before the name, e.g. `<Waves />`. Drawn at 20px. */
@@ -125,11 +100,6 @@ export interface AppShellProps {
   headerStatus?: React.ReactNode;
   /** Extra controls rendered right of the Settings button (alarm mute, install…). */
   headerActions?: React.ReactNode;
-  /**
-   * @deprecated Accepted and not rendered. The rail no longer has a footer: the
-   * version it held lives in Settings > About only (fit-and-finish O1).
-   */
-  dockFooter?: React.ReactNode;
   /** Full-bleed layer behind everything (a chart). Pointer events pass through the content when `passThrough` is set. */
   background?: React.ReactNode;
   /** Let clicks reach `background` through the content area (the active view renders nothing). */
@@ -304,7 +274,7 @@ export function AppShell({
             it shrinks together with the status band when there is not.
 
             Absorbing the squeeze has to reach the status items themselves:
-            `HeaderGroup` shrinks, and each StatusPill ellipsises down to its
+            the band shrinks, and each StatusPill ellipsises down to its
             dot rather than being sliced. `overflow-hidden` stays as the last
             resort for content this package cannot see.
           */}
@@ -456,7 +426,7 @@ export function AppShell({
                   )}
                 >
                   <span className="shrink-0 [&>svg]:w-5 [&>svg]:h-5" aria-hidden>{tab.icon}</span>
-                  {/* Always the full label, never `shortLabel`, on one line.
+                  {/* Always the full label, on one line.
                       Android scales text with the system font size but keeps
                       box widths, so at 130% a label used to wrap ("Mainten /
                       ance"). It no longer wraps: the tab's side padding is 2px,

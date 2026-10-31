@@ -31,6 +31,7 @@ import { declarationsIn, rangesByDep, compareWithPublished, unknownEntries, cano
 import {
   jsxTagEnd, buttonLabel, glowsIn, arbitraryShadowValue, shadowDeclarations,
   smallTypeClasses, isPhoneOnlyTwelve, TYPE_FLOOR, isApprovedTypeSize, TYPE_SIZE_APPROVED,
+  inlineFontSizes,
 } from './lib/style-scan.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1240,9 +1241,11 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 //
 //    Fit-and-finish (2026-09-30) tightened it once the three apps had moved:
 //    the floor is 13px, not 12; a status colour on a labelled button and a glow
-//    shadow are failures, not advice; and the names the system deprecated warn
-//    wherever an app still writes them, so deleting them after the first weekly
-//    release that carries fit-and-finish breaks nothing.
+//    shadow are failures, not advice; and the names the system deprecated
+//    warned wherever an app still wrote them, so they could be deleted after
+//    the first weekly release that carried fit-and-finish. They were, and a
+//    use of one now fails: it is a class, token or prop that draws nothing,
+//    or, for `rounded-sm` and bare `rounded`, Tailwind's own 4px corner.
 // ---------------------------------------------------------------------------
 const APP_SRC = {
   OceanSentinel: 'frontend/src',
@@ -1316,11 +1319,12 @@ const blankJsComments = (src) =>
 const lineOf = (src, index) => src.slice(0, index).split('\n').length;
 
 /*
-  Names fit-and-finish deprecated (2026-09-30). Each still works -- an alias, or
-  an option drawn as its replacement -- so nothing here is a fault yet. They are
-  warned on so the deletion after the first weekly release carrying
-  fit-and-finish is safe: when every count is zero, nothing in an app still
-  names them. Comments are blanked first; prose about a name is not a use.
+  Names fit-and-finish deprecated (2026-09-30) and @sentinel/theme and
+  @sentinel/ui have since deleted. A use of one is a fault: a class or token
+  that no longer exists draws nothing, a removed prop is a type error in a
+  .tsx file and silently ignored in a .jsx one, and `rounded-sm` and bare
+  `rounded` fall back to Tailwind's 4px instead of the 8px control radius.
+  Comments are blanked first; prose about a name is not a use.
 */
 const ROUNDED_USE = 'rounded-md (8px, a control) or rounded-xl (16px, a floating surface)';
 const DEPRECATED_NAMES = [
@@ -1329,19 +1333,21 @@ const DEPRECATED_NAMES = [
   { re: /(?<![\w-])(?:[a-z0-9-]+:)*rounded-sm(?![\w-])/g, name: 'rounded-sm', use: ROUNDED_USE },
   { re: /(?<![\w-])(?:[a-z0-9-]+:)*rounded-lg(?![\w-])/g, name: 'rounded-lg', use: ROUNDED_USE },
   { re: /var\(\s*--color-[a-z0-9-]+-glow\b[^)]*\)/g, name: 'var(--color-*-glow)',
-    use: 'nothing: state is fill and stroke, and the token is already transparent' },
+    use: 'nothing: state is fill and stroke' },
   { re: /--border-color-glass\b/g, name: '--border-color-glass', use: 'var(--border-color)' },
   { re: /\bshortLabel\s*[:=]/g, name: 'shortLabel', jsOnly: true,
     use: 'nothing: the tab bar shows the full label; put a soft hyphen (\\u00AD) in the label where the rail may break a word' },
   { re: /\bdockFooter\s*=/g, name: 'dockFooter', jsOnly: true,
     use: 'nothing: it is not rendered, and the version lives in Settings > About' },
+  { re: /<HeaderGroup\b|\bimport\s*\{[^}]*\bHeaderGroup\b/g, name: 'HeaderGroup', jsOnly: true,
+    use: 'nothing: pass the StatusPills straight to headerStatus' },
 ];
 // Bare `rounded` is a word as well as a class, so it is only counted inside a
 // string literal that is otherwise a class list.
 const BARE_ROUNDED = /(?<=^|\s)(?:[a-z0-9-]+:)*rounded(?=\s|$)/;
 const LOOKS_LIKE_CLASSES = /(?:^|\s)(?:[a-z0-9-]+:)*-?(?:p[xytblr]?|m[xytblr]?|w|h|min-[wh]|max-[wh]|bg|text|border|flex|grid|gap|items|justify|shadow|font|leading|tracking|overflow|z|inset|opacity|transition|duration|ring|outline|space-[xy]|cursor|select|fill|stroke)-[\w\[\]\/.%:-]+(?=\s|$)/;
 const STRING_LITERAL = /(["'`])((?:\\.|(?!\1)[^\\\n])*)\1/g;
-// Deprecated <Button> options, and what replaces each.
+// Deleted <Button> options, and what replaces each.
 const DEPRECATED_BUTTON = [
   { re: /\bvariant\s*=\s*(?:\{\s*)?["'`]success["'`]/, name: 'variant="success"', use: 'variant="primary" (green is never an action)' },
   { re: /\bvariant\s*=\s*(?:\{\s*)?["'`]accent["'`]/, name: 'variant="accent"', use: 'variant="secondary", or `active` for a control that is on' },
@@ -1358,7 +1364,7 @@ const sample = (list, n = 3) => list.slice(0, n).join(', ') + (list.length > n ?
   two cannot drift apart. `where(index)` names a hit; `allowPhoneTwelve` is
   VesselKeeper's 12px-below-sm exception.
 */
-function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
+function styleRuleHits(src, code, isCss, where, allowPhoneTwelve, isJsx = false) {
   const glows = [];
   const smallType = [];
   const statusButtons = [];
@@ -1370,8 +1376,8 @@ function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
   // Glows written as CSS rather than as a class: a stylesheet, a style
   // object, or the HTML string of a map marker. The legibility halos the map
   // markers draw (black, rgba(0,0,0,…), --bg-app) are neutral and pass.
-  for (const { index, value } of shadowDeclarations(code)) {
-    for (const layer of glowsIn(value)) glows.push(`${where(index)} ${layer.trim().slice(0, 60)}`);
+  for (const { index, value, text } of shadowDeclarations(code)) {
+    for (const layer of glowsIn(value, { text })) glows.push(`${where(index)} ${layer.trim().slice(0, 60)}`);
   }
 
   for (const hit of smallTypeClasses(code)) {
@@ -1389,6 +1395,14 @@ function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
       smallType.push(`${where(m.index)} ${m[0]}`);
     }
   } else {
+    // The same floor for type written outside a class: an inline style, an SVG
+    // attribute, the HTML of a map marker. Until 2026-10-31 nothing read these,
+    // so OceanSentinel's 10 and 11px chart annotations passed unchecked. The
+    // same exemption comment applies, in a JS or JSX comment above the size.
+    for (const hit of inlineFontSizes(code, { jsx: isJsx })) {
+      if (src.slice(Math.max(0, hit.index - 400), hit.index).includes(FLOOR_EXEMPT)) continue;
+      smallType.push(`${where(hit.index)} ${hit.text.replace(/\s+/g, ' ').slice(0, 60)}`);
+    }
     // A status colour on a labelled button fails whether it is there at rest
     // or behind a prefix (see the longer note in the apps' pass below).
     for (const m of code.matchAll(BUTTON_OPEN)) {
@@ -1439,7 +1453,8 @@ for (const app of presentApps) {
 
     // Glows, type under the floor and status-coloured buttons: the rules the
     // shared packages are held to as well.
-    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, PHONE_TWELVE_APPS.has(app.name));
+    const isJsx = ['.jsx', '.tsx'].includes(path.extname(f));
+    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, PHONE_TWELVE_APPS.has(app.name), isJsx);
     glows.push(...hits.glows);
     smallType.push(...hits.smallType);
     statusButtons.push(...hits.statusButtons);
@@ -1460,7 +1475,7 @@ for (const app of presentApps) {
       if (!isApprovedTypeSize(src, code, m.index)) arbitraryText++;
     }
 
-    // Deprecated names, for the post-release deletion.
+    // Deleted names (see DEPRECATED_NAMES).
     for (const d of DEPRECATED_NAMES) {
       if (d.jsOnly && isCss) continue;
       for (const m of code.matchAll(d.re)) noteDeprecated(d.name, d.use, `${rel(f)}:${lineOf(src, m.index)}`);
@@ -1565,7 +1580,7 @@ for (const app of presentApps) {
   }
   if (glows.length) {
     fail('theme', `${app.name}: ${glows.length} glow(s) — a zero-offset coloured shadow, or a --color-*-glow ` +
-      `token (transparent and deprecated). State is fill and stroke; no glows. Elevation is ` +
+      `token (deleted). State is fill and stroke; no glows. Elevation is ` +
       `var(--panel-shadow); a map marker's legibility halo may be black, rgba(0,0,0,…) or var(--bg-app): ${sample(glows)}`);
   }
   if (statusButtons.length) {
@@ -1578,12 +1593,12 @@ for (const app of presentApps) {
     fail('type', `${app.name}: ${smallType.length} type size(s) below the ${TYPE_FLOOR}px floor in ` +
       `@sentinel/theme/type.css — these screens are read at arm's length, in spray, sometimes ` +
       `through gloves. Type that is genuinely not read — a glyph, a chart annotation, licence ` +
-      `credit — may say so in a /* ${FLOOR_EXEMPT}: why */ comment above a stylesheet rule. ` +
+      `credit — may say so in a ${FLOOR_EXEMPT}: why comment above the stylesheet rule or the inline size. ` +
       `VesselKeeper alone may draw 12px below sm, written \`text-[12px] sm:text-[13px]\`: ${sample(smallType)}`);
   }
   for (const [name, { use, hits }] of deprecated) {
-    warn('deprecated', `${app.name}: ${hits.length} use(s) of ${name}, deprecated by fit-and-finish and due ` +
-      `for deletion after the first weekly release carrying it — use ${use}: ${sample(hits)}`);
+    fail('deprecated', `${app.name}: ${hits.length} use(s) of ${name}, deleted from @sentinel/theme or ` +
+      `@sentinel/ui after fit-and-finish — use ${use}: ${sample(hits)}`);
   }
   if (localFaces.length) {
     warn('theme', `${app.name}: declares typography that belongs to @sentinel/theme — faces come from ` +
@@ -1604,10 +1619,13 @@ for (const app of presentApps) {
     warn('flag', `${app.name}: ${defaultOnEnv.length} env switch(es) that are ON when the variable is unset ` +
       `(\`env.X !== '…'\`), so every build that forgets to set it gets the flag: ${sample([...new Set(defaultOnEnv)])}`);
   }
+  // A failure since 2026-10-31: every app reached zero by 2026-10-28
+  // (VesselKeeper #59), so a new one is drift, not burndown.
   if (rawButtons.length) {
     const files = [...new Set(rawButtons)];
-    warn('ui', `${app.name}: ${rawButtons.length} hand-rolled <button>(s) wearing fleet colours across ` +
-      `${files.length} file(s) — these are the ones @sentinel/ui's Button should own: ${sample(files)}`);
+    fail('ui', `${app.name}: ${rawButtons.length} hand-rolled <button>(s) wearing fleet colours across ` +
+      `${files.length} file(s) — @sentinel/ui's Button owns a labelled button painted a fleet colour ` +
+      `at rest; use Button (primary, secondary, ghost, danger or alarm): ${sample(files)}`);
   }
 
   const htmlRel = APP_HTML[app.name];
@@ -1653,7 +1671,7 @@ for (const e of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
     const src = readText(f);
     const isCss = path.extname(f) === '.css';
     const code = isCss ? blankCssComments(src) : blankJsComments(src);
-    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, true);
+    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, true, ['.jsx', '.tsx'].includes(path.extname(f)));
     glows.push(...hits.glows);
     smallType.push(...hits.smallType);
     statusButtons.push(...hits.statusButtons);

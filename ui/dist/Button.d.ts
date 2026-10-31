@@ -1,24 +1,11 @@
 import React from 'react';
-/**
- * `primary`, `secondary`, `ghost`, `link`, `danger` and `alarm`.
- *
- * `success` and `accent` are deprecated aliases: `success` draws as `primary`
- * (green is not an action) and `accent` as `secondary`. Both still type-check
- * so no app breaks before it has moved off them.
- */
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'danger' | 'alarm'
-/** @deprecated Draws as `primary`. Green is not an action (fit-and-finish X2). */
- | 'success'
-/** @deprecated Draws as `secondary`. Use `active` for a control that is on. */
- | 'accent';
+/** `primary`, `secondary`, `ghost`, `link`, `danger` and `alarm`. */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'danger' | 'alarm';
 /**
  * `md` is 48px (the default and the touch floor); `sm` is 40px, for dense
- * tables a pointer drives. `dense` is a deprecated alias of `sm`: the 32px
- * size it named is retired, so it renders at 40.
+ * tables a pointer drives.
  */
-export type ButtonSize = 'sm' | 'md'
-/** @deprecated The 32px size is retired; renders as `sm` (40px). */
- | 'dense';
+export type ButtonSize = 'sm' | 'md';
 /**
  * `default` is the fleet button's own shape. `bare` hands layout to the
  * caller's `className` -- see LAYOUT below for exactly what that means.

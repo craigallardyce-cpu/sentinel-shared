@@ -39,14 +39,20 @@ export function SettingsSection({ title, description, children, className, hideT
  * in a group has none.
  */
 export function SettingsRow({ label, description, source, action, children, className, }) {
-    return (_jsxs("div", { className: cn('flex items-center justify-between gap-6 py-4', ROW_DIVIDER, className), children: [_jsxs("div", { className: "min-w-0", children: [_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: "font-sans text-[15px] font-semibold text-text-primary", children: label }), source && _jsx(ScopeBadge, { source: source, hideWhenUnset: true })] }), description && _jsx("div", { className: "text-[13px] text-text-muted mt-1", children: description })] }), _jsxs("div", { className: "shrink-0 flex items-center gap-2", children: [action, children] })] }));
+    /*
+      The label keeps at least 12rem. When the control will not fit beside that
+      (two buttons, a segmented control, on a phone) the row wraps and the
+      control goes under the label, left-aligned, instead of squeezing the label
+      to a word a line. A switch still sits beside its label at 320px.
+    */
+    return (_jsxs("div", { className: cn('flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-4', ROW_DIVIDER, className), children: [_jsxs("div", { className: "min-w-0 flex-1 basis-48", children: [_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: "font-sans text-[15px] font-semibold text-text-primary", children: label }), source && _jsx(ScopeBadge, { source: source, hideWhenUnset: true })] }), description && _jsx("div", { className: "text-[13px] text-text-muted mt-1", children: description })] }), _jsxs("div", { className: "shrink-0 flex items-center gap-2", children: [action, children] })] }));
 }
 /**
  * The fleet settings dialog: Display (night mode, brightness, keep awake) →
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel = 'Save and apply', saving = false, saveDisabled = false, size = 'lg', about, summary, sources, title = 'Settings', }) {
+export function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, initialTab, initialFocus, displayExtra, footer, onSave, saveLabel = 'Save and apply', saving = false, saveDisabled = false, size = 'lg', about, summary, sources, title = 'Settings', }) {
     const showDisplay = onNightModeChange || onDayBrightnessChange || onNightBrightnessChange || onKeepAwakeChange;
     const shownVersion = updater?.state.currentVersion || version;
     /* In tabbed mode the strip names each tab, so the section under it does not
@@ -80,8 +86,31 @@ export function SettingsShell({ open, onClose, appName, appIcon, version, nightM
             { id: '__about', label: 'About', content: combinedAbout },
         ]
         : [];
-    const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
+    const [activeTab, setActiveTab] = React.useState(() => (open && initialTab) || allTabs[0]?.id || '');
+    /* `initialTab` applies as the dialog opens (or when it changes while open),
+       set during render rather than in an effect so the first frame already shows
+       that tab and the control `initialFocus` names is not hidden. */
+    const openKey = open ? `open:${initialTab ?? ''}` : 'closed';
+    const [seenOpenKey, setSeenOpenKey] = React.useState(openKey);
+    if (openKey !== seenOpenKey) {
+        setSeenOpenKey(openKey);
+        if (open && initialTab)
+            setActiveTab(initialTab);
+    }
     const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id ?? '';
+    /* After the Modal's own first focus, which it makes on a 0ms timer from its
+       effect. A child's effects run before its parent's, so this timer is queued
+       after the Modal's and wins. */
+    React.useEffect(() => {
+        if (!open || !initialFocus)
+            return undefined;
+        const t = setTimeout(() => {
+            const el = document.getElementById(initialFocus);
+            el?.scrollIntoView?.({ block: 'center' });
+            el?.focus({ preventScroll: true });
+        }, 0);
+        return () => clearTimeout(t);
+    }, [open, initialFocus]);
     /* Save and apply is the primary action, on the right. Anything else the app
        puts in the footer sits on the left, away from it. */
     const footerContent = onSave ? (_jsxs(_Fragment, { children: [footer && _jsx("div", { className: "mr-auto flex flex-wrap items-center gap-2", children: footer }), _jsx(Button, { variant: "primary", onClick: onSave, loading: saving, disabled: saveDisabled, children: saveLabel })] })) : footer;

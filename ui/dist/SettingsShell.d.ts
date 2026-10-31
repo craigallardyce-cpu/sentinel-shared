@@ -4,11 +4,6 @@ import type { SettingSource } from './ScopeBadge';
 import { type AppUpdater } from './useAppUpdater';
 export interface SettingsSectionProps {
     title: React.ReactNode;
-    /**
-     * @deprecated Accepted and not drawn. An icon beside a word belongs only to
-     * primary navigation (fit-and-finish, "Icons"); a group heading is a word.
-     */
-    icon?: React.ReactNode;
     description?: React.ReactNode;
     children?: React.ReactNode;
     className?: string;
@@ -51,8 +46,6 @@ export declare function SettingsRow({ label, description, source, action, childr
 export interface SettingsTab {
     id: string;
     label: string;
-    /** @deprecated Accepted and not drawn: tabs are words (fit-and-finish V9). */
-    icon?: React.ReactNode;
     content: React.ReactNode;
 }
 export interface SettingsShellProps {
@@ -97,6 +90,19 @@ export interface SettingsShellProps {
      * About -- which is a scroll you have to remember your way down.
      */
     tabs?: SettingsTab[];
+    /**
+     * With `tabs`: the tab to show each time the dialog opens, by its `id` (an
+     * app's own, or `__display` / `__about`). Without it the dialog keeps the
+     * tab it was last left on. OceanSentinel's header Muted badge opens Settings
+     * on Alerts & sync this way.
+     */
+    initialTab?: string;
+    /**
+     * The `id` of a control to focus once the dialog has opened, after the
+     * dialog's own first focus, scrolled into view. Pair it with `initialTab`
+     * when the control is on a tab other than the first.
+     */
+    initialFocus?: string;
     /**
      * Footer content. With `onSave`, it sits on the left and Save and apply on the
      * right; without it, it is the whole footer, right-aligned.
@@ -156,4 +162,4 @@ export interface SettingsShellProps {
  * the app's own sections → Updates → About. Every app gets the same chrome and
  * the same standard sections, and only supplies what is genuinely its own.
  */
-export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, displayExtra, footer, onSave, saveLabel, saving, saveDisabled, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;
+export declare function SettingsShell({ open, onClose, appName, appIcon, version, nightMode, onNightModeChange, dayBrightness, onDayBrightnessChange, nightBrightness, onNightBrightnessChange, keepAwake, onKeepAwakeChange, updater, children, tabs, initialTab, initialFocus, displayExtra, footer, onSave, saveLabel, saving, saveDisabled, size, about, summary, sources, title, }: SettingsShellProps): React.JSX.Element;

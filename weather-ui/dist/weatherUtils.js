@@ -67,9 +67,11 @@ export function formatSyncDateTime(timestamp) {
     const day = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     return `${day} ${time}`;
 }
+/** What the forecast cards say for a value the forecast did not give. */
+export const NOT_GIVEN = 'Not given';
 export function formatTempRangeString(tempRangeStr, targetUnit) {
     if (!tempRangeStr)
-        return 'N/A';
+        return NOT_GIVEN;
     const regex = /(\d+)(?:\s*°?\s*([CF]))?/gi;
     return tempRangeStr.replace(regex, (_match, numStr, unit) => {
         const num = parseFloat(numStr);

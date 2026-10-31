@@ -15,24 +15,6 @@ import { HeaderStatusContext } from './StatusPill';
 export function HeaderButton({ icon, active = false, label, className, ...rest }) {
     return (_jsxs("button", { type: "button", className: cn('inline-flex items-center justify-center gap-2 h-12 min-w-12 px-3 sm:px-4 rounded-md cursor-pointer', 'font-sans text-[15px] font-semibold whitespace-nowrap', 'transition-colors duration-[var(--motion-state)] ease-[var(--motion-ease)]', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan/60', active ? 'text-cyan' : 'text-text-secondary hover:text-text-primary hover:bg-bg-card-hover', className), "aria-pressed": active, ...rest, children: [_jsx("span", { className: cn('shrink-0 [&>svg]:w-5 [&>svg]:h-5', label ? 'sm:hidden' : undefined), "aria-hidden": true, children: icon }), label && _jsx("span", { className: "hidden sm:inline", children: label })] }));
 }
-/**
- * Groups the header's status items. It draws nothing of its own any more: a
- * status is a dot and a word, and the bordered box this used to draw around
- * the pills was a box around a box (fit-and-finish X3). Kept so no app has to
- * change; an app can drop it and pass its StatusPills straight to `headerStatus`.
- *
- * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
- * status band actually holds, so a group that will not shrink makes the band's
- * own `min-w-0` a lie: the band never gets narrower than the pills, and its
- * `overflow-hidden` guillotines them instead. A flex item will not go below its
- * min-content size either, and a pill's min-content is its whole label because
- * the label does not wrap; `min-w-0` is what overrides that. Shrinking then
- * stops at each child's own floor: `StatusPill` carries a min-width of its dot
- * and padding, so it ellipsises down to a dot and stops.
- */
-export function HeaderGroup({ children, className }) {
-    return _jsx("div", { className: cn('flex items-center gap-4 select-none min-w-0', className), children: children });
-}
 /* Bottom padding of the content area, as a variable the inline style reads.
    The value differs either side of `lg` (the tab bar shows only below it), and
    an inline style cannot hold a breakpoint -- while theme/shell.css's own

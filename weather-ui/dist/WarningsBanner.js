@@ -1,6 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useId, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, CloudOff, Minimize2, TriangleAlert } from 'lucide-react';
+import { parseNwsTime } from '@sentinel/weather';
 /**
  * One advisory's identity: its event name and when it took effect. NWS alerts
  * reach the apps without an id, so this is the nearest stable thing, and an
@@ -183,10 +184,8 @@ export function formatCheckAge(checkedAt, now = Date.now()) {
     return `${Math.floor(hours / 24)} days ago`;
 }
 function formatWhen(iso, withDate) {
-    if (!iso)
-        return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime()))
+    const d = parseNwsTime(iso);
+    if (!d)
         return null;
     return d.toLocaleString(undefined, withDate
         ? { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }

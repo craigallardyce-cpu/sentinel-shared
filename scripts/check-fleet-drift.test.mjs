@@ -666,11 +666,70 @@ test('an icon-only status-coloured button is not a labelled button', () => {
   assert.doesNotMatch(checkSource('HarborSentinel', 'A.tsx', body), /labelled <button>/);
 });
 
-test('an accent button behind an arrow onClick is now seen, and still only warns', () => {
+test('an accent button behind an arrow onClick is seen, and fails since every app reached zero', () => {
   const body = '<button onClick={() => go()} className="bg-cyan text-bg-app">Go</button>\n';
   const out = checkSource('HarborSentinel', 'A.tsx', body);
-  assert.match(out, /WARN {2}\[ui\] HarborSentinel: 1 hand-rolled <button>\(s\) wearing fleet colours/);
-  assert.doesNotMatch(out, /FAIL {2}\[ui\]/);
+  assert.match(out, /FAIL {2}\[ui\] HarborSentinel: 1 hand-rolled <button>\(s\) wearing fleet colours.*use Button/);
+  assert.doesNotMatch(out, /WARN {2}\[ui\]/);
+});
+
+test('a hover-only fleet colour and an icon-only button are still not hand-rolled buttons', () => {
+  const cases = [
+    '<button onClick={() => go()} className="hover:bg-bg-card">Go</button>\n',
+    '<button onClick={() => close()} className="bg-cyan" aria-label="Close"><X size={16} /></button>\n',
+  ];
+  for (const body of cases) assert.doesNotMatch(checkSource('HarborSentinel', 'A.tsx', body), /hand-rolled/, body);
+});
+
+test('type under the floor written outside a class fails: a style object, an SVG attribute, a marker\'s HTML', () => {
+  const cases = [
+    ['A.jsx', '<text style={{ fontSize: 11, fontFamily: "monospace" }}>x</text>\n', /fontSize: 11/],
+    ['A.tsx', '<text fontSize="10">x</text>\n', /fontSize="10"/],
+    ['A.tsx', '<text fontSize={12}>x</text>\n', /fontSize=\{12\}/],
+    ['A.jsx', "<span style={{ fontSize: '12px' }}>x</span>\n", /fontSize: '12px'/],
+    ['A.jsx', 'const html = `<span style="font-size:11px">x</span>`;\n', /font-size:11px/],
+    ['A.jsx', 'const html = `<span style="font:700 10px/1.35 monospace">x</span>`;\n', /font:700 10px/],
+    ['A.jsx', "const html = `<span style=\"font:${major ? '700' : '400'} ${major ? 11 : 10}px/1 mono\">x</span>`;\n", /OceanSentinel: 1 type size/],
+  ];
+  for (const [file, body, re] of cases) {
+    const out = checkSource('OceanSentinel', file, body);
+    assert.match(out, /FAIL {2}\[type\] OceanSentinel: 1 type size\(s\) below the 13px floor/, body);
+    assert.match(out, re, body);
+  }
+});
+
+test('inline type at the floor, a PDF point size in a .ts file, and an exempt chart annotation pass', () => {
+  const cases = [
+    ['A.jsx', '<text style={{ fontSize: 13 }}>x</text>\n<text fontSize="18">y</text>\n'],
+    ['A.jsx', 'const html = `<span style="font:700 13px/1 mono">x</span>`;\n'],
+    ['report.ts', "doc.autoTable({ styles: { font: 'helvetica', fontSize: 8.5 } });\n"],
+    ['A.jsx', '{/* type-floor-exempt: an axis tick on a chart, sized to the plot */}\n<text style={{ fontSize: 11 }}>12:00</text>\n'],
+    ['A.jsx', '<text style={{ fontSize: size }}>x</text>\n<text style={{ fontSize: 2 * base }}>y</text>\n'],
+  ];
+  for (const [file, body] of cases) {
+    assert.doesNotMatch(checkSource('OceanSentinel', file, body), /FAIL {2}\[type\]/, body);
+  }
+});
+
+test('a coloured text-shadow glows; a black, --bg-app or white halo behind text does not', () => {
+  const glowing = [
+    ['a.css', '.lit { text-shadow: 0 0 6px var(--color-cyan); }\n'],
+    ['A.jsx', "<span style={{ textShadow: '0 0 8px #22d3ee' }}>x</span>\n"],
+    ['A.jsx', 'const html = `<span style="text-shadow:0 0 4px rgba(4,10,20,0.95)">x</span>`;\n'],
+  ];
+  for (const [file, body] of glowing) {
+    assert.match(checkSource('OceanSentinel', file, body), /FAIL {2}\[theme\] OceanSentinel: 1 glow\(s\)/, body);
+  }
+  const halos = [
+    ['a.css', '.l { text-shadow: 0 0 3px var(--bg-app), 0 0 3px var(--bg-app); }\n'],
+    ['a.css', '.l { text-shadow: 0px 0px 3px #ffffff, 0px 0px 3px #ffffff; }\n'],
+    ['A.jsx', "<span style={{ textShadow: '0 0 2px rgba(0,0,0,0.9)' }}>x</span>\n"],
+  ];
+  for (const [file, body] of halos) {
+    assert.doesNotMatch(checkSource('OceanSentinel', file, body), /glow\(s\)/, body);
+  }
+  assert.match(checkSource('OceanSentinel', 'a.css', '.b { box-shadow: 0 0 6px #ffffff; }\n'), /1 glow\(s\)/,
+    'white is a halo only behind text');
 });
 
 test('a zero-offset coloured shadow fails, in a class, a stylesheet, a style object and a marker\'s HTML', () => {
@@ -709,7 +768,7 @@ test('the literal-colour shadow rule no longer advises a glow token', () => {
   assert.doesNotMatch(out, /Use var\(--color-\*-glow\)/);
 });
 
-test('each deprecated name warns, naming its replacement', () => {
+test('each deleted name fails, naming its replacement', () => {
   const cases = [
     ['A.tsx', '<span className="text-label-caps text-text-muted">x</span>', /1 use\(s\) of text-label-caps.*use text-label/],
     ['A.tsx', '<div className="rounded-sm border p-2">x</div>', /1 use\(s\) of rounded-sm.*use rounded-md/],
@@ -723,15 +782,16 @@ test('each deprecated name warns, naming its replacement', () => {
     ['A.tsx', '<Button size="dense">Go</Button>', /1 use\(s\) of <Button size="dense">.*use size="sm"/],
     ['A.tsx', "const tabs = [{ id: 'log', label: \"Ship's Log\", shortLabel: 'Log' }];", /1 use\(s\) of shortLabel.*soft hyphen/],
     ['A.tsx', '<AppShell dockFooter={<span>v2</span>} />', /1 use\(s\) of dockFooter.*Settings > About/],
+    ['A.jsx', "import { AppShell, HeaderGroup } from '@sentinel/ui';", /1 use\(s\) of HeaderGroup.*headerStatus/],
   ];
   for (const [file, body, re] of cases) {
     const out = checkSource('VesselKeeper', file, `${body}\n`);
-    assert.match(out, new RegExp(`WARN {2}\\[deprecated\\] VesselKeeper: ${re.source}`), body);
-    assert.doesNotMatch(out, /FAIL {2}\[deprecated\]/);
+    assert.match(out, new RegExp(`FAIL {2}\\[deprecated\\] VesselKeeper: ${re.source}`), body);
+    assert.doesNotMatch(out, /WARN {2}\[deprecated\]/);
   }
 });
 
-test('the word "rounded" in prose or code, and a deprecated name in a comment, do not warn', () => {
+test('the word "rounded" in prose or code, and a deleted name in a comment, are not uses', () => {
   const body = `// rounded corners, text-label-caps and rounded-lg were the old look
 const rounded = Math.round(x);
 const msg = 'Speed is rounded to the nearest knot';

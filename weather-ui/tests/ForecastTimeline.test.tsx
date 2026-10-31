@@ -103,3 +103,22 @@ describe('ForecastTimeline: unit and names', () => {
     expect(screen.getByText('Fog near Newport. Issued by NWS Boston.')).toBeInTheDocument();
   });
 });
+
+describe('ForecastTimeline with a marine zone forecast, which gives no temperature or precipitation', () => {
+  const ZONE: ForecastPeriod[] = [{ periodName: 'Tonight', windRange: '15 kts', reason: 'NW WINDS 10 TO 15 KT.' }];
+
+  it('says "Not given" in the bulletin, never "None", "N/A" or "Variable"', () => {
+    render(<ForecastTimeline periods={ZONE} tempUnit="F" mode="bulletin" />);
+    expect(screen.queryByText('None')).toBeNull();
+    expect(screen.queryByText('N/A')).toBeNull();
+    expect(screen.queryByText('Variable')).toBeNull();
+    expect(screen.getAllByText('Not given')).toHaveLength(3);
+  });
+
+  it('leaves the temperature out of the sidebar row when only precipitation is known', () => {
+    render(<ForecastTimeline periods={[{ ...ZONE[0], precipChance: '20%' }]} tempUnit="F" />);
+    expect(screen.queryByText('N/A')).toBeNull();
+    expect(screen.queryByText('Not given')).toBeNull();
+    expect(screen.getByText('20%')).toBeInTheDocument();
+  });
+});

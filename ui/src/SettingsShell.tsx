@@ -26,11 +26,6 @@ const ROW_DIVIDER = 'border-b border-bg-highest last:border-b-0';
 
 export interface SettingsSectionProps {
   title: React.ReactNode;
-  /**
-   * @deprecated Accepted and not drawn. An icon beside a word belongs only to
-   * primary navigation (fit-and-finish, "Icons"); a group heading is a word.
-   */
-  icon?: React.ReactNode;
   description?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
@@ -91,9 +86,15 @@ export function SettingsRow({
   children?: React.ReactNode;
   className?: string;
 }) {
+  /*
+    The label keeps at least 12rem. When the control will not fit beside that
+    (two buttons, a segmented control, on a phone) the row wraps and the
+    control goes under the label, left-aligned, instead of squeezing the label
+    to a word a line. A switch still sits beside its label at 320px.
+  */
   return (
-    <div className={cn('flex items-center justify-between gap-6 py-4', ROW_DIVIDER, className)}>
-      <div className="min-w-0">
+    <div className={cn('flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-4', ROW_DIVIDER, className)}>
+      <div className="min-w-0 flex-1 basis-48">
         <div className="flex items-center gap-2">
           <span className="font-sans text-[15px] font-semibold text-text-primary">{label}</span>
           {source && <ScopeBadge source={source} hideWhenUnset />}
@@ -111,8 +112,6 @@ export function SettingsRow({
 export interface SettingsTab {
   id: string;
   label: string;
-  /** @deprecated Accepted and not drawn: tabs are words (fit-and-finish V9). */
-  icon?: React.ReactNode;
   content: React.ReactNode;
 }
 
@@ -158,6 +157,19 @@ export interface SettingsShellProps {
    * About -- which is a scroll you have to remember your way down.
    */
   tabs?: SettingsTab[];
+  /**
+   * With `tabs`: the tab to show each time the dialog opens, by its `id` (an
+   * app's own, or `__display` / `__about`). Without it the dialog keeps the
+   * tab it was last left on. OceanSentinel's header Muted badge opens Settings
+   * on Alerts & sync this way.
+   */
+  initialTab?: string;
+  /**
+   * The `id` of a control to focus once the dialog has opened, after the
+   * dialog's own first focus, scrolled into view. Pair it with `initialTab`
+   * when the control is on a tab other than the first.
+   */
+  initialFocus?: string;
   /**
    * Footer content. With `onSave`, it sits on the left and Save and apply on the
    * right; without it, it is the whole footer, right-aligned.
@@ -235,6 +247,8 @@ export function SettingsShell({
   updater,
   children,
   tabs,
+  initialTab,
+  initialFocus,
   displayExtra,
   footer,
   onSave,
@@ -296,8 +310,30 @@ export function SettingsShell({
       ]
     : [];
 
-  const [activeTab, setActiveTab] = React.useState(() => allTabs[0]?.id ?? '');
+  const [activeTab, setActiveTab] = React.useState(() => (open && initialTab) || allTabs[0]?.id || '');
+  /* `initialTab` applies as the dialog opens (or when it changes while open),
+     set during render rather than in an effect so the first frame already shows
+     that tab and the control `initialFocus` names is not hidden. */
+  const openKey = open ? `open:${initialTab ?? ''}` : 'closed';
+  const [seenOpenKey, setSeenOpenKey] = React.useState(openKey);
+  if (openKey !== seenOpenKey) {
+    setSeenOpenKey(openKey);
+    if (open && initialTab) setActiveTab(initialTab);
+  }
   const activeId = allTabs.some((t) => t.id === activeTab) ? activeTab : allTabs[0]?.id ?? '';
+
+  /* After the Modal's own first focus, which it makes on a 0ms timer from its
+     effect. A child's effects run before its parent's, so this timer is queued
+     after the Modal's and wins. */
+  React.useEffect(() => {
+    if (!open || !initialFocus) return undefined;
+    const t = setTimeout(() => {
+      const el = document.getElementById(initialFocus);
+      el?.scrollIntoView?.({ block: 'center' });
+      el?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open, initialFocus]);
 
   /* Save and apply is the primary action, on the right. Anything else the app
      puts in the footer sits on the left, away from it. */

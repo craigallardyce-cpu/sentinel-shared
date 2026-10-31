@@ -51,6 +51,24 @@ it is displayed — OpenStreetMap and OpenSeaMap are CC-BY-SA — so it is a req
 than a courtesy. The MapTiler Free plan is additionally non-commercial and requires the
 MapTiler logo; a paid plan needs only the `© MapTiler` credit already carried here.
 
+## A tile proxy instead of a key
+
+A packaged app cannot carry a MapTiler key: anything in an installer ships to everyone who
+downloads it. Such a host names a proxy that holds the key server-side instead:
+
+```js
+const registry = createChartRegistry({ tileProxy: 'https://marinersentinel.com/api/tiles' });
+registry.basemapSource;                        // 'proxy'
+registry.getProvider('maptiler_satellite').build(12, 1206, 1539);
+// 'https://marinersentinel.com/api/tiles/maptiler_satellite/12/1206/1539.png'
+```
+
+The licensed layers keep the registry's own label, attribution and coverage; only the URL
+changes, the zoom is capped at the proxy's limit (`proxyMaxZoom`, default `PROXY_MAX_ZOOM`, 16)
+and the layer carries `proxied: true`, so the host can refuse a deeper request before it
+reaches the proxy. The unlicensed pair is withdrawn exactly as a key withdraws it. A key, when
+one is supplied, wins over the proxy; an empty `tileProxy` disables it.
+
 ## Coverage is tested against real geometry where possible
 
 Bounding boxes are a coarse fallback and get this wrong in ways that matter. A box around the

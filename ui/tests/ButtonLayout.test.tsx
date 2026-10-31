@@ -11,7 +11,7 @@ import type { ButtonVariant } from '../src/Button';
   taken over -- because a test that checked the caller's class was present
   would pass on exactly the bug it is meant to catch.
 */
-const ALL: ButtonVariant[] = ['primary', 'secondary', 'accent', 'success', 'alarm', 'danger', 'ghost', 'link'];
+const ALL: ButtonVariant[] = ['primary', 'secondary', 'alarm', 'danger', 'ghost', 'link'];
 
 const tokens = (el: HTMLElement) => el.className.split(/\s+/).filter(Boolean);
 

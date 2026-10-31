@@ -1,4 +1,5 @@
 export { isInsideNwsCoverage, formatPosition, getOpenMeteoForecast, clearForecastCache } from './openMeteo.js';
+export { parseNwsTime, nwsPeriodTimes, nwsPeriodIsCurrent, MPH_TO_KNOTS, windUnit, toKnots, parseNwsWindSpeed, parseNwsWind } from './nws.js';
 export { boatSpeed, foldTwa, bestVmg, parsePolarFile, GENERIC_POLARS } from './polars.js';
 export { routeIsochrone, distanceNm, bearingDeg, destinationPoint, angleBetween, seaStateFactor } from './routing.js';
 export { powerPolar, powerSeaState, powerRangeFrom, isUsablePowerProfile } from './powerPerformance.js';
