@@ -28,12 +28,6 @@ export interface ShellTab {
      * leaves no room, with the full text still the accessible name.
      */
     label: React.ReactNode;
-    /**
-     * @deprecated Ignored. The phone tab bar shows the full `label` (fit-and-finish
-     * V8): an abbreviation is a second name for one place. Use `tabLabelPx={12}`
-     * on AppShell where the full labels need the room.
-     */
-    shortLabel?: React.ReactNode;
     icon: React.ReactNode;
     badge?: number;
     /**
@@ -59,25 +53,6 @@ export interface HeaderButtonProps extends React.ButtonHTMLAttributes<HTMLButton
  * and always iconned, which put a third typeface in every header (X1).
  */
 export declare function HeaderButton({ icon, active, label, className, ...rest }: HeaderButtonProps): React.JSX.Element;
-/**
- * Groups the header's status items. It draws nothing of its own any more: a
- * status is a dot and a word, and the bordered box this used to draw around
- * the pills was a box around a box (fit-and-finish X3). Kept so no app has to
- * change; an app can drop it and pass its StatusPills straight to `headerStatus`.
- *
- * `min-w-0`, and deliberately not `shrink-0`. This group is what the header's
- * status band actually holds, so a group that will not shrink makes the band's
- * own `min-w-0` a lie: the band never gets narrower than the pills, and its
- * `overflow-hidden` guillotines them instead. A flex item will not go below its
- * min-content size either, and a pill's min-content is its whole label because
- * the label does not wrap; `min-w-0` is what overrides that. Shrinking then
- * stops at each child's own floor: `StatusPill` carries a min-width of its dot
- * and padding, so it ellipsises down to a dot and stops.
- */
-export declare function HeaderGroup({ children, className }: {
-    children: React.ReactNode;
-    className?: string;
-}): React.JSX.Element;
 export interface AppShellProps {
     appName: string;
     /** Brand glyph before the name, e.g. `<Waves />`. Drawn at 20px. */
@@ -97,11 +72,6 @@ export interface AppShellProps {
     headerStatus?: React.ReactNode;
     /** Extra controls rendered right of the Settings button (alarm mute, install…). */
     headerActions?: React.ReactNode;
-    /**
-     * @deprecated Accepted and not rendered. The rail no longer has a footer: the
-     * version it held lives in Settings > About only (fit-and-finish O1).
-     */
-    dockFooter?: React.ReactNode;
     /** Full-bleed layer behind everything (a chart). Pointer events pass through the content when `passThrough` is set. */
     background?: React.ReactNode;
     /** Let clicks reach `background` through the content area (the active view renders nothing). */

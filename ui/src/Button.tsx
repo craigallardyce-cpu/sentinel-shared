@@ -2,35 +2,19 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from './cn';
 
-/**
- * `primary`, `secondary`, `ghost`, `link`, `danger` and `alarm`.
- *
- * `success` and `accent` are deprecated aliases: `success` draws as `primary`
- * (green is not an action) and `accent` as `secondary`. Both still type-check
- * so no app breaks before it has moved off them.
- */
+/** `primary`, `secondary`, `ghost`, `link`, `danger` and `alarm`. */
 export type ButtonVariant =
   | 'primary'
   | 'secondary'
   | 'ghost'
   | 'link'
   | 'danger'
-  | 'alarm'
-  /** @deprecated Draws as `primary`. Green is not an action (fit-and-finish X2). */
-  | 'success'
-  /** @deprecated Draws as `secondary`. Use `active` for a control that is on. */
-  | 'accent';
-type CanonicalVariant = Exclude<ButtonVariant, 'success' | 'accent'>;
+  | 'alarm';
 /**
  * `md` is 48px (the default and the touch floor); `sm` is 40px, for dense
- * tables a pointer drives. `dense` is a deprecated alias of `sm`: the 32px
- * size it named is retired, so it renders at 40.
+ * tables a pointer drives.
  */
-export type ButtonSize =
-  | 'sm'
-  | 'md'
-  /** @deprecated The 32px size is retired; renders as `sm` (40px). */
-  | 'dense';
+export type ButtonSize = 'sm' | 'md';
 /**
  * `default` is the fleet button's own shape. `bare` hands layout to the
  * caller's `className` -- see LAYOUT below for exactly what that means.
@@ -77,17 +61,11 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 /*
   Six variants (fit-and-finish, 2026-09-30): primary, secondary, ghost, link,
-  danger and alarm. Two earlier ones are kept as deprecated aliases, so every
-  app keeps compiling until it has moved off them:
-
-  * `success` renders as `primary`. It was a solid green for completions
-    (VesselKeeper's "mark done", OceanSentinel's preset save), but green states
-    a condition -- "this is fine" -- and an action is not a condition (X2).
-    Actions are cyan.
-
-  * `accent` renders as `secondary`. It was a tinted cyan for "a notable action
-    that is not THE action"; the design system folds that into secondary, and
-    a control that is *on* uses `active`, which also sets `aria-pressed`.
+  danger and alarm. Two earlier ones were deleted after a release of aliases:
+  `success`, a solid green for completions, because green states a condition
+  and an action is not one (X2), so actions are cyan; and `accent`, a tinted
+  cyan the design system folds into secondary, where a control that is *on*
+  uses `active`, which also sets `aria-pressed`.
 
   `alarm` is for acknowledging or silencing an alarm, and nothing else. It is
   not `danger`: `danger` is a destructive action the owner may not have meant,
@@ -97,7 +75,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   Nothing glows. State is carried by fill and stroke (System board,
   "Elevation"), so no variant sets a shadow.
 */
-const VARIANT: Record<CanonicalVariant, string> = {
+const VARIANT: Record<ButtonVariant, string> = {
   primary: 'bg-cyan text-bg-app hover:brightness-110 active:brightness-95',
   secondary: 'bg-transparent text-text-primary border border-border-color hover:bg-bg-card-hover',
   alarm: 'bg-red text-bg-app hover:brightness-110 active:brightness-95',
@@ -109,33 +87,15 @@ const VARIANT: Record<CanonicalVariant, string> = {
   link: 'bg-transparent text-cyan cursor-pointer hover:underline underline-offset-2',
 };
 
-/** What each variant draws as. The two deprecated ones borrow another's classes. */
-const VARIANT_ALIAS: Record<ButtonVariant, CanonicalVariant> = {
-  primary: 'primary',
-  secondary: 'secondary',
-  ghost: 'ghost',
-  link: 'link',
-  danger: 'danger',
-  alarm: 'alarm',
-  success: 'primary',
-  accent: 'secondary',
-};
-
 /**
  * Two heights (fit-and-finish): 48px is the default and the touch floor for
  * wet and gloved hands; 40px is for dense tables a pointer drives. Labels are
  * Inter 15/600 at both, so the two sizes differ in height and padding only.
- *
- * `dense` was 32px. That size is retired and renders at 40, as `sm` does, so
- * nothing that asked for it gets smaller. It keeps its old 8px side padding,
- * because the callers that still use it include square icon buttons sized by
- * a `w-8` of their own (OceanSentinel's panel close buttons), which `sm`'s
- * padding would squeeze to nothing. `md` was 44px and is 48 now.
+ * (`md` was 44px; a 32px `dense` was retired and then deleted.)
  */
 const SIZE: Record<ButtonSize, string> = {
   md: 'h-12 px-5 text-[15px] gap-2 rounded-md',
   sm: 'h-10 px-4 text-[15px] gap-2 rounded-md',
-  dense: 'h-10 px-2 text-[15px] gap-2 rounded-md',
 };
 
 /**
@@ -147,7 +107,6 @@ const SIZE: Record<ButtonSize, string> = {
 const LINK_SIZE: Record<ButtonSize, string> = {
   md: 'text-[15px] gap-2',
   sm: 'text-[15px] gap-2',
-  dense: 'text-[15px] gap-2',
 };
 
 /**
@@ -212,7 +171,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
   },
   ref
 ) {
-  const drawn = VARIANT_ALIAS[variant] ?? 'secondary';
+  const drawn: ButtonVariant = VARIANT[variant] ? variant : 'secondary';
   const isLink = drawn === 'link';
   const bare = layout === 'bare';
   return (

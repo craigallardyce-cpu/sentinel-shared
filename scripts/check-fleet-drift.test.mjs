@@ -768,7 +768,7 @@ test('the literal-colour shadow rule no longer advises a glow token', () => {
   assert.doesNotMatch(out, /Use var\(--color-\*-glow\)/);
 });
 
-test('each deprecated name warns, naming its replacement', () => {
+test('each deleted name fails, naming its replacement', () => {
   const cases = [
     ['A.tsx', '<span className="text-label-caps text-text-muted">x</span>', /1 use\(s\) of text-label-caps.*use text-label/],
     ['A.tsx', '<div className="rounded-sm border p-2">x</div>', /1 use\(s\) of rounded-sm.*use rounded-md/],
@@ -782,15 +782,16 @@ test('each deprecated name warns, naming its replacement', () => {
     ['A.tsx', '<Button size="dense">Go</Button>', /1 use\(s\) of <Button size="dense">.*use size="sm"/],
     ['A.tsx', "const tabs = [{ id: 'log', label: \"Ship's Log\", shortLabel: 'Log' }];", /1 use\(s\) of shortLabel.*soft hyphen/],
     ['A.tsx', '<AppShell dockFooter={<span>v2</span>} />', /1 use\(s\) of dockFooter.*Settings > About/],
+    ['A.jsx', "import { AppShell, HeaderGroup } from '@sentinel/ui';", /1 use\(s\) of HeaderGroup.*headerStatus/],
   ];
   for (const [file, body, re] of cases) {
     const out = checkSource('VesselKeeper', file, `${body}\n`);
-    assert.match(out, new RegExp(`WARN {2}\\[deprecated\\] VesselKeeper: ${re.source}`), body);
-    assert.doesNotMatch(out, /FAIL {2}\[deprecated\]/);
+    assert.match(out, new RegExp(`FAIL {2}\\[deprecated\\] VesselKeeper: ${re.source}`), body);
+    assert.doesNotMatch(out, /WARN {2}\[deprecated\]/);
   }
 });
 
-test('the word "rounded" in prose or code, and a deprecated name in a comment, do not warn', () => {
+test('the word "rounded" in prose or code, and a deleted name in a comment, are not uses', () => {
   const body = `// rounded corners, text-label-caps and rounded-lg were the old look
 const rounded = Math.round(x);
 const msg = 'Speed is rounded to the nearest knot';

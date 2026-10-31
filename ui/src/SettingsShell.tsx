@@ -25,11 +25,6 @@ const ROW_DIVIDER = 'border-b border-bg-highest last:border-b-0';
 
 export interface SettingsSectionProps {
   title: React.ReactNode;
-  /**
-   * @deprecated Accepted and not drawn. An icon beside a word belongs only to
-   * primary navigation (fit-and-finish, "Icons"); a group heading is a word.
-   */
-  icon?: React.ReactNode;
   description?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
@@ -110,8 +105,6 @@ export function SettingsRow({
 export interface SettingsTab {
   id: string;
   label: string;
-  /** @deprecated Accepted and not drawn: tabs are words (fit-and-finish V9). */
-  icon?: React.ReactNode;
   content: React.ReactNode;
 }
 

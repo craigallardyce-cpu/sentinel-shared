@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { AppShell, HeaderButton, HeaderGroup } from '../src/AppShell';
+import { AppShell, HeaderButton } from '../src/AppShell';
 import type { ShellTab } from '../src/AppShell';
 import { StatusPill } from '../src/StatusPill';
 import { ScopeBadge } from '../src/ScopeBadge';
 import { SettingsShell } from '../src/SettingsShell';
 
 const TABS: ShellTab[] = [
-  { id: 'maintenance', label: 'Maintenance', shortLabel: 'Maint', icon: <svg /> },
-  { id: 'punch', label: 'Punch list', shortLabel: 'Punch', icon: <svg /> },
-  { id: 'documents', label: 'Ships documents', shortLabel: 'Docs', icon: <svg /> },
+  { id: 'maintenance', label: 'Maintenance', icon: <svg /> },
+  { id: 'punch', label: 'Punch list', icon: <svg /> },
+  { id: 'documents', label: 'Ships documents', icon: <svg /> },
 ];
 
 function shell(props: Partial<React.ComponentProps<typeof AppShell>> = {}) {
@@ -24,14 +24,11 @@ function shell(props: Partial<React.ComponentProps<typeof AppShell>> = {}) {
 const phoneBar = () => screen.getAllByRole('navigation', { name: 'Primary' })[1];
 
 describe('AppShell phone tab bar', () => {
-  it('shows the full label, never shortLabel', () => {
+  it('shows the full label', () => {
     shell();
     const bar = phoneBar();
     for (const label of ['Maintenance', 'Punch list', 'Ships documents']) {
       expect(within(bar).getByText(label)).toBeTruthy();
-    }
-    for (const short of ['Maint', 'Punch', 'Docs']) {
-      expect(within(bar).queryByText(short)).toBeNull();
     }
   });
 
@@ -134,11 +131,6 @@ describe('AppShell rail', () => {
     const label = within(phoneBar()).getByText('Maintenance');
     expect(label.className).toContain('whitespace-nowrap');
   });
-
-  it('no longer renders the version footer, though the prop is still accepted', () => {
-    shell({ dockFooter: <>VesselKeeper v2.13.0</> });
-    expect(screen.queryByText(/v2\.13\.0/)).toBeNull();
-  });
 });
 
 describe('AppShell surface', () => {
@@ -205,11 +197,6 @@ describe('StatusPill', () => {
     }
     const { container } = render(<StatusPill status="alarm">No pulse asked</StatusPill>);
     expect(container.querySelector('.animate-ping')).toBeNull();
-  });
-
-  it('draws no box around a HeaderGroup either', () => {
-    const { container } = render(<HeaderGroup><StatusPill status="ok">Cloud</StatusPill></HeaderGroup>);
-    expect((container.firstElementChild as HTMLElement).className).not.toMatch(/(^|\s)(border|bg-|rounded|shadow)/);
   });
 });
 

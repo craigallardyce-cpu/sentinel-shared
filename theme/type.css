@@ -34,7 +34,7 @@
  *   text-headline-lg  28/700 -> 28/600    text-data-mono-lg  16/500 -> 15/500
  *   text-headline-md  20/600 -> 20/600    text-data-mono-md  13/500 -> 15/500
  *   text-body-lg      16/400 -> 15/400    text-readout       40/700 -> 40/700
- *   text-body-md      14/400 -> 15/400    text-label-caps    12/700 -> 13/600
+ *   text-body-md      14/400 -> 15/400    text-label-caps    deleted
  *   text-body-sm      13/400 -> 13/400      (deprecated; see below)
  *
  * Related: `font-size-adjust` is NOT set here. HarborSentinel carried
@@ -106,20 +106,6 @@
   font-weight: 600;
   line-height: 18px;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* DEPRECATED (fit-and-finish, 2026-09-30): delete after the first weekly
-   release that carries this change. Each use moves by hand to `text-label`
-   (sentence case) or `text-instrument-label` (over an instrument). Kept with its
-   old casing and tracking so nothing changes case before that decision is
-   made; raised from 12px/700 to the 13px floor and the 600 label weight. */
-@utility text-label-caps {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 

@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import { AppShell, HeaderGroup } from '../src/AppShell';
+import { AppShell } from '../src/AppShell';
 import { StatusPill } from '../src/StatusPill';
 import { PlanPill } from '../src/PlanPill';
 
 /**
  * The header's status band is meant to be the one that gives way, and for a
- * while it could not: `HeaderGroup` was `shrink-0`, so the band never got
- * narrower than the pills inside it and its `overflow-hidden` cut a label off
+ * while it could not: the `HeaderGroup` apps wrapped their pills in was
+ * `shrink-0` (it has since been deleted), so the band never got narrower than
+ * the pills inside it and its `overflow-hidden` cut a label off
  * mid-word instead — a pill reading "Connecte" with a border through it on a
  * 412px phone.
  *
@@ -67,11 +68,11 @@ function renderShell(headerStatus: React.ReactNode) {
 }
 
 describe('the header status band under a squeeze', () => {
-  it('leaves a long pill label a shrink chain all the way up to the header, so the group cannot hold the band open', () => {
+  it('leaves a long pill label a shrink chain all the way up to the header, so nothing can hold the band open', () => {
     const { container } = renderShell(
-      <HeaderGroup>
+      <>
         <StatusPill status="ok">{LONG_LABEL}</StatusPill>
-      </HeaderGroup>
+      </>
     );
 
     const label = screen.getByText(LONG_LABEL);
@@ -88,10 +89,10 @@ describe('the header status band under a squeeze', () => {
 
   it('leaves PlanPill the same chain, since the band now carries two pills', () => {
     const { container } = renderShell(
-      <HeaderGroup>
+      <>
         <StatusPill status="ok">Connected</StatusPill>
         <PlanPill planLabel="HarborSentinel Premium" onManage={vi.fn()} />
-      </HeaderGroup>
+      </>
     );
 
     const label = screen.getByText('HarborSentinel Premium');
@@ -99,24 +100,6 @@ describe('the header status band under a squeeze', () => {
       expect(mayNarrow(el), `nothing lets this box narrow: "${el.className}"`).toBe(true);
       expect(isPinned(el), `shrink-0 blocks the squeeze here: "${el.className}"`).toBe(false);
     }
-  });
-
-  it('does not pin HeaderGroup, which is the defect this fixes', () => {
-    const { container } = render(
-      <HeaderGroup>
-        <StatusPill status="ok">Connected</StatusPill>
-      </HeaderGroup>
-    );
-    const group = container.firstElementChild as HTMLElement;
-    expect(classes(group)).not.toContain('shrink-0');
-    expect(classes(group)).toContain('min-w-0');
-  });
-
-  it('keeps a caller class on HeaderGroup without losing the ability to shrink', () => {
-    const { container } = render(<HeaderGroup className="gap-1"><StatusPill status="ok">Connected</StatusPill></HeaderGroup>);
-    const group = container.firstElementChild as HTMLElement;
-    expect(classes(group)).toContain('gap-1');
-    expect(classes(group)).toContain('min-w-0');
   });
 });
 
@@ -132,9 +115,9 @@ describe('headerCenter', () => {
         onOpenSettings={vi.fn()}
         headerCenter={<span>6575 h</span>}
         headerStatus={
-          <HeaderGroup>
+          <>
             <StatusPill status="ok">Online</StatusPill>
-          </HeaderGroup>
+          </>
         }
       />
     );
@@ -187,9 +170,9 @@ describe('StatusPill giving ground', () => {
 describe('what must survive the squeeze', () => {
   it('keeps Night and Settings pinned and reachable, whatever the status band does', () => {
     const { container } = renderShell(
-      <HeaderGroup>
+      <>
         <StatusPill status="ok">{LONG_LABEL}</StatusPill>
-      </HeaderGroup>
+      </>
     );
 
     for (const name of ['Switch to night mode', 'Settings']) {

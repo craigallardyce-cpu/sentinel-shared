@@ -62,10 +62,10 @@ One import gives an app the whole fleet look:
 
 | File | What it is |
 |---|---|
-| `tokens.css` | Raw values — surfaces, text, border, accent and status colours, fonts, radii, spacing, the one shadow, glass, motion, safe-area insets. The only place a hex should live. Three radii: 8px for a control (`--radius-md`), 16px for a floating surface (`--radius-xl`), full for pills and dots. Spacing is `--space-1`…`--space-8` (4, 8, 12, 16, 24, 32, 48, 64 px), deliberately not mapped into Tailwind's `p-*`/`m-*`. Nothing glows: the `--color-*-glow` tokens are transparent and deprecated. |
+| `tokens.css` | Raw values — surfaces, text, border, accent and status colours, fonts, radii, spacing, the one shadow, glass, motion, safe-area insets. The only place a hex should live. Three radii: 8px for a control (`--radius-md`), 16px for a floating surface (`--radius-xl`), full for pills and dots. Spacing is `--space-1`…`--space-8` (4, 8, 12, 16, 24, 32, 48, 64 px), deliberately not mapped into Tailwind's `p-*`/`m-*`. Nothing glows: there are no glow tokens. |
 | `roles.css` | `@theme inline reference` map from tokens to Tailwind utilities: `bg-bg-card`, `text-cyan`, `bg-primary`, `font-heading` (Inter), `font-wordmark` (Outfit, the wordmark only)… Role meanings are fixed: **primary = cyan accent, secondary = orange, tertiary = warning (amber), error = red (alarm)**. |
 | `night.css` | `.theme-night` / `.night-mode` red-shifted overrides. ok / warning / alarm keep three distinct luminances. |
-| `type.css` | The type scale: reading 13 / 15 / 20 / 28 in Inter, instrument 15 / 24 / 40 in JetBrains Mono, 13px floor. `text-label` (sentence case) and `text-instrument-label` (uppercase, over an instrument); `text-label-caps` is deprecated. |
+| `type.css` | The type scale: reading 13 / 15 / 20 / 28 in Inter, instrument 15 / 24 / 40 in JetBrains Mono, 13px floor. `text-label` (sentence case) and `text-instrument-label` (uppercase, over an instrument); `text-label-caps` was deleted. |
 | `glass.css` | `.glass-panel`, `.glass-divider`, `.glass-btn[-active]`, `.custom-scrollbar`. Neutral hairline border, no glows. |
 | `motion.css` | `sentinel-fade` / `sentinel-rise` keyframes; 120ms for a state change, 200ms for a surface entering, on `cubic-bezier(0.2, 0, 0, 1)`. |
 
@@ -105,7 +105,7 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 | `Stepper` (moved here from `auth-ui`; token defaults, so wrappers are no longer needed) | three per-app 14-line wrappers |
 | `useAppUpdater()` + `<UpdatePanel>` — one reducer over electron-shell's `updater:event`, with a web/Capacitor display-only fallback via `versionUrl`. The version-and-status group and the actions wrap as two units; a status phrase ("Up to date.") never breaks, only an error message may | three identical ~90-line updater state machines |
 | `<SettingsShell>` + `SettingsSection`/`SettingsRow` — titled "Settings"; Display (night, brightness, keep-awake) → app sections → Updates → About; flat rows on hairlines; `ScopeBadge` is a dot (filled text-secondary grey for an override set on this device or PC, hollow muted for an inherited layer, never the accent), explained by its own tooltip; `onSave` puts Save and apply on the right as the primary action | three differently-organised settings modals; no About surface existed |
-| `<AppShell>` + `HeaderButton`/`HeaderGroup` — 56 px header, 72 px rail (icon over full label) ≥ lg, whose labels break only at a space or at a soft hyphen (`\u00AD`) the app puts in the label — `hyphens: manual`, `overflow-wrap: normal`, so never mid-word — tab bar with full labels < lg (`tabLabelPx` 13, or 12), safe-area aware, night-mode + brightness applied on `<html>` so portals follow. `surface` (`chart` / `page`, also per `ShellTab`) decides the frame: glass floating 16 px in over a chart, opaque and attached for a page; the default is `chart` when a `background` is rendered and `page` otherwise | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
+| `<AppShell>` + `HeaderButton` — 56 px header, 72 px rail (icon over full label) ≥ lg, whose labels break only at a space or at a soft hyphen (`\u00AD`) the app puts in the label — `hyphens: manual`, `overflow-wrap: normal`, so never mid-word — tab bar with full labels < lg (`tabLabelPx` 13, or 12), safe-area aware, night-mode + brightness applied on `<html>` so portals follow. `surface` (`chart` / `page`, also per `ShellTab`) decides the frame: glass floating 16 px in over a chart, opaque and attached for a page; the default is `chart` when a `background` is rendered and `page` otherwise | near-verbatim shells in OceanSentinel and VesselKeeper that had already drifted (2xl vs lg, h-16 vs h-12) |
 
 ### `Button` variants and layout
 
@@ -120,10 +120,10 @@ The primitives every app was re-implementing by hand. Consuming it takes three l
 
 `active` draws any variant lit and sets `aria-pressed`, for a control that is *on*.
 
-Every label is Inter 15/600 in sentence case, radius 8, with no glow. Deprecated
-(fit-and-finish, 2026-09-30), kept so the apps compile until they move off:
-`variant="success"` draws as `primary` (green is not an action), `variant="accent"`
-as `secondary`, and `size="dense"` (was 32 px) as `sm` (40 px).
+Every label is Inter 15/600 in sentence case, radius 8, with no glow. Sizes are
+`md` (48 px, the default) and `sm` (40 px). The old `success` and `accent`
+variants and the 32 px `dense` size were deleted after a release of aliases;
+the drift checker fails a use of any of them.
 
 **`cn` concatenates; it does not merge Tailwind.** Two classes setting the same
 property resolve by their order in the stylesheet, not in the `class`
@@ -136,7 +136,7 @@ over by not emitting them, never by hoping the caller's class wins:
   wrapping — and ignores `size`, so `className` decides all of them. The variant
   keeps its colours, border, hover, focus ring and disabled state. A row with a
   label left and a count right:
-  `<Button layout="bare" className="w-full flex justify-between items-center px-3 py-2 rounded-lg">`.
+  `<Button layout="bare" className="w-full flex justify-between items-center px-3 py-2 rounded-md">`.
 - **`touchFloor`** (default `true`) keeps the 48px touch floor where the
   caller owns the shape: `min-h-12` under `bare`, and for `link` an invisible
   48px-tall `::before` hit area that moves nothing. `layout="default"` ignores
@@ -153,17 +153,21 @@ There is no night-mode prop. Night follows the theme tokens, as it does for
 every other component; a surface that wants a different night treatment from
 the one the tokens give is asking for a theme change, not a Button option.
 
-### Deprecated in `@sentinel/ui` (fit-and-finish, 2026-09-30)
+### Deleted from `@sentinel/ui` and the theme
 
-Still accepted so every app compiles; delete after the apps have moved off them.
+Deprecated in fit-and-finish (2026-09-30), deleted after the release that
+carried the aliases. The drift checker fails a use of any of them.
 
-| Deprecated | What it does now |
+| Deleted | Use instead |
 |---|---|
-| `Button` `variant="success"` / `"accent"` | draws as `primary` / `secondary` |
-| `Button` `size="dense"` | draws at 40 px, as `sm` |
-| `AppShell` `dockFooter` | not rendered; the version lives in Settings > About |
-| `ShellTab.shortLabel` | ignored; the tab bar shows the full `label` |
-| `SettingsTab.icon`, `SettingsSection` `icon` | not drawn |
+| `Button` `variant="success"` / `"accent"` | `primary` / `secondary`, or `active` for a control that is on |
+| `Button` `size="dense"` | `size="sm"` (40 px) |
+| `AppShell` `dockFooter`, `ShellTab.shortLabel`, `HeaderGroup` | nothing; pass StatusPills straight to `headerStatus` |
+| `SettingsTab.icon`, `SettingsSection` `icon` | nothing: tabs and group headings are words |
+| `text-label-caps` | `text-label` or `text-instrument-label` |
+| `--color-*-glow`, `--color-warning-glow` | nothing: state is fill and stroke |
+| `--radius-sm`, `--radius-default`, `--radius-lg` (and so `rounded-sm`, `rounded`, `rounded-lg`) | `rounded-md` (8 px) or `rounded-xl` (16 px) |
+| `--border-color-glass` | `var(--border-color)` |
 
 ### `openExternal(url)`
 

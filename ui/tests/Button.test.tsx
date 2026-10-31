@@ -5,9 +5,8 @@ import type { ButtonVariant, ButtonSize } from '../src/Button';
 
 /**
  * Six variants (fit-and-finish): primary, secondary, ghost, link, danger and
- * alarm. `success` and `accent` stay accepted as deprecated aliases, so the
- * apps keep compiling until Wave 2 moves them off, and each must draw exactly
- * as the variant it now stands for.
+ * alarm. The deprecated `success` and `accent` aliases and the 32px `dense`
+ * size have been deleted.
  */
 const CANONICAL: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'link', 'danger', 'alarm'];
 
@@ -36,7 +35,7 @@ describe('Button', () => {
   });
 
   it('never glows: no variant, size or state sets a halo', () => {
-    for (const variant of [...CANONICAL, 'success', 'accent'] as ButtonVariant[]) {
+    for (const variant of CANONICAL) {
       for (const active of [false, true]) {
         const cls = classOf({ variant, active });
         expect(cls, `${variant}${active ? ' (active)' : ''}`).not.toMatch(/shadow-\[0_0|glow|drop-shadow/);
@@ -85,42 +84,23 @@ describe('Button', () => {
 describe('Button sizes', () => {
   const heightOf = (size: ButtonSize) => classOf({ size }).split(/\s+/).filter((c) => /^h-\d+$/.test(c));
 
-  it('is 48px by default and 40px dense', () => {
+  it('is 48px by default and 40px small', () => {
     expect(heightOf('md')).toEqual(['h-12']);
     expect(classOf({}).split(/\s+/)).toContain('h-12');
     expect(heightOf('sm')).toEqual(['h-10']);
   });
 
-  it('draws the deprecated 32px `dense` at 40px, as `sm`, keeping its narrow padding for square icon buttons', () => {
-    expect(heightOf('dense')).toEqual(['h-10']);
-    const dense = classOf({ size: 'dense' }).split(/\s+/);
-    expect(dense).toContain('px-2');
-    expect(dense).toContain('text-[15px]');
-  });
-
   it('draws both sizes at the control radius', () => {
-    for (const size of ['md', 'sm', 'dense'] as ButtonSize[]) {
+    for (const size of ['md', 'sm'] as ButtonSize[]) {
       expect(classOf({ size }).split(/\s+/)).toContain('rounded-md');
     }
   });
 });
 
-describe('deprecated Button variants', () => {
-  it('draws `success` exactly as `primary` (green is not an action)', () => {
-    expect(classOf({ variant: 'success' })).toBe(classOf({ variant: 'primary' }));
-    expect(classOf({ variant: 'success' })).not.toContain('bg-green');
-    expect(classOf({ variant: 'success' })).toContain('bg-cyan');
-  });
-
-  it('draws `accent` exactly as `secondary`', () => {
-    expect(classOf({ variant: 'accent' })).toBe(classOf({ variant: 'secondary' }));
-    expect(classOf({ variant: 'accent' })).not.toContain('bg-cyan/15');
-  });
-
-  it('keeps the aliases working with `active`, `size` and `layout`', () => {
-    expect(classOf({ variant: 'success', size: 'dense', active: true })).toBe(
-      classOf({ variant: 'primary', size: 'dense', active: true })
-    );
-    expect(classOf({ variant: 'accent', layout: 'bare' })).toBe(classOf({ variant: 'secondary', layout: 'bare' }));
+describe('a variant the type no longer has', () => {
+  it('draws as `secondary`, so an untyped caller still left on `success` or `accent` gets a plain button', () => {
+    for (const gone of ['success', 'accent']) {
+      expect(classOf({ variant: gone as ButtonVariant })).toBe(classOf({ variant: 'secondary' }));
+    }
   });
 });

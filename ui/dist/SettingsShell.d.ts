@@ -4,11 +4,6 @@ import type { SettingSource } from './ScopeBadge';
 import { type AppUpdater } from './useAppUpdater';
 export interface SettingsSectionProps {
     title: React.ReactNode;
-    /**
-     * @deprecated Accepted and not drawn. An icon beside a word belongs only to
-     * primary navigation (fit-and-finish, "Icons"); a group heading is a word.
-     */
-    icon?: React.ReactNode;
     description?: React.ReactNode;
     children?: React.ReactNode;
     className?: string;
@@ -51,8 +46,6 @@ export declare function SettingsRow({ label, description, source, action, childr
 export interface SettingsTab {
     id: string;
     label: string;
-    /** @deprecated Accepted and not drawn: tabs are words (fit-and-finish V9). */
-    icon?: React.ReactNode;
     content: React.ReactNode;
 }
 export interface SettingsShellProps {

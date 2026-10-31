@@ -1235,9 +1235,11 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
 //
 //    Fit-and-finish (2026-09-30) tightened it once the three apps had moved:
 //    the floor is 13px, not 12; a status colour on a labelled button and a glow
-//    shadow are failures, not advice; and the names the system deprecated warn
-//    wherever an app still writes them, so deleting them after the first weekly
-//    release that carries fit-and-finish breaks nothing.
+//    shadow are failures, not advice; and the names the system deprecated
+//    warned wherever an app still wrote them, so they could be deleted after
+//    the first weekly release that carried fit-and-finish. They were, and a
+//    use of one now fails: it is a class, token or prop that draws nothing,
+//    or, for `rounded-sm` and bare `rounded`, Tailwind's own 4px corner.
 // ---------------------------------------------------------------------------
 const APP_SRC = {
   OceanSentinel: 'frontend/src',
@@ -1311,11 +1313,12 @@ const blankJsComments = (src) =>
 const lineOf = (src, index) => src.slice(0, index).split('\n').length;
 
 /*
-  Names fit-and-finish deprecated (2026-09-30). Each still works -- an alias, or
-  an option drawn as its replacement -- so nothing here is a fault yet. They are
-  warned on so the deletion after the first weekly release carrying
-  fit-and-finish is safe: when every count is zero, nothing in an app still
-  names them. Comments are blanked first; prose about a name is not a use.
+  Names fit-and-finish deprecated (2026-09-30) and @sentinel/theme and
+  @sentinel/ui have since deleted. A use of one is a fault: a class or token
+  that no longer exists draws nothing, a removed prop is a type error in a
+  .tsx file and silently ignored in a .jsx one, and `rounded-sm` and bare
+  `rounded` fall back to Tailwind's 4px instead of the 8px control radius.
+  Comments are blanked first; prose about a name is not a use.
 */
 const ROUNDED_USE = 'rounded-md (8px, a control) or rounded-xl (16px, a floating surface)';
 const DEPRECATED_NAMES = [
@@ -1324,19 +1327,21 @@ const DEPRECATED_NAMES = [
   { re: /(?<![\w-])(?:[a-z0-9-]+:)*rounded-sm(?![\w-])/g, name: 'rounded-sm', use: ROUNDED_USE },
   { re: /(?<![\w-])(?:[a-z0-9-]+:)*rounded-lg(?![\w-])/g, name: 'rounded-lg', use: ROUNDED_USE },
   { re: /var\(\s*--color-[a-z0-9-]+-glow\b[^)]*\)/g, name: 'var(--color-*-glow)',
-    use: 'nothing: state is fill and stroke, and the token is already transparent' },
+    use: 'nothing: state is fill and stroke' },
   { re: /--border-color-glass\b/g, name: '--border-color-glass', use: 'var(--border-color)' },
   { re: /\bshortLabel\s*[:=]/g, name: 'shortLabel', jsOnly: true,
     use: 'nothing: the tab bar shows the full label; put a soft hyphen (\\u00AD) in the label where the rail may break a word' },
   { re: /\bdockFooter\s*=/g, name: 'dockFooter', jsOnly: true,
     use: 'nothing: it is not rendered, and the version lives in Settings > About' },
+  { re: /<HeaderGroup\b|\bimport\s*\{[^}]*\bHeaderGroup\b/g, name: 'HeaderGroup', jsOnly: true,
+    use: 'nothing: pass the StatusPills straight to headerStatus' },
 ];
 // Bare `rounded` is a word as well as a class, so it is only counted inside a
 // string literal that is otherwise a class list.
 const BARE_ROUNDED = /(?<=^|\s)(?:[a-z0-9-]+:)*rounded(?=\s|$)/;
 const LOOKS_LIKE_CLASSES = /(?:^|\s)(?:[a-z0-9-]+:)*-?(?:p[xytblr]?|m[xytblr]?|w|h|min-[wh]|max-[wh]|bg|text|border|flex|grid|gap|items|justify|shadow|font|leading|tracking|overflow|z|inset|opacity|transition|duration|ring|outline|space-[xy]|cursor|select|fill|stroke)-[\w\[\]\/.%:-]+(?=\s|$)/;
 const STRING_LITERAL = /(["'`])((?:\\.|(?!\1)[^\\\n])*)\1/g;
-// Deprecated <Button> options, and what replaces each.
+// Deleted <Button> options, and what replaces each.
 const DEPRECATED_BUTTON = [
   { re: /\bvariant\s*=\s*(?:\{\s*)?["'`]success["'`]/, name: 'variant="success"', use: 'variant="primary" (green is never an action)' },
   { re: /\bvariant\s*=\s*(?:\{\s*)?["'`]accent["'`]/, name: 'variant="accent"', use: 'variant="secondary", or `active` for a control that is on' },
@@ -1464,7 +1469,7 @@ for (const app of presentApps) {
       if (!isApprovedTypeSize(src, code, m.index)) arbitraryText++;
     }
 
-    // Deprecated names, for the post-release deletion.
+    // Deleted names (see DEPRECATED_NAMES).
     for (const d of DEPRECATED_NAMES) {
       if (d.jsOnly && isCss) continue;
       for (const m of code.matchAll(d.re)) noteDeprecated(d.name, d.use, `${rel(f)}:${lineOf(src, m.index)}`);
@@ -1569,7 +1574,7 @@ for (const app of presentApps) {
   }
   if (glows.length) {
     fail('theme', `${app.name}: ${glows.length} glow(s) — a zero-offset coloured shadow, or a --color-*-glow ` +
-      `token (transparent and deprecated). State is fill and stroke; no glows. Elevation is ` +
+      `token (deleted). State is fill and stroke; no glows. Elevation is ` +
       `var(--panel-shadow); a map marker's legibility halo may be black, rgba(0,0,0,…) or var(--bg-app): ${sample(glows)}`);
   }
   if (statusButtons.length) {
@@ -1586,8 +1591,8 @@ for (const app of presentApps) {
       `VesselKeeper alone may draw 12px below sm, written \`text-[12px] sm:text-[13px]\`: ${sample(smallType)}`);
   }
   for (const [name, { use, hits }] of deprecated) {
-    warn('deprecated', `${app.name}: ${hits.length} use(s) of ${name}, deprecated by fit-and-finish and due ` +
-      `for deletion after the first weekly release carrying it — use ${use}: ${sample(hits)}`);
+    fail('deprecated', `${app.name}: ${hits.length} use(s) of ${name}, deleted from @sentinel/theme or ` +
+      `@sentinel/ui after fit-and-finish — use ${use}: ${sample(hits)}`);
   }
   if (localFaces.length) {
     warn('theme', `${app.name}: declares typography that belongs to @sentinel/theme — faces come from ` +
