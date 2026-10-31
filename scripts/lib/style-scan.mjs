@@ -156,6 +156,18 @@ const NEUTRAL_GLOW = [
   /^var\(--panel-shadow\)$/i,
 ];
 
+/**
+ * White, as well, behind text only. A dark label drawn on a light chart is
+ * haloed in white for the same reason a light one is haloed in black
+ * (OceanSentinel's range-ring labels on the vector and ENC charts). Behind a
+ * box it is still a glow.
+ */
+const NEUTRAL_TEXT_HALO = [
+  /^#fff(?:fff)?(?:[0-9a-f]{2})?$/i,
+  /^white$/i,
+  /^rgba?\(\s*255\s*[, ]\s*255\s*[, ]\s*255\b[^)]*\)$/i,
+];
+
 const GLOW_TOKEN = /--color-[a-z0-9-]+-glow\b/;
 
 /**
@@ -164,8 +176,10 @@ const GLOW_TOKEN = /--color-[a-z0-9-]+-glow\b/;
  * layer is a ring -- a stroke -- and is allowed: state is fill and stroke. A
  * layer naming a `--color-*-glow` token is a glow whatever its geometry: those
  * tokens are transparent and deprecated. Returns one string per glowing layer.
+ * With `text`, the value is a text shadow, and a white halo is neutral too.
  */
-export function glowsIn(value) {
+export function glowsIn(value, { text = false } = {}) {
+  const neutralColours = text ? [...NEUTRAL_GLOW, ...NEUTRAL_TEXT_HALO] : NEUTRAL_GLOW;
   const found = [];
   for (const layer of splitTopLevel(value)) {
     if (GLOW_TOKEN.test(layer)) { found.push(layer); continue; }
@@ -182,7 +196,7 @@ export function glowsIn(value) {
     const [x, y, blur = 0] = lengths;
     if (x !== 0 || y !== 0 || !(blur > 0)) continue;
     // No colour means currentColor, which is whatever the text is: coloured.
-    const neutral = colours.length > 0 && colours.every((c) => NEUTRAL_GLOW.some((re) => re.test(c)));
+    const neutral = colours.length > 0 && colours.every((c) => neutralColours.some((re) => re.test(c)));
     if (!neutral) found.push(layer);
   }
   return found;
@@ -196,20 +210,26 @@ export function arbitraryShadowValue(cls) {
 
 /**
  * Every shadow value written in a source file, outside Tailwind classes: CSS
- * `box-shadow:` declarations (in a stylesheet, or in an HTML string such as a
- * Leaflet divIcon), React `boxShadow:` style values, and the arguments of each
- * `drop-shadow(…)` filter. Returns [{ index, value }].
+ * `box-shadow:` and `text-shadow:` declarations (in a stylesheet, or in an HTML
+ * string such as a Leaflet divIcon), React `boxShadow:` and `textShadow:` style
+ * values, and the arguments of each `drop-shadow(…)` filter. Returns
+ * [{ index, value, text }], `text` true for a text shadow (see glowsIn).
+ *
+ * `text-shadow` was added on 2026-10-31: a glow drawn behind a label is a glow
+ * as much as one drawn behind a box, and OceanSentinel's chart labels carried
+ * one the class-name scan could not see.
  */
 export function shadowDeclarations(src) {
   const out = [];
   // A ${…} inside the value is kept whole: it is usually the colour.
-  for (const m of src.matchAll(/(?<![\w-])(?:-webkit-)?box-shadow\s*:\s*((?:[^;"'`}\n$]|\$(?!\{)|\$\{[^}]*\})*)/g)) {
-    out.push({ index: m.index, value: m[1] });
+  for (const m of src.matchAll(/(?<![\w-])(?:-webkit-)?(box|text)-shadow\s*:\s*((?:[^;"'`}\n$]|\$(?!\{)|\$\{[^}]*\})*)/g)) {
+    out.push({ index: m.index, value: m[2], text: m[1] === 'text' });
   }
   // `boxShadow:` in a style object. Its value is an expression -- a string, or
   // a ternary choosing between strings -- so every string literal up to the
   // end of the property is a candidate value.
-  for (const m of src.matchAll(/\bboxShadow\s*:/g)) {
+  for (const m of src.matchAll(/\b(box|text)Shadow\s*:/g)) {
+    const text = m[1] === 'text';
     let j = m.index + m[0].length;
     const stop = Math.min(src.length, j + 400);
     let depth = 0;
@@ -217,7 +237,7 @@ export function shadowDeclarations(src) {
       const c = src[j];
       if (c === '"' || c === "'" || c === '`') {
         const end = c === '`' ? skipTemplate(src, j) : skipQuoted(src, j);
-        out.push({ index: m.index, value: src.slice(j + 1, end - 1) });
+        out.push({ index: m.index, value: src.slice(j + 1, end - 1), text });
         j = end;
         continue;
       }
@@ -229,7 +249,7 @@ export function shadowDeclarations(src) {
   }
   // drop-shadow( with one level of nested parentheses (rgba(), var()).
   for (const m of src.matchAll(/(?<![\w-])drop-shadow\(((?:[^()]|\([^()]*\))*)\)/g)) {
-    out.push({ index: m.index, value: m[1] });
+    out.push({ index: m.index, value: m[1], text: false });
   }
   return out;
 }
@@ -258,6 +278,50 @@ export function smallTypeClasses(src, floor = TYPE_FLOOR) {
   }
   for (const m of src.matchAll(/(?<![\w\-\[])((?:[a-z0-9-]*(?:\[[^\]\s]*\])?:)*)text-xs(?![\w-])/g)) {
     out.push({ index: m.index, cls: m[0], prefix: m[1], px: 12 });
+  }
+  return out.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Every type size under the floor written outside a Tailwind class, in a
+ * script or component file: a CSS `font-size:` or `font:` shorthand inside a
+ * string (the HTML of a Leaflet divIcon, a style attribute), and -- in a
+ * `.jsx`/`.tsx` file -- a React `fontSize:` style value or an SVG `fontSize=`
+ * attribute. Returns [{ index, text, px }].
+ *
+ * The class-name scan cannot see any of these, so OceanSentinel's 10 and 11px
+ * chart annotations passed unchecked until 2026-10-31. A `fontSize:` in a
+ * plain `.js`/`.ts` file is not read: there it is as likely to be a PDF
+ * writer's point size (VesselKeeper's reports) as a screen's.
+ *
+ * A size interpolated from a ternary, `${major ? 11 : 10}px`, is judged by its
+ * smaller branch. Any other expression is not read.
+ */
+export function inlineFontSizes(code, { jsx = false, floor = TYPE_FLOOR } = {}) {
+  const out = [];
+  const push = (index, text, px) => { if (px < floor) out.push({ index, text, px }); };
+  // The size before `px`: a number, or a ${cond ? a : b} interpolation.
+  const SIZE = '(\\d+(?:\\.\\d+)?|\\$\\{[^}]*\\})px';
+  const sizeOf = (tok) => {
+    if (!tok.startsWith('${')) return parseFloat(tok);
+    const branches = [...tok.matchAll(/[?:]\s*(\d+(?:\.\d+)?)\s*(?=[:}])/g)].map((b) => parseFloat(b[1]));
+    return branches.length ? Math.min(...branches) : Infinity;
+  };
+  for (const m of code.matchAll(new RegExp(`(?<![\\w-])font-size\\s*:\\s*${SIZE}`, 'g'))) {
+    push(m.index, m[0], sizeOf(m[1]));
+  }
+  // The shorthand: `font: 700 10px/1.35 monospace`. Its size is the first
+  // length, after an optional style and weight (either may be interpolated).
+  for (const m of code.matchAll(new RegExp(`(?<![\\w-])font\\s*:\\s*(?:[a-z0-9]+\\s+|\\$\\{[^}]*\\}\\s+){0,3}${SIZE}`, 'gi'))) {
+    push(m.index, m[0], sizeOf(m[1]));
+  }
+  if (jsx) {
+    for (const m of code.matchAll(/\bfontSize\s*:\s*(?:(\d+(?:\.\d+)?)(?![\w.])(?!\s*[-+*/?])|(['"`])(\d+(?:\.\d+)?)(?:px)?\2)/g)) {
+      push(m.index, m[0], parseFloat(m[1] ?? m[3]));
+    }
+    for (const m of code.matchAll(/\bfontSize\s*=\s*(?:\{\s*)?(['"]?)(\d+(?:\.\d+)?)(?:px)?\1\s*\}?(?=[\s/>])/g)) {
+      push(m.index, m[0], parseFloat(m[2]));
+    }
   }
   return out.sort((a, b) => a.index - b.index);
 }

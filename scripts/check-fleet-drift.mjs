@@ -31,6 +31,7 @@ import { declarationsIn, rangesByDep, compareWithPublished, unknownEntries, cano
 import {
   jsxTagEnd, buttonLabel, glowsIn, arbitraryShadowValue, shadowDeclarations,
   smallTypeClasses, isPhoneOnlyTwelve, TYPE_FLOOR, isApprovedTypeSize, TYPE_SIZE_APPROVED,
+  inlineFontSizes,
 } from './lib/style-scan.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1352,7 +1353,7 @@ const sample = (list, n = 3) => list.slice(0, n).join(', ') + (list.length > n ?
   two cannot drift apart. `where(index)` names a hit; `allowPhoneTwelve` is
   VesselKeeper's 12px-below-sm exception.
 */
-function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
+function styleRuleHits(src, code, isCss, where, allowPhoneTwelve, isJsx = false) {
   const glows = [];
   const smallType = [];
   const statusButtons = [];
@@ -1364,8 +1365,8 @@ function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
   // Glows written as CSS rather than as a class: a stylesheet, a style
   // object, or the HTML string of a map marker. The legibility halos the map
   // markers draw (black, rgba(0,0,0,…), --bg-app) are neutral and pass.
-  for (const { index, value } of shadowDeclarations(code)) {
-    for (const layer of glowsIn(value)) glows.push(`${where(index)} ${layer.trim().slice(0, 60)}`);
+  for (const { index, value, text } of shadowDeclarations(code)) {
+    for (const layer of glowsIn(value, { text })) glows.push(`${where(index)} ${layer.trim().slice(0, 60)}`);
   }
 
   for (const hit of smallTypeClasses(code)) {
@@ -1383,6 +1384,14 @@ function styleRuleHits(src, code, isCss, where, allowPhoneTwelve) {
       smallType.push(`${where(m.index)} ${m[0]}`);
     }
   } else {
+    // The same floor for type written outside a class: an inline style, an SVG
+    // attribute, the HTML of a map marker. Until 2026-10-31 nothing read these,
+    // so OceanSentinel's 10 and 11px chart annotations passed unchecked. The
+    // same exemption comment applies, in a JS or JSX comment above the size.
+    for (const hit of inlineFontSizes(code, { jsx: isJsx })) {
+      if (src.slice(Math.max(0, hit.index - 400), hit.index).includes(FLOOR_EXEMPT)) continue;
+      smallType.push(`${where(hit.index)} ${hit.text.replace(/\s+/g, ' ').slice(0, 60)}`);
+    }
     // A status colour on a labelled button fails whether it is there at rest
     // or behind a prefix (see the longer note in the apps' pass below).
     for (const m of code.matchAll(BUTTON_OPEN)) {
@@ -1433,7 +1442,8 @@ for (const app of presentApps) {
 
     // Glows, type under the floor and status-coloured buttons: the rules the
     // shared packages are held to as well.
-    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, PHONE_TWELVE_APPS.has(app.name));
+    const isJsx = ['.jsx', '.tsx'].includes(path.extname(f));
+    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, PHONE_TWELVE_APPS.has(app.name), isJsx);
     glows.push(...hits.glows);
     smallType.push(...hits.smallType);
     statusButtons.push(...hits.statusButtons);
@@ -1572,7 +1582,7 @@ for (const app of presentApps) {
     fail('type', `${app.name}: ${smallType.length} type size(s) below the ${TYPE_FLOOR}px floor in ` +
       `@sentinel/theme/type.css — these screens are read at arm's length, in spray, sometimes ` +
       `through gloves. Type that is genuinely not read — a glyph, a chart annotation, licence ` +
-      `credit — may say so in a /* ${FLOOR_EXEMPT}: why */ comment above a stylesheet rule. ` +
+      `credit — may say so in a ${FLOOR_EXEMPT}: why comment above the stylesheet rule or the inline size. ` +
       `VesselKeeper alone may draw 12px below sm, written \`text-[12px] sm:text-[13px]\`: ${sample(smallType)}`);
   }
   for (const [name, { use, hits }] of deprecated) {
@@ -1598,10 +1608,13 @@ for (const app of presentApps) {
     warn('flag', `${app.name}: ${defaultOnEnv.length} env switch(es) that are ON when the variable is unset ` +
       `(\`env.X !== '…'\`), so every build that forgets to set it gets the flag: ${sample([...new Set(defaultOnEnv)])}`);
   }
+  // A failure since 2026-10-31: every app reached zero by 2026-10-28
+  // (VesselKeeper #59), so a new one is drift, not burndown.
   if (rawButtons.length) {
     const files = [...new Set(rawButtons)];
-    warn('ui', `${app.name}: ${rawButtons.length} hand-rolled <button>(s) wearing fleet colours across ` +
-      `${files.length} file(s) — these are the ones @sentinel/ui's Button should own: ${sample(files)}`);
+    fail('ui', `${app.name}: ${rawButtons.length} hand-rolled <button>(s) wearing fleet colours across ` +
+      `${files.length} file(s) — @sentinel/ui's Button owns a labelled button painted a fleet colour ` +
+      `at rest; use Button (primary, secondary, ghost, danger or alarm): ${sample(files)}`);
   }
 
   const htmlRel = APP_HTML[app.name];
@@ -1647,7 +1660,7 @@ for (const e of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
     const src = readText(f);
     const isCss = path.extname(f) === '.css';
     const code = isCss ? blankCssComments(src) : blankJsComments(src);
-    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, true);
+    const hits = styleRuleHits(src, code, isCss, (i) => `${rel(f)}:${lineOf(src, i)}`, true, ['.jsx', '.tsx'].includes(path.extname(f)));
     glows.push(...hits.glows);
     smallType.push(...hits.smallType);
     statusButtons.push(...hits.statusButtons);
