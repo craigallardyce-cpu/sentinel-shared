@@ -7,6 +7,18 @@ export {
 export type { MarineForecast, ForecastPeriod, ForecastOptions, AlertsStatus } from './openMeteo.js';
 
 export {
+  parseNwsTime,
+  nwsPeriodTimes,
+  nwsPeriodIsCurrent,
+  MPH_TO_KNOTS,
+  windUnit,
+  toKnots,
+  parseNwsWindSpeed,
+  parseNwsWind
+} from './nws.js';
+export type { NwsPeriodTimes, WindUnit, NwsWind } from './nws.js';
+
+export {
   boatSpeed,
   foldTwa,
   bestVmg,
