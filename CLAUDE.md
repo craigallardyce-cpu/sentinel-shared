@@ -287,13 +287,24 @@ something then broke.
    run of `build.yml` is still available when Craig asks for one: its release job
    is guarded to tag pushes, and the `platforms` input defaults to `linux`.
    Either way a green build **proves compilation and never publication**.
-   `Upload Build Artifacts` and the whole `release` job are both guarded to
-   `refs/tags/v`, so every step between a packaged installer and a published
-   release is untestable until the tag exists. On 2026-09-15 three green dry
-   runs were followed by three failed tag builds: every artifact upload failed
-   on the account's Actions storage quota, which skipped `Create Release` and
-   published nothing. Neither launch check proves anything about macOS, or
+   `Prepare Release`, each build job's `Upload installers to the draft
+   release` and the whole `release` job are guarded to `refs/tags/v`, so every
+   step between a packaged installer and a published release is untestable
+   until the tag exists. Neither launch check proves anything about macOS, or
    about signing in; step 6 covers those.
+
+   **A tag build uses no Actions storage** (since 2026-11-03). The build jobs
+   put their installers straight onto a *draft* GitHub Release for the tag,
+   and `Create Release` takes it out of draft only when every build succeeded
+   and `latest.yml` and `latest-linux.yml` are on it. Until then they handed
+   the files over as Actions artifacts, which the account's 0.5 GB of included
+   storage bills by the hour even at `retention-days: 1`: on 2026-09-15 every
+   artifact upload failed on that quota and published nothing, and the 2.14.0
+   tag alone (about 1.1 GB) used 90% of November's. Do not put an
+   `upload-artifact` step back into `build.yml`. A failed tag leaves a draft
+   behind with whatever its successful jobs uploaded; the updater cannot see a
+   draft, and the patch version that fixes it gets a fresh one. Delete the
+   stale draft from the repo's Releases page.
 5. Tag `vX.Y.Z` and push the tag. Desktop installers publish to GitHub
    Releases, which each app's auto-updater reads. Read the release, not the
    workflow's green tick: `Create Release` is *skipped* rather than failed when a
