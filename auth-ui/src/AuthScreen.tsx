@@ -128,6 +128,16 @@ function openDeleteAccount(): void {
   openWebsitePage(DELETE_ACCOUNT_URL);
 }
 
+/**
+ * Where "Forgot your password?" on the sign-in form goes: the website's Account
+ * page, whose own sign-in form has the same link and emails a reset link. The
+ * apps' Supabase client has no page to land a reset link on, so the reset stays
+ * on the website. That page has no address that opens its sign-in form directly
+ * (`#delete-account` does, but also scrolls to Delete account), so this is the
+ * bare page; if the website gains one, change it here.
+ */
+export const PASSWORD_RESET_URL = 'https://marinersentinel.com/account';
+
 /** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
 export const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
 export const AGE_REQUIRED_MESSAGE = 'To create an account, confirm that you are 18 or older, or the age of majority where you live.';
@@ -885,6 +895,15 @@ export function AuthScreen({
                 placeholder="••••••••"
                 required
               />
+              {!isRegistering && (
+                <button
+                  type="button"
+                  onClick={() => openWebsitePage(PASSWORD_RESET_URL)}
+                  className="mt-2 text-body-sm text-cyan hover:underline"
+                >
+                  Forgot your password?
+                </button>
+              )}
             </div>
           </div>
 
