@@ -62,13 +62,18 @@ These differences are intentional. Leave them alone:
   Ocean has Open-Meteo fallback and wind-grid building. Merging them means writing new
   code, not extracting existing code.
 - **OceanSentinel's Android `versionCode` is wall-clock time, and must stay that way.**
-  Harbor and VesselKeeper derive it from the root `package.json`
-  (`major*10000 + minor*100 + patch + buildNumber`, so 2.11.0 gives ~21100).
-  OceanSentinel's `frontend/android/app/build.gradle` instead computes
+  VesselKeeper derives its code from the root `package.json`
+  (`major*10000 + minor*100 + patch + build.number` in `android/variables.gradle`,
+  so 2.14.0 shipped as 21428). HarborSentinel's is a bare counter, `VERSION_CODE`
+  in `android/app/version.properties`, read before `incrementVersion` raises it on
+  a release build, so the committed value is the next release's code (2.14.0
+  shipped as 24); moving it onto VesselKeeper's scheme would be safe, since Play
+  codes only need to go up, but is a choice, not a fix. OceanSentinel's
+  `frontend/android/app/build.gradle` instead computes
   `(currentTimeMillis()/1000) - 1704067200`, which is around **84,500,000** (September 2026, and climbing by 86,400 a day). Play
   version codes are monotonic and permanent: once a package has accepted a code,
   it will reject any bundle numbered lower, forever. So this app can never be
-  moved onto the fleet scheme, however much it looks like drift. Decided
+  moved onto either of the other two schemes, however much it looks like drift. Decided
   2026-09-05, with the reasoning also in a comment above `autoVersionCode`.
   The `versionName` *was* aligned in the same pass — it now reads
   `rootProject.ext.appVersionName` from `package.json`, so the store listing
@@ -125,7 +130,8 @@ catches this.
 
 1. Drift checker green.
 2. Version bumped in each app's **root** `package.json` (it drives the UI version,
-   Android `versionName`/`versionCode`, and electron-builder). Keep all three aligned.
+   Android `versionName`, VesselKeeper's Android `versionCode`, and electron-builder;
+   see §3 for the other two apps' codes). Keep all three aligned.
 3. If shared code changed, bump the pinned `sentinel-shared` SHA in all three
    `.github/workflows/build.yml` — otherwise releases ship the old shared code.
 4. No dry run by default (since 2026-10-26, to save Actions minutes): the tag
