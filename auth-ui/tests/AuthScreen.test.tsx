@@ -218,7 +218,7 @@ describe('AuthScreen — login form', () => {
 
     await screen.findByText('Sign in to continue');
     fireEvent.click(screen.getByRole('button', { name: 'Forgot your password?' }));
-    expect(PASSWORD_RESET_URL).toBe('https://marinersentinel.com/account');
+    expect(PASSWORD_RESET_URL).toBe('https://marinersentinel.com/account#sign-in');
     expect(open).toHaveBeenCalledWith(PASSWORD_RESET_URL, '_blank', 'noopener,noreferrer');
     expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
 
