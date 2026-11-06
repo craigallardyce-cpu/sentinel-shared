@@ -33,6 +33,7 @@ import {
   smallTypeClasses, isPhoneOnlyTwelve, TYPE_FLOOR, isApprovedTypeSize, TYPE_SIZE_APPROVED,
   inlineFontSizes,
 } from './lib/style-scan.mjs';
+import { findAppDir } from './lib/fleet-apps.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(SHARED_ROOT, '..');
@@ -127,9 +128,16 @@ function walk(dir, out = [], depth = 0) {
   return out;
 }
 
-const presentApps = APPS.filter((a) => exists(path.join(ROOT, a.name, 'package.json')));
+// Each app's checkout, matched case-insensitively: a cloud session clones them
+// as `harborsentinel` and so on, Craig's PC and CI as `HarborSentinel`. Every
+// path into an app goes through `app.dir`; `app.name` stays the GitHub spelling
+// so messages and per-app tables read the same whichever clone is checked.
+const presentApps = APPS
+  .map((a) => ({ ...a, dir: findAppDir(ROOT, a.name) }))
+  .filter((a) => a.dir);
 if (presentApps.length === 0) {
-  console.error(`No Sentinel apps found next to ${SHARED_ROOT}. Expected siblings like ${ROOT}/HarborSentinel.`);
+  console.error(`No Sentinel apps found next to ${SHARED_ROOT}. Expected siblings like ${ROOT}/HarborSentinel ` +
+    `(any letter case).`);
   process.exit(1);
 }
 
@@ -156,7 +164,7 @@ for (const app of presentApps) {
   // deps across the root, frontend/ and backend/.
   for (const sub of ['', 'frontend', 'backend']) {
     const rel = sub ? `${sub}/package.json` : 'package.json';
-    const p = path.join(ROOT, app.name, rel);
+    const p = path.join(app.dir, rel);
     if (!exists(p)) continue;
     alignedDecls.push(...declarationsIn(readJson(p), { app: app.name, file: rel, alignedDeps: ALIGNED_DEPS }));
   }
@@ -291,7 +299,7 @@ if (!exists(fleetVersionFile)) {
 }
 if (fleetVersion) {
   for (const app of presentApps) {
-    const v = readJson(path.join(ROOT, app.name, 'package.json')).version;
+    const v = readJson(path.join(app.dir, 'package.json')).version;
     if (v !== fleetVersion) {
       fail('version', `${app.name}: root package.json is ${v}, but the fleet version published in ` +
         `sentinel-shared/fleet-version.json is ${fleetVersion}. The three apps release as one — bump every ` +
@@ -346,13 +354,13 @@ const fleetPackageNames = new Set(sharedVersions.keys());
 
 for (const app of presentApps) {
   // Same sub-root list as section 1: OceanSentinel splits its deps three ways.
-  const lockFiles = [path.join(ROOT, app.name, 'package-lock.json')];
+  const lockFiles = [path.join(app.dir, 'package-lock.json')];
   for (const sub of ['frontend', 'backend']) {
-    lockFiles.push(path.join(ROOT, app.name, sub, 'package-lock.json'));
+    lockFiles.push(path.join(app.dir, sub, 'package-lock.json'));
   }
   for (const lockFile of lockFiles) {
     if (!exists(lockFile)) continue;
-    const rel = path.relative(path.join(ROOT, app.name), lockFile);
+    const rel = path.relative(app.dir, lockFile);
     let lock;
     try {
       lock = readJson(lockFile);
@@ -401,8 +409,8 @@ for (const app of presentApps) {
 // ---------------------------------------------------------------------------
 for (const app of presentApps) {
   for (const sub of ['', 'frontend', 'backend']) {
-    const pkgFile = path.join(ROOT, app.name, sub, 'package.json');
-    const lockFile = path.join(ROOT, app.name, sub, 'package-lock.json');
+    const pkgFile = path.join(app.dir, sub, 'package.json');
+    const lockFile = path.join(app.dir, sub, 'package-lock.json');
     if (!exists(pkgFile) || !exists(lockFile)) continue;
     const declared = readJson(pkgFile).version;
     if (typeof declared !== 'string') continue;
@@ -454,7 +462,7 @@ for (const dir of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
 }
 
 for (const app of presentApps) {
-  const vitePath = path.join(ROOT, app.name, app.viteConfig);
+  const vitePath = path.join(app.dir, app.viteConfig);
   if (!exists(vitePath)) { warn('vite', `${app.name}: ${app.viteConfig} not found`); continue; }
   const viteSrc = readText(vitePath);
   const aliased = new Set([...viteSrc.matchAll(/['"]([^'"]+)['"]\s*:\s*path\.resolve/g)].map((m) => m[1]));
@@ -462,7 +470,7 @@ for (const app of presentApps) {
   // Only consider shared packages this app actually depends on.
   const declared = new Set();
   for (const sub of ['', 'frontend']) {
-    const p = path.join(ROOT, app.name, sub, 'package.json');
+    const p = path.join(app.dir, sub, 'package.json');
     if (!exists(p)) continue;
     const pkg = readJson(p);
     // Membership, not a name prefix: @mariner-sentinel/charts is a fleet package
@@ -520,9 +528,9 @@ for (const app of presentApps) {
 // 5. Local re-copies of code that now lives in @sentinel/*.
 // ---------------------------------------------------------------------------
 for (const app of presentApps) {
-  const srcDir = path.join(ROOT, app.name, exists(path.join(ROOT, app.name, 'frontend', 'src')) ? 'frontend/src' : 'src');
+  const srcDir = path.join(app.dir, exists(path.join(app.dir, 'frontend', 'src')) ? 'frontend/src' : 'src');
   for (const f of walk(srcDir)) {
-    const rel = path.relative(path.join(ROOT, app.name), f).replace(/\\/g, '/');
+    const rel = path.relative(app.dir, f).replace(/\\/g, '/');
     for (const p of RECOPY_PATTERNS) {
       if (!p.glob.test(rel)) continue;
       // A thin wrapper re-exporting the shared component is the intended pattern.
@@ -557,7 +565,7 @@ function trackedSourceFiles(appRoot) {
 }
 
 for (const app of presentApps) {
-  const appRoot = path.join(ROOT, app.name);
+  const appRoot = app.dir;
   for (const rel of trackedSourceFiles(appRoot)) {
     const full = path.join(appRoot, rel);
     if (!exists(full)) continue;
@@ -573,7 +581,7 @@ for (const app of presentApps) {
 // 6. Android parity + the applicationId/appId relationship.
 // ---------------------------------------------------------------------------
 for (const app of presentApps) {
-  const aDir = path.join(ROOT, app.name, app.androidDir);
+  const aDir = path.join(app.dir, app.androidDir);
   const manifest = path.join(aDir, 'app/src/main/AndroidManifest.xml');
   const gradle = path.join(aDir, 'app/build.gradle');
   if (!exists(manifest) || !exists(gradle)) { warn('android', `${app.name}: no Android project at ${app.androidDir}`); continue; }
@@ -627,8 +635,8 @@ for (const app of presentApps) {
 //    must mirror the backend's runtime deps or the packaged app dies at startup.
 // ---------------------------------------------------------------------------
 for (const app of presentApps.filter((a) => a.mirrorsBackendDeps)) {
-  const rootPkg = path.join(ROOT, app.name, 'package.json');
-  const backendPkg = path.join(ROOT, app.name, 'backend/package.json');
+  const rootPkg = path.join(app.dir, 'package.json');
+  const backendPkg = path.join(app.dir, 'backend/package.json');
   if (!exists(backendPkg)) continue;
   const rootDeps = readJson(rootPkg).dependencies || {};
   const backendDeps = readJson(backendPkg).dependencies || {};
@@ -688,7 +696,7 @@ const releaseHead = !packagesHead || !scriptsHead ? packagesHead || scriptsHead
   : git(['merge-base', '--is-ancestor', packagesHead, scriptsHead]) !== null ? scriptsHead : packagesHead;
 
 for (const app of presentApps) {
-  const wf = path.join(ROOT, app.name, '.github/workflows/build.yml');
+  const wf = path.join(app.dir, '.github/workflows/build.yml');
   if (!exists(wf)) continue;
   // Structural, not a character window: a comment above `ref:` used to make a
   // correctly pinned workflow report as unpinned. See scripts/lib/yaml-scan.mjs.
@@ -751,7 +759,7 @@ if (exists(tokensFile)) {
   for (const app of presentApps) {
     const rel = APP_CSS[app.name];
     if (!rel) continue;
-    const cssPath = path.join(ROOT, app.name, rel);
+    const cssPath = path.join(app.dir, rel);
     if (!exists(cssPath)) continue;
     const src = readText(cssPath);
     if (!src.includes('@sentinel/theme/index.css')) {
@@ -775,7 +783,7 @@ if (exists(tokensFile)) {
     }
     // @sentinel/ui ships Tailwind class names in its dist; each consuming app must
     // point Tailwind at it or the primitives render unstyled.
-    const appPkg = path.join(ROOT, app.name, app.name === 'OceanSentinel' ? 'frontend/package.json' : 'package.json');
+    const appPkg = path.join(app.dir, app.name === 'OceanSentinel' ? 'frontend/package.json' : 'package.json');
     if (exists(appPkg) && /"@sentinel\/ui"/.test(readText(appPkg)) && !/@source\s+"[^"]*@sentinel\/ui\/dist"/.test(src)) {
       fail('theme', `${app.name}: depends on @sentinel/ui but ${rel} has no @source for @sentinel/ui/dist — its classes will be missing`);
     }
@@ -917,7 +925,7 @@ if (FLEET_SETTINGS && DEFAULT_NMEA_TARGET) {
   }
 
   for (const app of presentApps) {
-    const appRoot = path.join(ROOT, app.name);
+    const appRoot = app.dir;
     const srcDir = path.join(appRoot, exists(path.join(appRoot, 'frontend', 'src')) ? 'frontend/src' : 'src');
     const files = [...walk(srcDir), ...walk(path.join(appRoot, 'server'))].filter((f) => /\.(t|j)sx?$/.test(f));
     const appKey = APP_REGISTRY_KEY[app.name];
@@ -1423,11 +1431,11 @@ function styleRuleHits(src, code, isCss, where, allowPhoneTwelve, isJsx = false)
 for (const app of presentApps) {
   const srcRel = APP_SRC[app.name];
   if (!srcRel) continue;
-  const srcDir = path.join(ROOT, app.name, srcRel);
+  const srcDir = path.join(app.dir, srcRel);
   if (!exists(srcDir)) continue;
 
   const files = walk(srcDir).filter((f) => SOURCE_EXT.includes(path.extname(f)));
-  const rel = (f) => path.relative(path.join(ROOT, app.name), f).split(path.sep).join('/');
+  const rel = (f) => path.relative(app.dir, f).split(path.sep).join('/');
 
   const litShadows = [];
   const glows = [];
@@ -1629,7 +1637,7 @@ for (const app of presentApps) {
   }
 
   const htmlRel = APP_HTML[app.name];
-  const htmlPath = htmlRel ? path.join(ROOT, app.name, htmlRel) : null;
+  const htmlPath = htmlRel ? path.join(app.dir, htmlRel) : null;
   if (htmlPath && exists(htmlPath) && /fonts\.googleapis\.com/.test(readText(htmlPath))) {
     fail('theme', `${app.name}: ${htmlRel} loads fonts from fonts.googleapis.com — these apps run offline ` +
       `at anchor, where a font fetched over the network is a font that is missing. The faces ship with ` +
@@ -1702,7 +1710,7 @@ for (const e of fs.readdirSync(SHARED_ROOT, { withFileTypes: true })) {
 //     About card that says the list is missing, and nothing else would notice.
 // ---------------------------------------------------------------------------
 for (const app of presentApps) {
-  const cfg = path.join(ROOT, app.name, app.viteConfig);
+  const cfg = path.join(app.dir, app.viteConfig);
   if (!exists(cfg)) continue;
   const src = readText(cfg);
   if (!/generate-licences\.mjs['"]/.test(src) || !/\blicencesPlugin\s*\(/.test(src)) {

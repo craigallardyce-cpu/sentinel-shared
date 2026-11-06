@@ -113,6 +113,15 @@ export interface AuthScreenProps {
  * all they see, so it offers the link too.
  */
 export declare const DELETE_ACCOUNT_URL = "https://marinersentinel.com/account#delete-account";
+/**
+ * Where "Forgot your password?" on the sign-in form goes: the website's Account
+ * page, whose own sign-in form has the same link and emails a reset link. The
+ * apps' Supabase client has no page to land a reset link on, so the reset stays
+ * on the website. `#sign-in` opens that page on its sign-in form with the email
+ * field, and the reset link under it, in view (website AccountView). A site
+ * without it still opens the Account page.
+ */
+export declare const PASSWORD_RESET_URL = "https://marinersentinel.com/account#sign-in";
 /** The sign-up confirmation, worded as the Privacy Policy's section 11 sets the age. */
 export declare const AGE_CONFIRMATION_LABEL = "I'm 18 or older, or the age of majority where I live if that is higher.";
 export declare const AGE_REQUIRED_MESSAGE = "To create an account, confirm that you are 18 or older, or the age of majority where you live.";

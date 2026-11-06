@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { AuthScreen, DELETE_ACCOUNT_URL, TERMS_VERSION, TERMS_URL, TERMS_REQUIRED_MESSAGE, PRIVACY_URL } from '../src/AuthScreen';
+import { AuthScreen, DELETE_ACCOUNT_URL, PASSWORD_RESET_URL, TERMS_VERSION, TERMS_URL, TERMS_REQUIRED_MESSAGE, PRIVACY_URL } from '../src/AuthScreen';
 import { memoryStorage } from './memoryStorage';
 import { writeEntitlements } from '../src/entitlements';
 
@@ -191,6 +191,40 @@ describe('AuthScreen — login form', () => {
     await waitFor(() => {
       expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'cap@ship.com', password: 'hunter2' });
     });
+  });
+
+  /*
+    The apps had no way to reset a forgotten password; the website's Account
+    page does (roadmap #105). The link opens it the way the Terms and Delete
+    account links do, which the Electron shell and Android hand to the system
+    browser, and it belongs to signing in only.
+  */
+  it('offers "Forgot your password?" on sign-in, opening the website, and not on sign-up', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const supabase = makeMockSupabase({ session: null });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+
+    await screen.findByText('Sign in to continue');
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot your password?' }));
+    expect(PASSWORD_RESET_URL).toBe('https://marinersentinel.com/account#sign-in');
+    expect(open).toHaveBeenCalledWith(PASSWORD_RESET_URL, '_blank', 'noopener,noreferrer');
+    expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    expect(await screen.findByText('Create your credentials for free')).toBeInTheDocument();
+    expect(screen.queryByText('Forgot your password?')).not.toBeInTheDocument();
   });
 
   it('surfaces the error message when sign-in fails', async () => {

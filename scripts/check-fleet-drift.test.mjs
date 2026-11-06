@@ -141,6 +141,41 @@ test('scope is reported from the apps present beside sentinel-shared', () => {
 });
 
 /*
+  A cloud session clones each app under its lower-case remote name. The checker
+  joined the fleet root with the GitHub spelling only, so on Linux a bare run
+  there found "No Sentinel apps" and checked nothing (roadmap #108). The second
+  case proves the rules read the lower-case folder too, not just the count: the
+  unpinned workflow is found inside it and reported under the app's own name.
+*/
+test('lower-case clones are found, at full-fleet scope, and checked inside', () => {
+  const root = fixture({
+    'harborsentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    'harborsentinel/.github/workflows/build.yml': buildYml(`          repository: craigallardyce-cpu/sentinel-shared
+`),
+    'oceansentinel/package.json': JSON.stringify({ name: 'ocean-sentinel', version: '2.11.1' }),
+    'vesselkeeper/package.json': JSON.stringify({ name: 'vessel-keeper', version: '2.11.1' }),
+  });
+  const out = runChecker(root);
+  assert.doesNotMatch(out, /No Sentinel apps found/);
+  assert.match(out, /scope: full fleet/);
+  assert.match(out, /HarborSentinel: shared checkout is not pinned to a SHA/);
+});
+
+test('with both spellings present, the GitHub one is read', () => {
+  const root = fixture({
+    ...app(`          repository: craigallardyce-cpu/sentinel-shared
+          ref: ${PIN}
+`),
+    'harborsentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1' }),
+    'harborsentinel/.github/workflows/build.yml': buildYml(`          repository: craigallardyce-cpu/sentinel-shared
+`),
+  });
+  const out = runChecker(root);
+  assert.match(out, /scope: HarborSentinel only/);
+  assert.doesNotMatch(out, /not pinned to a SHA/);
+});
+
+/*
   The alias rule is the one guarding the documented clean-checkout failure: a
   shared package gains a bare runtime import, and every app whose Vite config
   has no alias for it fails to build. It looked packages up by `@sentinel/` plus

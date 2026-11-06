@@ -156,7 +156,8 @@ reproduce this layout before anything builds.
   Capacitor v7/v8 peer conflict from `@spryrocks/capacitor-socket-connection-plugin`
   fails a plain install outright.
 - **Run the drift checker before and after a change.** Its scope comes from the
-  app directories sitting beside `sentinel-shared`, not from the directory you
+  app directories sitting beside `sentinel-shared` (in either letter case, so a
+  cloud session's `harborsentinel` counts), not from the directory you
   run it in — so on a machine with all three checkouts it is always full-fleet,
   wherever you stand. The per-app scope is what CI gets, because CI checks out
   one app and the shared repo and nothing else:
@@ -261,8 +262,9 @@ something then broke.
 
 1. Drift checker green fleet-wide.
 2. Version bumped in each app's **root** `package.json` (it drives the UI
-   version, Android `versionName`/`versionCode`, and electron-builder). Keep all
-   three the same. OceanSentinel's `frontend/` and `backend/` versions are not
+   version, Android `versionName`, VesselKeeper's Android `versionCode`, and
+   electron-builder; the other two apps' `versionCode` comes from elsewhere,
+   see Deliberate divergence). Keep all three the same. OceanSentinel's `frontend/` and `backend/` versions are not
    the real one. **Bump `fleet-version.json` here in the same set**, because the
    drift checker compares every app against it and all three go red until it
    moves — which is the guard working, not a fault to route around. Then run
@@ -388,13 +390,23 @@ These differences between the apps are intentional. Do not harmonise them.
   `node_modules`, so any runtime dependency added to `backend/package.json`
   must also be added to the root `package.json`.
 - **HarborSentinel uses `capacitor.config.ts`**, the other two `.json`.
-- **OceanSentinel's Android `versionCode` is a wall-clock timestamp** (~84,500,000 in September 2026, climbing by 86,400 a day)
-  while the other two derive theirs from the root `package.json` (~21,100). Play
-  version codes only ever go up, so this app cannot be moved onto the fleet scheme.
-  Its `versionName` was aligned to `package.json` on 2026-09-05; the code was
-  deliberately left alone. Release step 2's claim that the root `package.json`
-  drives Android `versionName`/`versionCode` holds for HarborSentinel and
-  VesselKeeper, and for OceanSentinel's `versionName` only.
+- **The three apps number their Android `versionCode` three different ways.**
+  All three take `versionName` from the root `package.json`; only VesselKeeper
+  takes its code from it too.
+  - **VesselKeeper** derives it from the version: `major*10000 + minor*100 +
+    patch + build.number` (`android/variables.gradle`), with `build.number` in
+    `android/version.properties` raised as a release build is configured, so the
+    committed value is the one the last release used. 2.14.0 shipped as 21428.
+  - **HarborSentinel** uses a bare counter, `VERSION_CODE` in
+    `android/app/version.properties`, read before the release build's
+    `incrementVersion` task raises it, so the committed value is the code the
+    *next* release uses. 2.14.0 shipped as 24. Moving it onto VesselKeeper's
+    scheme would be safe, since Play codes only need to go up, but it is a
+    choice nobody has made.
+  - **OceanSentinel's is a wall-clock timestamp** (~84,500,000 in September 2026,
+    climbing by 86,400 a day). Play version codes only ever go up, so this app
+    cannot be moved onto the other schemes. Its `versionName` was aligned to
+    `package.json` on 2026-09-05; the code was deliberately left alone.
 
 `skills/sentinel-check/SKILL.md` §3 is the canonical list; add to it there.
 
@@ -428,7 +440,8 @@ catalog behind `@sentinel/auth-ui`, which resolve on `product_id` and
 `tier_features` — never on a tier's name.
 
 The fleet-wide list of open work, all of which must land before go-live
-(planned **May 2027**), is `ROADMAP.md` in the private `docs-kb` repository
+(planned **September 2027**, with beta testers from mid-May 2027; Craig,
+2026-10-27), is `ROADMAP.md` in the private `docs-kb` repository
 (moved there from `Projects/` on 2026-09-04; consolidated on 2026-09-03 to
 include OceanSentinel's items).
 OceanSentinel's own `ROADMAP.md` keeps the design narrative and decision history
