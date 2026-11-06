@@ -156,7 +156,8 @@ reproduce this layout before anything builds.
   Capacitor v7/v8 peer conflict from `@spryrocks/capacitor-socket-connection-plugin`
   fails a plain install outright.
 - **Run the drift checker before and after a change.** Its scope comes from the
-  app directories sitting beside `sentinel-shared`, not from the directory you
+  app directories sitting beside `sentinel-shared` (in either letter case, so a
+  cloud session's `harborsentinel` counts), not from the directory you
   run it in — so on a machine with all three checkouts it is always full-fleet,
   wherever you stand. The per-app scope is what CI gets, because CI checks out
   one app and the shared repo and nothing else:
