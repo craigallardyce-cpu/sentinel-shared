@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   jsxTagEnd, buttonLabel, glowsIn, arbitraryShadowValue, shadowDeclarations,
   smallTypeClasses, isPhoneOnlyTwelve, enclosingString, isApprovedTypeSize,
+  inlineFontSizes, sizeConstants,
 } from './style-scan.mjs';
 
 /*
@@ -140,4 +141,50 @@ test('isApprovedTypeSize: a type-size-approved comment on the line or directly a
   assert.equal(ok('// type-size-approved: why\n\n<t className="text-[15px]">'), false, 'a blank line between');
   assert.equal(ok('// type-size-approved: why\nconst a = 1;\n<t className="text-[15px]">'), false, 'code between');
   assert.equal(ok('// a comment\n<t className="text-[15px]">'), false, 'a comment without the marker');
+});
+
+/*
+  Roadmap #130. The type floor read only literal sizes, so OceanSentinel #144's
+  `fontSize: FIGURE_PX` at 12 passed. A size held in a constant declared in the
+  same file is now judged by that constant's value.
+*/
+test('inlineFontSizes follows a size held in a constant', () => {
+  const src = [
+    'const FIGURE_PX = 12;',
+    "const LABEL = '11px';",
+    'const OK_PX = 13;',
+    'a = <text style={{ fontSize: FIGURE_PX }} />;',
+    'b = <text fontSize={FIGURE_PX} />;',
+    'c = <span style={{ fontSize: LABEL }} />;',
+    "d = `<b style=\"font-size:${FIGURE_PX}px\">`;",
+    'e = <text style={{ fontSize: OK_PX }} />;',
+  ].join('\n');
+  assert.deepEqual(inlineFontSizes(src, { jsx: true }).map((h) => [h.text, h.px]), [
+    ['fontSize: FIGURE_PX', 12],
+    ['fontSize={FIGURE_PX', 12],
+    ['fontSize: LABEL', 11],
+    ['font-size:${FIGURE_PX}px', 12],
+  ]);
+});
+
+test('inlineFontSizes leaves an expression or an imported size unread', () => {
+  const src = [
+    'const FIGURE_PX = 12;',
+    'a = <text style={{ fontSize: FIGURE_PX * 2 }} />;',
+    'b = <text style={{ fontSize: sizes.small }} />;',
+    'c = <text style={{ fontSize: IMPORTED_PX }} />;',
+    'd = <text style={{ fontSize: FIGURE_PX + 1 }} />;',
+  ].join('\n');
+  assert.deepEqual(inlineFontSizes(src, { jsx: true }), []);
+});
+
+test('a constant fontSize in a plain .js file is not read, as with literals', () => {
+  assert.deepEqual(inlineFontSizes('const P = 9;\ndoc.text({ fontSize: P });', { jsx: false }), []);
+});
+
+test('sizeConstants takes the smallest value of a name declared twice', () => {
+  const m = sizeConstants('const A = 14;\nfunction f() { const A = 10; }\nlet B = "12px";\nconst C = 2 * 6;');
+  assert.equal(m.get('A'), 10);
+  assert.equal(m.get('B'), 12);
+  assert.equal(m.has('C'), false);
 });
