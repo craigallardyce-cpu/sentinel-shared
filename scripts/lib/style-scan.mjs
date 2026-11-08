@@ -295,15 +295,21 @@ export function smallTypeClasses(src, floor = TYPE_FLOOR) {
  * writer's point size (VesselKeeper's reports) as a screen's.
  *
  * A size interpolated from a ternary, `${major ? 11 : 10}px`, is judged by its
- * smaller branch. Any other expression is not read.
+ * smaller branch. A size named by a constant declared in the same file,
+ * `fontSize: FIGURE_PX` or `${LABEL_PX}px` with `const FIGURE_PX = 12`, is
+ * judged by that constant's value (see sizeConstants). Any other expression,
+ * an imported constant included, is not read.
  */
 export function inlineFontSizes(code, { jsx = false, floor = TYPE_FLOOR } = {}) {
   const out = [];
   const push = (index, text, px) => { if (px < floor) out.push({ index, text, px }); };
-  // The size before `px`: a number, or a ${cond ? a : b} interpolation.
+  const constants = sizeConstants(code);
+  // The size before `px`: a number, or a ${cond ? a : b} or ${NAME} interpolation.
   const SIZE = '(\\d+(?:\\.\\d+)?|\\$\\{[^}]*\\})px';
   const sizeOf = (tok) => {
     if (!tok.startsWith('${')) return parseFloat(tok);
+    const name = /^\$\{\s*([A-Za-z_$][\w$]*)\s*\}$/.exec(tok);
+    if (name) return constants.get(name[1]) ?? Infinity;
     const branches = [...tok.matchAll(/[?:]\s*(\d+(?:\.\d+)?)\s*(?=[:}])/g)].map((b) => parseFloat(b[1]));
     return branches.length ? Math.min(...branches) : Infinity;
   };
@@ -322,8 +328,33 @@ export function inlineFontSizes(code, { jsx = false, floor = TYPE_FLOOR } = {}) 
     for (const m of code.matchAll(/\bfontSize\s*=\s*(?:\{\s*)?(['"]?)(\d+(?:\.\d+)?)(?:px)?\1\s*\}?(?=[\s/>])/g)) {
       push(m.index, m[0], parseFloat(m[2]));
     }
+    // A size held in a constant: `fontSize: FIGURE_PX` or `fontSize={FIGURE_PX}`.
+    // OceanSentinel #144 drew 12px chart figures this way and passed (#130).
+    // Only a bare name whose expression ends there is read; `FIGURE_PX * 2`
+    // or `sizes.small` is not.
+    for (const m of code.matchAll(/\bfontSize\s*(?::|=\s*\{)\s*([A-Za-z_$][\w$]*)(?![\w$.(\[])(?!\s*[-+*/?(\[])/g)) {
+      const px = constants.get(m[1]);
+      if (px !== undefined) push(m.index, m[0], px);
+    }
   }
   return out.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * The numeric size constants a file declares at any level: `const NAME = 12`,
+ * `let NAME = 12.5`, `const NAME = '12px'` or `"12"`. Returns Map(name -> px).
+ * A name declared more than once is judged by its smallest value, so a size
+ * shadowed under the floor in one scope is not hidden by a larger one in
+ * another. `code` is expected with comments blanked.
+ */
+export function sizeConstants(code) {
+  const out = new Map();
+  for (const m of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\d+(?:\.\d+)?)|(['"`])(\d+(?:\.\d+)?)(?:px)?\3)\s*(?=[;,\n)]|$)/g)) {
+    const px = parseFloat(m[2] ?? m[4]);
+    const prev = out.get(m[1]);
+    out.set(m[1], prev === undefined ? px : Math.min(prev, px));
+  }
+  return out;
 }
 
 /**
