@@ -213,6 +213,13 @@ reproduce this layout before anything builds.
   cd /tmp/sim/AppName && npm install --legacy-peer-deps && npm run build
   ```
   Check the extraction actually produced files before trusting a pass.
+- **On Linux the X11 choice has to be on the command line.** Each app's
+  `build.linux.executableArgs` puts `--ozone-platform=x11` in the `.deb`'s
+  launcher entry, and the three must keep it. `applyLinuxGpuCompatibility`
+  appends the same switch, but in Electron 45 that reaches only the child
+  processes: the main process has already chosen Wayland where one exists, and
+  on ChromeOS the window then never appears, although the page loads (roadmap
+  #135, found 2026-11-14). A run from a terminal needs the flag typed.
 - **Every fleet app requires sign-in.** Licensing and entitlements live in
   Supabase. The dev-server bypass each app carries is `import.meta.env.DEV`,
   which Vite substitutes at compile time, so it is literally `false` in every
