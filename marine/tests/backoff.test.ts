@@ -15,18 +15,43 @@ describe('createReconnectScheduler', () => {
 
     expect(s.peekDelay()).toBe(5000);
     s.schedule(connect);
+    vi.advanceTimersByTime(5000);
     expect(s.peekDelay()).toBe(10000);
     s.schedule(connect);
+    vi.advanceTimersByTime(10000);
     expect(s.peekDelay()).toBe(20000);
     s.schedule(connect);
+    vi.advanceTimersByTime(20000);
     expect(s.peekDelay()).toBe(40000);
+    expect(connect).toHaveBeenCalledTimes(3);
   });
 
   it('caps the delay at maxMs however many attempts fail', () => {
     const s = createReconnectScheduler({ baseMs: 5000, maxMs: 60000, ...noJitter });
     const connect = vi.fn();
-    for (let i = 0; i < 20; i++) s.schedule(connect);
+    for (let i = 0; i < 20; i++) {
+      s.schedule(connect);
+      vi.advanceTimersByTime(60000);
+    }
     expect(s.peekDelay()).toBe(60000);
+  });
+
+  it('counts one failure once, however many times it is reported', () => {
+    // A dropped WebSocket fires `error` and then `close`, and both handlers
+    // schedule. That is one failure, and the delay after it is the second
+    // step of the curve, not the third.
+    const s = createReconnectScheduler({ baseMs: 5000, maxMs: 60000, ...noJitter });
+    const connect = vi.fn();
+    s.schedule(connect);
+    s.schedule(connect);
+    expect(s.attempts).toBe(1);
+    expect(s.peekDelay()).toBe(10000);
+
+    // The replacement waits the full first delay from when it was made.
+    vi.advanceTimersByTime(4999);
+    expect(connect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(connect).toHaveBeenCalledOnce();
   });
 
   it('fires the connect callback after the scheduled delay', () => {
@@ -44,7 +69,9 @@ describe('createReconnectScheduler', () => {
     const s = createReconnectScheduler({ baseMs: 5000, ...noJitter });
     const connect = vi.fn();
     s.schedule(connect);
+    vi.advanceTimersByTime(5000);
     s.schedule(connect);
+    vi.advanceTimersByTime(10000);
     expect(s.peekDelay()).toBe(20000);
 
     s.reset();

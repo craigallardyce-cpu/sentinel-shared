@@ -112,6 +112,42 @@ describe('parseAisSentence', () => {
     expect(result!.isOwnVessel).toBe(true);
   });
 
+  it('keeps a true heading of 000 rather than falling back to the course', () => {
+    // 511 is the "not available" value; 0 is due north and is a real reading.
+    const north = parseAisSentence(buildType1Sentence({
+      mmsi: 367000001, lat: 41, lon: -71, sogKnots: 0.2, cogDeg: 143, headingDeg: 0,
+    }));
+    expect(north!.heading).toBe(0);
+
+    const unavailable = parseAisSentence(buildType1Sentence({
+      mmsi: 367000001, lat: 41, lon: -71, sogKnots: 0.2, cogDeg: 143, headingDeg: 511,
+    }));
+    expect(unavailable!.heading).toBeCloseTo(143, 1);
+  });
+
+  it('stamps a position report with when its position arrived', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-15T12:00:00Z'));
+      const parsed = parseAisSentence(buildType1Sentence({
+        mmsi: 367000001, lat: 41, lon: -71, sogKnots: 5, cogDeg: 90, headingDeg: 90,
+      }));
+      expect(parsed!.lastPositionAt).toBe(Date.parse('2026-11-15T12:00:00Z'));
+      expect(parsed!.lastSeen).toBe(parsed!.lastPositionAt);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the leading zeros of a nine-digit identity', () => {
+    // Coast stations (00MIDxxxx) and group identities (0MIDxxxxx) start with
+    // zeros, and an identity that loses them matches nothing typed by hand.
+    const parsed = parseAisSentence(buildType1Sentence({
+      mmsi: 3669999, lat: 41, lon: -71, sogKnots: 0, cogDeg: 0, headingDeg: 511,
+    }));
+    expect(parsed!.mmsi).toBe('003669999');
+  });
+
   it('rejects sentences that are not AIVDM/AIVDO', () => {
     expect(parseAisSentence('$GPRMC,foo*00')).toBeNull();
   });
@@ -138,6 +174,30 @@ describe('calculateTargetMetrics', () => {
   it('leaves a stationary distant target as SAFE', () => {
     const metrics = calculateTargetMetrics(41.0, -71.0, 0, 0, 41.5, -71.5, 0, 0);
     expect(metrics.threatLevel).toBe('SAFE');
+  });
+
+  it('leaves two stationary boats in the same anchorage as SAFE', () => {
+    // 0.2 NM apart and neither moving. There is no closest approach to
+    // project, so nothing here is a collision risk; before, every neighbour
+    // in a marina was flagged.
+    const metrics = calculateTargetMetrics(41.0, -71.0, 0, 0, 41.0 + 0.2 / 60, -71.0, 0, 0);
+    expect(metrics.threatLevel).toBe('SAFE');
+    expect(metrics.tcpa).toBe('---');
+  });
+
+  it('leaves two boats moving together as SAFE', () => {
+    // Same course and speed, 0.3 NM abeam: the range never changes.
+    const metrics = calculateTargetMetrics(41.0, -71.0, 6, 90, 41.0 + 0.3 / 60, -71.0, 6, 90);
+    expect(metrics.threatLevel).toBe('SAFE');
+    expect(metrics.tcpa).toBe('---');
+  });
+
+  it('measures range across the 180th meridian the short way round', () => {
+    // 0.02 degrees of longitude apart on the equator is about 1.2 NM, not
+    // most of the way around the world.
+    const metrics = calculateTargetMetrics(0, 179.99, 0, 0, 0, -179.99, 0, 0);
+    expect(metrics.rangeVal).toBeGreaterThan(1.1);
+    expect(metrics.rangeVal).toBeLessThan(1.3);
   });
 
   it('marks a target within 2 NM as ADVISORY even while moving away (close-quarters margin)', () => {

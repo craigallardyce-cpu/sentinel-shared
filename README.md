@@ -41,9 +41,15 @@ Projects/
 | Option | Default | What it does |
 |---|---|---|
 | `watchdogSeconds` | `8` | Silence for this long on a connected feed destroys the socket and reconnects (OpenCPN's `N_DOG_TIMEOUT`). |
-| `reconnectDelayMs` | `5000` | Fixed delay between reconnection attempts. The pool never gives up while clients or a watch are attached. |
+| `reconnectDelayMs` | `5000` | Delay before a reconnection attempt. The pool never gives up while clients or a watch are attached. |
+| `reconnectMaxDelayMs` | `reconnectDelayMs` | Ceiling for that delay. Each attempt that brings no sentences doubles it up to this, and the first sentence returns it to `reconnectDelayMs`. The default keeps the delay fixed: an anchor watch waits up to this long for a position after its gateway comes back, so backing off is the app's choice. |
 | `connectTimeoutMs` | `10000` | How long a TCP dial may take. Past it the socket is destroyed and the ordinary close/reconnect path takes over, rather than the OS connect timeout (minutes) during which the watchdog, which starts on connect, is not running. UDP ignores it. |
 | `onSentence`, `shouldKeepAlive`, `normalizeHost`, `log` | none | The per-app seams documented in `marine/src/nmeaPool.ts`. |
+
+An entry's `isSocketConnected` says the TCP link is up or the UDP port is bound;
+`isReceiving` says a sentence has arrived on that socket. Only the second means
+a gateway is talking, and "Connection restored" is sent to clients on the first
+sentence after a reconnect, not on the connect.
 
 A partial line longer than 8 KiB (NMEA 0183 caps a sentence at 82 characters)
 is discarded with a warning rather than held, so a source that never sends a

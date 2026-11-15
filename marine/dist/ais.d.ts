@@ -13,7 +13,15 @@ export interface AisTargetData {
     cog?: number;
     heading?: number;
     isOwnVessel?: boolean;
+    /** When any message from this vessel last arrived, a name or call sign included. */
     lastSeen?: number;
+    /**
+     * When a POSITION report last arrived (types 1 to 3, 18 and 19). A static
+     * report moves `lastSeen` and carries no position, so this is the one that
+     * says how old `lat` and `lon` are, and whether two readings of a target are
+     * two reports or the same one seen twice.
+     */
+    lastPositionAt?: number;
 }
 /**
  * Relative-motion figures for one target against own ship.

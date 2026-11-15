@@ -127,8 +127,19 @@ export interface ConnectionPoolEntry {
     clients: Set<SseClientLike>;
     wsClients: Set<WsClientLike>;
     buffer: string;
-    /** Seam 4: carried for both apps rather than maintaining two entry shapes. */
+    /**
+     * Seam 4: carried for both apps rather than maintaining two entry shapes.
+     * True once the TCP link is up or the UDP port is bound. It says the
+     * transport is open and nothing about whether a gateway is talking: a bound
+     * UDP port with nobody broadcasting is "connected" by this measure.
+     */
     isSocketConnected: boolean;
+    /**
+     * True once a sentence has arrived on the current socket, and false again
+     * when that socket closes or the watchdog gives up on it. This is the one to
+     * show a navigator as "connected".
+     */
+    isReceiving: boolean;
     lastLoggedErrorMsg: string;
     lastErrorLoggedTime: number;
 }
@@ -151,8 +162,17 @@ export interface NmeaPoolOptions {
     createUdpSocket?(): NmeaUdpSocketLike;
     /** Seam 1. Silence for this long triggers a reconnect. OpenCPN's N_DOG_TIMEOUT. */
     watchdogSeconds?: number;
-    /** Seam 1. Fixed delay between reconnection attempts; the pool never gives up. */
+    /** Seam 1. Delay before a reconnection attempt; the pool never gives up. */
     reconnectDelayMs?: number;
+    /**
+     * Ceiling for the reconnect delay. Each attempt that brings no sentences
+     * doubles the delay up to this, and the first sentence returns it to
+     * `reconnectDelayMs`. Defaults to `reconnectDelayMs`, which is the fixed
+     * delay the pool has always had: backing off is the host's choice, because
+     * the price is paid by an anchor watch, which waits up to this long after a
+     * gateway comes back before it has a position again.
+     */
+    reconnectMaxDelayMs?: number;
     /**
      * How long a TCP dial may take before the socket is destroyed and the usual
      * close-and-reconnect path takes over. Without it a gateway that silently

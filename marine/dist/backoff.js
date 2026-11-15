@@ -27,8 +27,12 @@ export function createReconnectScheduler(options = {}) {
         },
         peekDelay: rawDelay,
         schedule(connect) {
-            if (timer)
+            if (timer) {
+                // The pending attempt never ran, so this call takes its place.
                 host.clearTimeout(timer);
+                timer = null;
+                attempts = Math.max(0, attempts - 1);
+            }
             const spread = rawDelay() * jitter;
             // Uniform in [delay - spread, delay + spread], never below the floor.
             const delay = Math.max(baseMs, Math.round(rawDelay() + (random() * 2 - 1) * spread));

@@ -3,13 +3,18 @@
  * NMEA 0183 sentence parsing shared across the Mariner Sentinel fleet.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FIX_MAX_AGE_MS = exports.ownVesselMmsi = exports.liveAisTargetsMap = void 0;
+exports.WIND_TRUE_HOLD_MS = exports.DEPTH_DATUM_HOLD_MS = exports.FIX_MAX_AGE_MS = exports.ownVesselMmsi = exports.liveAisTargetsMap = void 0;
 exports.isFixFresh = isFixFresh;
 exports.createNmeaLiveData = createNmeaLiveData;
 exports.validateNmeaChecksum = validateNmeaChecksum;
 exports.parseNmeaLatitude = parseNmeaLatitude;
 exports.parseNmeaLongitude = parseNmeaLongitude;
 exports.formatCoords = formatCoords;
+exports.isLiveFixMode = isLiveFixMode;
+exports.isLiveFixQuality = isLiveFixQuality;
+exports.resolveTrueHeading = resolveTrueHeading;
+exports.createDepthState = createDepthState;
+exports.resolveDepth = resolveDepth;
 exports.parseNmeaSentence = parseNmeaSentence;
 exports.handleNmeaSentence = handleNmeaSentence;
 const ais_js_1 = require("./ais.js");
@@ -43,7 +48,12 @@ function createNmeaLiveData() {
         w_speed: null,
         w_dir: null,
         depth: null,
+        depth_datum: null,
         depth_offset_ft: null,
+        depth_state: createDepthState(),
+        w_speed_ref: null,
+        w_speed_true_at: null,
+        mag_var: null,
         sentenceCount: 0,
         lastUpdate: 0,
         lastFixAt: null
@@ -92,7 +102,14 @@ function parseNmeaLatitude(val, hemi) {
     const mins = parseFloat(minsStr);
     if (isNaN(degs) || isNaN(mins))
         return null;
+    // A field that parses but cannot be a latitude is a corrupt sentence that
+    // happened to keep its checksum, or a talker with no checksum at all. It
+    // must not become a position.
+    if (degs < 0 || mins < 0 || mins >= 60)
+        return null;
     let lat = degs + mins / 60;
+    if (lat > 90)
+        return null;
     if (upperHemi === 'S')
         lat = -lat;
     return lat;
@@ -115,7 +132,11 @@ function parseNmeaLongitude(val, hemi) {
     const mins = parseFloat(minsStr);
     if (isNaN(degs) || isNaN(mins))
         return null;
+    if (degs < 0 || mins < 0 || mins >= 60)
+        return null;
     let lon = degs + mins / 60;
+    if (lon > 180)
+        return null;
     if (upperHemi === 'W')
         lon = -lon;
     return lon;
@@ -125,8 +146,14 @@ function formatCoords(lat, lng) {
     const formatComponent = (val, isLat) => {
         const card = val >= 0 ? (isLat ? 'N' : 'E') : isLat ? 'S' : 'W';
         const absVal = Math.abs(val);
-        const deg = Math.floor(absVal);
-        const min = (absVal - deg) * 60;
+        let deg = Math.floor(absVal);
+        let min = (absVal - deg) * 60;
+        // 59.9996 minutes prints as "60.000" at three places. Carry it into the
+        // degrees, as a position written by hand would.
+        if (Number(min.toFixed(3)) >= 60) {
+            deg += 1;
+            min = 0;
+        }
         const degStr = deg.toString().padStart(isLat ? 2 : 3, '0');
         const minFixed = min.toFixed(3);
         const [minInt, minDec] = minFixed.split('.');
@@ -138,7 +165,163 @@ function formatCoords(lat, lng) {
         lngStr: formatComponent(lng, false)
     };
 }
-/** Parses a single NMEA sentence and returns an object of parsed telemetry fields. */
+const FT_TO_M = 0.3048;
+const M_TO_FT = 1 / FT_TO_M;
+const FATHOM_TO_M = 1.8288;
+/** A numeric field, or undefined when it is empty or not a number. */
+function numberField(field) {
+    if (field === undefined)
+        return undefined;
+    const text = field.trim();
+    if (!text)
+        return undefined;
+    const value = Number.parseFloat(text);
+    return Number.isFinite(value) ? value : undefined;
+}
+/** An angle folded into 0 to 360. */
+function normalizeDegrees(value) {
+    const folded = value % 360;
+    return folded < 0 ? folded + 360 : folded;
+}
+/** A value and its E/W flag as a signed number, east positive. */
+function signedEastWest(value, flag) {
+    const magnitude = numberField(value);
+    if (magnitude === undefined || !flag)
+        return undefined;
+    const side = flag.trim().toUpperCase();
+    if (side === 'E')
+        return magnitude;
+    if (side === 'W')
+        return -magnitude;
+    return undefined;
+}
+/**
+ * Whether a position sentence's mode indicator describes a fix the receiver
+ * actually has.
+ *
+ * NMEA 2.3 added the field to RMC and GLL. E is estimated (dead reckoning), M
+ * is typed in by hand and N is no fix: a receiver that has lost its satellites
+ * can go on sending status A with mode E, and each of those sentences used to
+ * refresh `lastFixAt`, so the position-lost alarm stayed quiet while the
+ * receiver extrapolated. S (simulator) is accepted on purpose: a simulated feed
+ * is one somebody connected deliberately, to try the app or to test it. An
+ * absent field is an older talker and is taken at its status flag.
+ */
+function isLiveFixMode(mode) {
+    if (mode === undefined || mode === null)
+        return true;
+    const flag = mode.trim().toUpperCase();
+    if (!flag)
+        return true;
+    return flag === 'A' || flag === 'D' || flag === 'F' || flag === 'P' || flag === 'R' || flag === 'S';
+}
+/**
+ * Whether a GGA quality field describes a fix the receiver actually has: 1 GPS,
+ * 2 differential, 3 PPS, 4 and 5 RTK, 8 simulator (see `isLiveFixMode`). 0 is no
+ * fix, 6 is estimated and 7 is manual; a field that is not a number is not a
+ * fix either.
+ */
+function isLiveFixQuality(quality) {
+    if (quality === undefined || quality === null)
+        return false;
+    const text = quality.trim();
+    if (!/^\d+$/.test(text))
+        return false;
+    const value = Number.parseInt(text, 10);
+    return (value >= 1 && value <= 5) || value === 8;
+}
+/**
+ * True heading from whatever a feed supplies: a true heading as it is, or a
+ * magnetic heading corrected by the variation (east positive). Undefined when
+ * neither can be had. Course over ground is not a heading and is never used
+ * here; an app that wants to fall back to it says so in its own code.
+ */
+function resolveTrueHeading(input) {
+    if (typeof input.heading === 'number' && Number.isFinite(input.heading)) {
+        return normalizeDegrees(input.heading);
+    }
+    if (typeof input.headingMagnetic === 'number' && Number.isFinite(input.headingMagnetic) &&
+        typeof input.magVar === 'number' && Number.isFinite(input.magVar)) {
+        return normalizeDegrees(input.headingMagnetic + input.magVar);
+    }
+    return undefined;
+}
+/**
+ * How long a better datum holds off a worse one. A sounder that sends DBT, DBK
+ * and DBS sends them every cycle, so anything longer than a few cycles keeps
+ * one datum on screen; when the better sentence stops, the worse one is taken
+ * again after this long.
+ */
+exports.DEPTH_DATUM_HOLD_MS = 10000;
+function createDepthState() {
+    return { offsetM: null, datum: null, at: 0 };
+}
+/*
+  Surface first: it is the depth of water. Keel next, because a draught turns it
+  into depth of water, which nothing does for a bare transducer reading.
+*/
+const DATUM_RANK = { surface: 3, keel: 2, transducer: 1 };
+/**
+ * One depth, on one datum, from a stream of depth sentences.
+ *
+ * DBT measures from the transducer, DBK from the keel and DBS from the surface,
+ * and DPT measures from the transducer and says how to move the reading: a
+ * positive offset to the waterline, a negative one to the keel. A sounder that
+ * sends more than one of them used to make the depth jump between datums on
+ * every cycle, and a keel offset was added as if it were a waterline offset and
+ * the result called depth of water.
+ *
+ * Call it with every parsed sentence. It returns a reading when the sentence
+ * carried a depth on the best datum the feed is currently supplying, and null
+ * otherwise, so the caller keeps what it had.
+ */
+function resolveDepth(state, parsed, now = Date.now()) {
+    if (!parsed)
+        return null;
+    if (typeof parsed.transducerOffset === 'number' && Number.isFinite(parsed.transducerOffset)) {
+        state.offsetM = parsed.transducerOffset;
+    }
+    let candidate = null;
+    if (typeof parsed.depthBelowSurface === 'number') {
+        candidate = { depthM: parsed.depthBelowSurface, datum: 'surface' };
+    }
+    else if (typeof parsed.depthBelowKeel === 'number') {
+        candidate = { depthM: parsed.depthBelowKeel, datum: 'keel' };
+    }
+    else if (typeof parsed.depthBelowTransducer === 'number') {
+        const offset = state.offsetM;
+        if (offset !== null && offset > 0) {
+            candidate = { depthM: parsed.depthBelowTransducer + offset, datum: 'surface' };
+        }
+        else if (offset !== null && offset < 0) {
+            candidate = { depthM: parsed.depthBelowTransducer + offset, datum: 'keel' };
+        }
+        else {
+            candidate = { depthM: parsed.depthBelowTransducer, datum: 'transducer' };
+        }
+    }
+    if (!candidate || !Number.isFinite(candidate.depthM))
+        return null;
+    const held = state.datum !== null && now - state.at <= exports.DEPTH_DATUM_HOLD_MS;
+    if (held && DATUM_RANK[candidate.datum] < DATUM_RANK[state.datum])
+        return null;
+    state.datum = candidate.datum;
+    state.at = now;
+    return candidate;
+}
+/**
+ * How long a true wind speed holds off an apparent one in `w_speed`. See
+ * `NmeaLiveData.w_speed_ref`.
+ */
+exports.WIND_TRUE_HOLD_MS = 10000;
+/**
+ * Parses a single NMEA sentence and returns an object of parsed telemetry fields.
+ *
+ * A field the sentence left empty is ABSENT from the result, never present as
+ * `undefined`. Callers merge these objects into what they already hold, and a
+ * key that is present overwrites: RMC used to return `magVar: undefined` and
+ * erase the variation HDG had supplied a moment earlier.
+ */
 function parseNmeaSentence(sentence) {
     if (!sentence || (!sentence.startsWith('$') && !sentence.startsWith('!')))
         return null;
@@ -165,30 +348,32 @@ function parseNmeaSentence(sentence) {
         const lon = parseNmeaLongitude(parts[5], parts[6]);
         if (lat === null || lon === null)
             return null;
+        // Field 12 is the mode indicator, where the talker sends one.
+        if (!isLiveFixMode(parts[12]))
+            return null;
         const formatted = formatCoords(lat, lon);
-        const sogRaw = parts[7];
-        const cogRaw = parts[8];
-        let magVar = undefined;
-        if (parts[10] && parts[11]) {
-            magVar = parseFloat(parts[10]);
-            if (parts[11] === 'W') {
-                magVar = -magVar;
-            }
-        }
-        return {
+        const result = {
             latitude: formatted.latStr,
             longitude: formatted.lngStr,
             latDec: lat,
-            lonDec: lon,
-            sog: sogRaw ? parseFloat(sogRaw) : undefined,
-            cog: cogRaw ? parseFloat(cogRaw) : undefined,
-            heading: cogRaw ? parseFloat(cogRaw) : undefined,
-            magVar: magVar
+            lonDec: lon
         };
+        const sog = numberField(parts[7]);
+        const cog = numberField(parts[8]);
+        const magVar = signedEastWest(parts[10], parts[11]);
+        if (sog !== undefined)
+            result.sog = sog;
+        // Course over ground is where the boat is going, not where it points. It
+        // used to be returned as `heading` too, so a heading alarm watched GPS
+        // course noise and a compass reading was overwritten once a second.
+        if (cog !== undefined)
+            result.cog = cog;
+        if (magVar !== undefined)
+            result.magVar = magVar;
+        return result;
     }
     if (type === 'GGA') {
-        const quality = parseInt(parts[6], 10);
-        if (quality === 0)
+        if (!isLiveFixQuality(parts[6]))
             return null;
         const lat = parseNmeaLatitude(parts[2], parts[3]);
         const lon = parseNmeaLongitude(parts[4], parts[5]);
@@ -206,6 +391,8 @@ function parseNmeaSentence(sentence) {
         const status = parts[6];
         if (status !== 'A')
             return null;
+        if (!isLiveFixMode(parts[7]))
+            return null;
         const lat = parseNmeaLatitude(parts[1], parts[2]);
         const lon = parseNmeaLongitude(parts[3], parts[4]);
         if (lat === null || lon === null)
@@ -219,83 +406,161 @@ function parseNmeaSentence(sentence) {
         };
     }
     /**
-     * DBT measures from the transducer, DPT from the waterline. A sounder that
-     * sends both used to make the reported depth alternate between the two on
-     * every cycle — a square wave of however deep the transducer is mounted.
-     * DBT is therefore reported as its own quantity and raised to the waterline
-     * in handleNmeaSentence, once DPT has said how far down the transducer is.
+     * The depth sentences. DBT measures from the transducer, DBK from the keel
+     * and DBS from the surface; DPT measures from the transducer and carries an
+     * offset. Each is returned on its own datum, in metres, and `resolveDepth`
+     * turns the stream into one depth on one datum.
      *
-     * DBK (below keel) and DBS (below surface) are left on their own datum: the
-     * transducer offset does not apply to either.
+     * `waterDepth` is kept on every one of them, with the value it always had,
+     * for callers that have not moved to `resolveDepth` yet. It is NOT reliably
+     * the depth of water: read the field that names its datum.
      */
     if (type === 'DBT' || type === 'DBK' || type === 'DBS') {
-        const feetStr = parts[1];
-        const metersStr = parts[3];
-        let feet;
-        if (feetStr) {
-            const parsedFeet = parseFloat(feetStr);
-            if (!isNaN(parsedFeet))
-                feet = parsedFeet;
-        }
-        else if (metersStr) {
-            const meters = parseFloat(metersStr);
-            if (!isNaN(meters))
-                feet = meters * 3.28084;
-        }
-        if (feet !== undefined) {
-            return type === 'DBT'
-                ? { waterDepth: feet * 0.3048, depthBelowTransducerFeet: feet }
-                : { waterDepth: feet * 0.3048, depthFeet: feet };
+        // Feet, metres, fathoms: whichever the talker filled in.
+        const feet = numberField(parts[1]);
+        const metresField = numberField(parts[3]);
+        const fathoms = numberField(parts[5]);
+        const metres = feet !== undefined ? feet * FT_TO_M
+            : metresField !== undefined ? metresField
+                : fathoms !== undefined ? fathoms * FATHOM_TO_M
+                    : undefined;
+        if (metres !== undefined) {
+            if (type === 'DBT') {
+                return {
+                    depthBelowTransducer: metres,
+                    depthBelowTransducerFeet: feet !== undefined ? feet : metres * M_TO_FT,
+                    waterDepth: metres
+                };
+            }
+            return type === 'DBK'
+                ? { depthBelowKeel: metres, waterDepth: metres }
+                : { depthBelowSurface: metres, waterDepth: metres };
         }
     }
     if (type === 'DPT') {
-        const metersStr = parts[1];
-        if (metersStr) {
-            const meters = parseFloat(metersStr);
-            let offset = 0;
-            if (parts[2]) {
-                const parsedOffset = parseFloat(parts[2]);
-                if (!isNaN(parsedOffset)) {
-                    offset = parsedOffset;
-                }
-            }
-            if (!isNaN(meters)) {
-                // Field 1 is measured from the transducer; field 2 is how far the
-                // transducer sits below the waterline. Their sum is the depth of water,
-                // which is the datum the rest of the fleet works in (scope adds bow
-                // roller height to it, so it has to start at the surface).
-                const finalDepthMeters = meters + offset;
-                return {
-                    waterDepth: finalDepthMeters,
-                    depthFeet: finalDepthMeters * 3.28084,
-                    transducerOffsetFeet: offset * 3.28084
-                };
-            }
+        const metres = numberField(parts[1]);
+        if (metres !== undefined) {
+            // Field 2 is the offset from the transducer: positive is the distance up
+            // to the waterline, negative the distance down to the keel. It is passed
+            // on signed, and `resolveDepth` applies it; it is no longer added here
+            // and the sum called depth of water, which a keel offset made untrue.
+            const offset = numberField(parts[2]);
+            const result = {
+                depthBelowTransducer: metres,
+                waterDepth: metres + (offset ?? 0)
+            };
+            if (offset !== undefined)
+                result.transducerOffset = offset;
+            return result;
         }
     }
+    /**
+     * VHW: water speed and heading. Field 1 is the heading in degrees true and
+     * field 3 the same in degrees magnetic; a talker may fill in either or both.
+     * They are returned as what they are. The magnetic one used to be returned
+     * as `heading`, where it alternated with RMC's course over ground.
+     */
     if (type === 'VHW') {
-        const headingMag = parseFloat(parts[3]);
-        const speedKnots = parseFloat(parts[5]);
+        const result = {};
+        const headingTrue = numberField(parts[1]);
+        const headingMagnetic = numberField(parts[3]);
+        const knots = numberField(parts[5]);
+        const kmh = numberField(parts[7]);
+        if (headingTrue !== undefined)
+            result.heading = normalizeDegrees(headingTrue);
+        if (headingMagnetic !== undefined)
+            result.headingMagnetic = normalizeDegrees(headingMagnetic);
+        if (knots !== undefined)
+            result.stw = knots;
+        else if (kmh !== undefined)
+            result.stw = kmh * 0.539957;
+        return Object.keys(result).length > 0 ? result : null;
+    }
+    /** HDT: heading in degrees true, from a gyro or satellite compass. */
+    if (type === 'HDT') {
+        const heading = numberField(parts[1]);
+        return heading !== undefined ? { heading: normalizeDegrees(heading) } : null;
+    }
+    /**
+     * THS: true heading with a mode. A is autonomous and S a simulator; E
+     * (estimated), M (manual) and V (not valid) are not a compass reading.
+     */
+    if (type === 'THS') {
+        const heading = numberField(parts[1]);
+        const mode = parts[2] ? parts[2].trim().toUpperCase() : '';
+        if (heading === undefined || (mode && mode !== 'A' && mode !== 'S'))
+            return null;
+        return { heading: normalizeDegrees(heading) };
+    }
+    /**
+     * RPM: engine or shaft revolutions. `$--RPM,E,1,1850.0,,A` is engine 1 at
+     * 1850 rpm; the source is E (engine) or S (shaft) and the status A is valid.
+     *
+     * Parsed because nothing else in the fleet says whether a boat is under
+     * engine, and polar learning needs to know: without it every hour motoring
+     * is recorded as sailing performance. A shaft turning is as good a sign as
+     * an engine running, so both are reported as `engineRpm`.
+     */
+    if (type === 'RPM') {
+        const source = parts[1] ? parts[1].trim().toUpperCase() : '';
+        const rpm = numberField(parts[3]);
+        const status = parts[5] ? parts[5].trim().toUpperCase() : '';
+        if (rpm === undefined || (status && status !== 'A'))
+            return null;
+        if (source && source !== 'E' && source !== 'S')
+            return null;
+        const engineNumber = numberField(parts[2]);
         return {
-            heading: !isNaN(headingMag) ? headingMag : undefined,
-            stw: !isNaN(speedKnots) ? speedKnots : undefined
+            engineRpm: Math.abs(rpm),
+            ...(engineNumber !== undefined ? { engineNumber } : {}),
         };
+    }
+    /** HDM: heading in degrees magnetic. */
+    if (type === 'HDM') {
+        const heading = numberField(parts[1]);
+        return heading !== undefined ? { headingMagnetic: normalizeDegrees(heading) } : null;
+    }
+    /**
+     * HDG: the magnetic sensor's heading, its deviation and the local variation.
+     * Heading magnetic is the sensor reading plus the deviation (east positive);
+     * true is that plus the variation, when the talker supplies one. Only the
+     * variation used to be read, and the heading itself thrown away.
+     */
+    if (type === 'HDG') {
+        const result = {};
+        const sensor = numberField(parts[1]);
+        const deviation = signedEastWest(parts[2], parts[3]);
+        const variation = signedEastWest(parts[4], parts[5]);
+        if (sensor !== undefined) {
+            const magnetic = sensor + (deviation ?? 0);
+            result.headingMagnetic = normalizeDegrees(magnetic);
+            if (variation !== undefined)
+                result.heading = normalizeDegrees(magnetic + variation);
+        }
+        if (variation !== undefined)
+            result.magVar = variation;
+        return Object.keys(result).length > 0 ? result : null;
     }
     if (type === 'MWD') {
         // Field 1 is the direction the wind blows FROM relative to true north,
-        // field 3 the same relative to magnetic north. Prefer true; plenty of
-        // instruments populate only one of the two, so fall back rather than
-        // reporting a magnetic bearing as a true one.
-        const windDirTrue = parseFloat(parts[1]);
-        const windDirMag = parseFloat(parts[3]);
-        const windDir = !isNaN(windDirTrue) ? windDirTrue : (!isNaN(windDirMag) ? windDirMag : undefined);
-        const windSpeedKnots = parseFloat(parts[5]);
-        return {
-            awd: windDir,
-            twd: windDir,
-            aws: !isNaN(windSpeedKnots) ? windSpeedKnots : undefined,
-            tws: !isNaN(windSpeedKnots) ? windSpeedKnots : undefined
-        };
+        // field 3 the same relative to magnetic north, field 5 the speed in knots
+        // and field 7 in metres a second. MWD is the TRUE wind: it used to be
+        // written into the apparent fields as well, and a magnetic direction was
+        // returned as a true one when the true field was empty.
+        const result = {};
+        const directionTrue = numberField(parts[1]);
+        const directionMagnetic = numberField(parts[3]);
+        const knots = numberField(parts[5]);
+        const metresPerSecond = numberField(parts[7]);
+        if (directionTrue !== undefined)
+            result.twd = normalizeDegrees(directionTrue);
+        if (directionMagnetic !== undefined)
+            result.twdMagnetic = normalizeDegrees(directionMagnetic);
+        if (knots !== undefined)
+            result.tws = knots;
+        else if (metresPerSecond !== undefined)
+            result.tws = metresPerSecond * 1.94384;
+        return Object.keys(result).length > 0 ? result : null;
     }
     /**
      * MWV gives a wind ANGLE measured from the bow, for both references: 'R' is
@@ -371,16 +636,6 @@ function parseNmeaSentence(sentence) {
             };
         }
     }
-    if (type === 'HDG') {
-        let magVar = undefined;
-        if (parts[4] && parts[5]) {
-            magVar = parseFloat(parts[4]);
-            if (parts[5] === 'W') {
-                magVar = -magVar;
-            }
-            return { magVar: magVar };
-        }
-    }
     return null;
 }
 /** Parses an NMEA sentence and updates a shared live-data object in place. */
@@ -413,34 +668,48 @@ function handleNmeaSentence(sentence, liveData) {
         liveData.lastFixAt = Date.now();
         updated = true;
     }
+    const now = Date.now();
+    if (typeof parsed.magVar === 'number')
+        liveData.mag_var = parsed.magVar;
+    // True wind where the feed has it, apparent otherwise. A feed with both sends
+    // them in turn, so the apparent figure is held off while a true one is
+    // recent; without that the reading alternated between the two.
     if (parsed.tws !== undefined) {
         liveData.w_speed = parsed.tws;
+        liveData.w_speed_ref = 'true';
+        liveData.w_speed_true_at = now;
         updated = true;
     }
     else if (parsed.aws !== undefined) {
-        liveData.w_speed = parsed.aws;
-        updated = true;
+        const trueAt = liveData.w_speed_true_at;
+        const trueIsRecent = typeof trueAt === 'number' && now - trueAt <= exports.WIND_TRUE_HOLD_MS;
+        if (!trueIsRecent) {
+            liveData.w_speed = parsed.aws;
+            liveData.w_speed_ref = 'apparent';
+            updated = true;
+        }
     }
+    // The direction the wind blows from. A magnetic bearing is corrected by the
+    // variation when the feed has supplied one; with none it is used as it is,
+    // which is out by the local variation and better than no direction at all.
     if (parsed.twd !== undefined) {
         liveData.w_dir = parsed.twd;
         updated = true;
     }
-    else if (parsed.awd !== undefined) {
-        liveData.w_dir = parsed.awd;
+    else if (parsed.twdMagnetic !== undefined) {
+        const variation = typeof liveData.mag_var === 'number' ? liveData.mag_var : 0;
+        liveData.w_dir = normalizeDegrees(parsed.twdMagnetic + variation);
         updated = true;
     }
-    if (parsed.transducerOffsetFeet !== undefined) {
-        liveData.depth_offset_ft = parsed.transducerOffsetFeet;
+    // An object built before `depth_state` existed gets one here.
+    const depthState = liveData.depth_state ?? (liveData.depth_state = createDepthState());
+    const reading = resolveDepth(depthState, parsed, now);
+    if (depthState.offsetM !== null) {
+        liveData.depth_offset_ft = depthState.offsetM * M_TO_FT;
     }
-    if (parsed.depthFeet !== undefined) {
-        liveData.depth = parsed.depthFeet;
-        updated = true;
-    }
-    else if (parsed.depthBelowTransducerFeet !== undefined) {
-        // Raise a below-transducer sounding to the waterline so it agrees with DPT.
-        // With no offset yet the raw reading is the best available, and erring
-        // shallow is the safe direction for a grounding alarm.
-        liveData.depth = parsed.depthBelowTransducerFeet + (liveData.depth_offset_ft ?? 0);
+    if (reading) {
+        liveData.depth = reading.depthM * M_TO_FT;
+        liveData.depth_datum = reading.datum;
         updated = true;
     }
     if (updated) {

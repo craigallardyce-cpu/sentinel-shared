@@ -33,7 +33,12 @@ const host = globalThis as unknown as {
 };
 
 export interface ReconnectScheduler {
-  /** Queue a reconnect attempt, backing off further each consecutive call. */
+  /**
+   * Queue a reconnect attempt, backing off further after each attempt that
+   * fires. A call made while an attempt is still pending replaces it and is not
+   * a second failure: a WebSocket reports one lost connection as an `error` and
+   * then a `close`, and counting both doubled the delay twice per failure.
+   */
   schedule(connect: () => void): void;
   /** Call on a successful connect so the next failure starts from the floor. */
   reset(): void;
@@ -62,7 +67,12 @@ export function createReconnectScheduler(options: ReconnectSchedulerOptions = {}
     },
     peekDelay: rawDelay,
     schedule(connect: () => void) {
-      if (timer) host.clearTimeout(timer);
+      if (timer) {
+        // The pending attempt never ran, so this call takes its place.
+        host.clearTimeout(timer);
+        timer = null;
+        attempts = Math.max(0, attempts - 1);
+      }
       const spread = rawDelay() * jitter;
       // Uniform in [delay - spread, delay + spread], never below the floor.
       const delay = Math.max(baseMs, Math.round(rawDelay() + (random() * 2 - 1) * spread));

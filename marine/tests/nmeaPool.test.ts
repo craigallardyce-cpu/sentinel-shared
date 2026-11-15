@@ -307,9 +307,141 @@ describe('clients are told what is happening', () => {
 
     await vi.advanceTimersByTimeAsync(5000);
     await vi.advanceTimersByTimeAsync(0);
-    expect(sse.written.some((line) => line.startsWith('event: reconnected'))).toBe(true);
-    expect(JSON.parse(ws.sent[ws.sent.length - 1]).status).toBe('connected');
+    // The link is up again, and that alone restores nothing a navigator can use.
+    expect(entry.isSocketConnected).toBe(true);
+    expect(entry.isReceiving).toBe(false);
+    expect(sse.written.some((line) => line.startsWith('event: reconnected'))).toBe(false);
+
+    sockets[1].fire('data', '$GPRMC,back*00\r\n');
+    expect(entry.isReceiving).toBe(true);
+    const restored = sse.written.findIndex((line) => line.startsWith('event: reconnected'));
+    expect(restored).toBeGreaterThan(-1);
+    // Announced before the sentence that proves it, and only once.
+    expect(sse.written[restored + 1]).toBe('data: $GPRMC,back*00\n\n');
+    expect(JSON.parse(ws.sent[ws.sent.length - 2]).status).toBe('connected');
+
+    sockets[1].fire('data', '$GPRMC,again*00\r\n');
+    expect(sse.written.filter((line) => line.startsWith('event: reconnected')).length).toBe(1);
   });
+
+  it('does not say reconnected for a gateway that accepts the connection and stays silent', async () => {
+    // Instruments off, gateway on: every dial succeeds and nothing is ever
+    // sent. This used to read "Connection restored" every thirteen seconds.
+    const { pool } = makePool({ watchdogSeconds: 8, reconnectDelayMs: 5000 });
+    const entry = pool.establish('10.10.10.1', 11102);
+    const sse = sseClient();
+    entry.clients.add(sse);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(sse.written.some((line) => line.startsWith('event: reconnecting'))).toBe(true);
+    expect(sse.written.some((line) => line.startsWith('event: reconnected'))).toBe(false);
+    expect(entry.isReceiving).toBe(false);
+  });
+
+  it('stops receiving when the watchdog gives up on a socket', async () => {
+    const { pool, sockets } = makePool({ watchdogSeconds: 8, reconnectDelayMs: 5000 });
+    const entry = pool.establish('10.10.10.1', 11102);
+    entry.clients.add(sseClient());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(entry.isReceiving).toBe(false);
+
+    sockets[0].fire('data', '$GPRMC,one*00\r\n');
+    expect(entry.isReceiving).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(entry.isReceiving).toBe(false);
+  });
+});
+
+describe('the reconnect delay', () => {
+  it('stays fixed unless a ceiling is given', async () => {
+    const { pool, connects } = makePool({ watchdogSeconds: 8, reconnectDelayMs: 5000 });
+    const entry = pool.establish('10.10.10.1', 11102);
+    entry.clients.add(sseClient());
+    await vi.advanceTimersByTimeAsync(0);
+
+    // One dial at the start, then one every 8 s of silence plus 5 s of delay.
+    await vi.advanceTimersByTimeAsync(13000 * 6);
+    expect(connects.length).toBe(7);
+  });
+
+  it('doubles up to the ceiling while nothing arrives, and says how long', async () => {
+    const { pool, connects } = makePool({
+      watchdogSeconds: 8,
+      reconnectDelayMs: 5000,
+      reconnectMaxDelayMs: 20000,
+    });
+    const entry = pool.establish('10.10.10.1', 11102);
+    const sse = sseClient();
+    entry.clients.add(sse);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const waits = () =>
+      sse.written.filter((line) => line.startsWith('event: reconnecting')).map((line) => line.split('\n')[1]);
+
+    await vi.advanceTimersByTimeAsync(8000 + 5000); // first retry after 5 s
+    expect(connects.length).toBe(2);
+    await vi.advanceTimersByTimeAsync(8000 + 10000); // then 10 s
+    expect(connects.length).toBe(3);
+    await vi.advanceTimersByTimeAsync(8000 + 20000); // then 20 s
+    expect(connects.length).toBe(4);
+    await vi.advanceTimersByTimeAsync(8000 + 20000); // and no further
+    expect(connects.length).toBe(5);
+    expect(waits().slice(0, 4)).toEqual([
+      'data: Reconnecting in 5s...',
+      'data: Reconnecting in 10s...',
+      'data: Reconnecting in 20s...',
+      'data: Reconnecting in 20s...',
+    ]);
+  });
+
+  it('returns to the floor as soon as a sentence arrives', async () => {
+    const { pool, sockets, connects } = makePool({
+      watchdogSeconds: 8,
+      reconnectDelayMs: 5000,
+      reconnectMaxDelayMs: 20000,
+    });
+    const entry = pool.establish('10.10.10.1', 11102);
+    entry.clients.add(sseClient());
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(8000 + 5000);
+    await vi.advanceTimersByTimeAsync(8000 + 10000);
+    expect(connects.length).toBe(3);
+
+    sockets[2].fire('data', '$GPRMC,back*00\r\n');
+    await vi.advanceTimersByTimeAsync(8000 + 5000);
+    expect(connects.length).toBe(4);
+  });
+
+  it('counts a watchdog trip and the close it causes as one failure', async () => {
+    // closeOnDestroy: the destroyed socket emits `close`, which schedules a
+    // reconnect as well as the watchdog does.
+    const sockets: ReturnType<typeof stubSocket>[] = [];
+    const pool = createNmeaPool({
+      createConnection: (_target, onConnect) => {
+        const socket = stubSocket({ closeOnDestroy: true });
+        sockets.push(socket);
+        queueMicrotask(onConnect);
+        return socket;
+      },
+      watchdogSeconds: 8,
+      reconnectDelayMs: 5000,
+      reconnectMaxDelayMs: 60000,
+    });
+    const entry = pool.establish('10.10.10.1', 11102);
+    entry.clients.add(sseClient());
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(8000 + 5000);
+    expect(sockets.length).toBe(2);
+    await vi.advanceTimersByTimeAsync(8000 + 10000);
+    expect(sockets.length).toBe(3);
+  });
+});
+
+describe('attached clients across a reconnect', () => {
 
   it('keeps attached clients across a reconnect rather than dropping them', async () => {
     const { pool, sockets } = makePool({ watchdogSeconds: 8, reconnectDelayMs: 5000 });
@@ -637,8 +769,14 @@ describe('a UDP listener', () => {
     expect(udpSockets[1].bound).toBe(11102);
 
     await vi.advanceTimersByTimeAsync(0);
-    expect(sse.written.join('')).toContain('event: reconnected');
+    // Bound, which a UDP port always is, and nothing heard: not "restored".
     expect(pool.entries.get('udp:11102')?.isSocketConnected).toBe(true);
+    expect(pool.entries.get('udp:11102')?.isReceiving).toBe(false);
+    expect(sse.written.join('')).not.toContain('event: reconnected');
+
+    udpSockets[1].send('$GPRMC,two*00\r\n');
+    expect(sse.written.join('')).toContain('event: reconnected');
+    expect(pool.entries.get('udp:11102')?.isReceiving).toBe(true);
   });
 
   it('feeds the watchdog on a datagram, so a live feed is never rebound', async () => {

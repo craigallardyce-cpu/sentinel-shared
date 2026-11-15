@@ -21,7 +21,12 @@ export interface ReconnectSchedulerOptions {
     random?: () => number;
 }
 export interface ReconnectScheduler {
-    /** Queue a reconnect attempt, backing off further each consecutive call. */
+    /**
+     * Queue a reconnect attempt, backing off further after each attempt that
+     * fires. A call made while an attempt is still pending replaces it and is not
+     * a second failure: a WebSocket reports one lost connection as an `error` and
+     * then a `close`, and counting both doubled the delay twice per failure.
+     */
     schedule(connect: () => void): void;
     /** Call on a successful connect so the next failure starts from the floor. */
     reset(): void;

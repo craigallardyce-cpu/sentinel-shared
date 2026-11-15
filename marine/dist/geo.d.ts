@@ -37,7 +37,7 @@ export declare function isPointInBbox(lat: number, lon: number, bbox: {
     south: number;
     north: number;
 }): boolean;
-/** Returns the 16-point cardinal direction string for a bearing in degrees. */
+/** Returns the 16-point cardinal direction string for a bearing in degrees, or '' when it is not a number. */
 export declare function getCardinalDirection(degrees: number): string;
 /**
  * Calculates the destination point (e.g. an anchor position) given a start
