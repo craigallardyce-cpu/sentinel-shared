@@ -3,6 +3,8 @@
  * registers under. A fixed key, so it can be found in an install's storage.
  */
 export const BROWSER_DEVICE_ID_KEY = 'sentinel_browser_device_id';
+/** Longest label written to `devices.device_model`; website migration 084 checks the same. */
+export const DEVICE_MODEL_MAX_LENGTH = 120;
 /**
  * True when the page was loaded from this computer itself, which is where the
  * desktop apps load from (`http://localhost:<port>`).
@@ -17,6 +19,62 @@ function desktopOs(userAgent) {
     if (userAgent.includes('Mac'))
         return 'Mac';
     return 'Linux';
+}
+function clip(label) {
+    const text = label.replace(/\s+/g, ' ').trim();
+    if (!text)
+        return null;
+    return text.length > DEVICE_MODEL_MAX_LENGTH ? text.slice(0, DEVICE_MODEL_MAX_LENGTH) : text;
+}
+const OS_NAMES = { android: 'Android', ios: 'iOS' };
+/**
+ * "Samsung SM-S711U · Android 16". The manufacturer is dropped when the model
+ * already starts with it ("Google" + "Pixel 8" keeps both; "OnePlus" +
+ * "OnePlus 12" does not repeat itself).
+ */
+export function describeNativeDevice(info) {
+    if (!info)
+        return null;
+    const maker = (info.manufacturer || '').trim();
+    const model = (info.model || '').trim();
+    const makerName = maker ? maker.charAt(0).toUpperCase() + maker.slice(1) : '';
+    const hardware = makerName && model.toLowerCase().startsWith(maker.toLowerCase())
+        ? model
+        : [makerName, model].filter(Boolean).join(' ');
+    const osName = OS_NAMES[(info.operatingSystem || '').toLowerCase()] ?? '';
+    const os = [osName, (info.osVersion || '').trim()].filter(Boolean).join(' ');
+    return clip([hardware, os].filter(Boolean).join(' · '));
+}
+/** "Chrome on Android", from a browser's user agent. Null when neither part is recognised. */
+export function describeBrowser(userAgent) {
+    const ua = userAgent || '';
+    const browser = /Edg\//.test(ua)
+        ? 'Edge'
+        : /Firefox\/|FxiOS\//.test(ua)
+            ? 'Firefox'
+            : /Chrome\/|CriOS\//.test(ua)
+                ? 'Chrome'
+                : /Safari\//.test(ua)
+                    ? 'Safari'
+                    : '';
+    const os = /Android/.test(ua)
+        ? 'Android'
+        : /iPad/.test(ua)
+            ? 'iPad'
+            : /iPhone|iPod/.test(ua)
+                ? 'iPhone'
+                : /CrOS/.test(ua)
+                    ? 'ChromeOS'
+                    : /Windows/.test(ua)
+                        ? 'Windows'
+                        : /Mac OS X|Macintosh/.test(ua)
+                            ? 'Mac'
+                            : /Linux/.test(ua)
+                                ? 'Linux'
+                                : '';
+    if (!browser && !os)
+        return null;
+    return clip(browser && os ? `${browser} on ${os}` : browser || os);
 }
 function randomId() {
     const c = globalThis.crypto;
@@ -57,18 +115,26 @@ export async function resolveDeviceIdentity(env) {
     if (env.isNative) {
         const info = await env.getNativeId();
         const platformName = env.nativePlatform === 'ios' ? 'iOS Phone/Tablet' : 'Android Phone/Tablet';
-        return { machineId: info.identifier, platformName };
+        let deviceModel = null;
+        try {
+            deviceModel = describeNativeDevice(env.getNativeInfo ? await env.getNativeInfo() : null);
+        }
+        catch {
+            // A label is a convenience. Registering the device must not depend on it.
+            deviceModel = null;
+        }
+        return { machineId: info.identifier, platformName, deviceModel };
     }
     if (isLoopbackHost(env.hostname)) {
         const { machineId } = await env.fetchMachineId();
-        return { machineId, platformName: `${desktopOs(env.userAgent)} Desktop` };
+        return { machineId, platformName: `${desktopOs(env.userAgent)} Desktop`, deviceModel: null };
     }
     let machineId = readCookie(env.cookies) ?? env.storage.getItem(BROWSER_DEVICE_ID_KEY);
     if (!machineId)
         machineId = `browser-${(env.newId ?? randomId)()}`;
     env.storage.setItem(BROWSER_DEVICE_ID_KEY, machineId);
     writeCookie(env.cookies, machineId);
-    return { machineId, platformName: 'Web Browser' };
+    return { machineId, platformName: 'Web Browser', deviceModel: describeBrowser(env.userAgent) };
 }
 const COOKIE_PATTERN = new RegExp(`(?:^|;\\s*)${BROWSER_DEVICE_ID_KEY}=([^;]+)`);
 function readCookie(cookies) {

@@ -16,7 +16,10 @@ vi.mock('@capacitor/core', () => ({
   }
 }));
 vi.mock('@capacitor/device', () => ({
-  Device: { getId: vi.fn(async () => ({ identifier: 'test-device-id' })) }
+  Device: {
+    getId: vi.fn(async () => ({ identifier: 'test-device-id' })),
+    getInfo: vi.fn(async () => ({ manufacturer: 'samsung', model: 'SM-S711U', operatingSystem: 'android', osVersion: '16' }))
+  }
 }));
 
 /*
@@ -63,6 +66,8 @@ interface MockSupabaseOptions {
   tierFeatures?: any[];
   /** When set, tier_features answers with this error, so fetchEntitlements throws. */
   tierFeaturesError?: any;
+  /** Answers for successive inserts into devices, in order; each defaults to success. */
+  deviceInsertErrors?: any[];
 }
 
 function makeMockSupabase(opts: MockSupabaseOptions = {}) {
@@ -75,8 +80,10 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
     deviceLimits = [{ active_devices: 0, max_devices: 5 }],
     signInError = null,
     tierFeatures = [{ features: { feature_key: 'anchor_alarm' } }],
-    tierFeaturesError = null
+    tierFeaturesError = null,
+    deviceInsertErrors = []
   } = opts;
+  let deviceInserts = 0;
 
   let authChangeHandler: ((event: string, session: any) => void) | null = null;
   // Every builder handed out for `devices`, so a test can read back the filters
@@ -101,6 +108,7 @@ function makeMockSupabase(opts: MockSupabaseOptions = {}) {
       if (table === 'bundle_tier_mappings') return makeQueryBuilder({ data: bundleMappings, error: null });
       if (table === 'devices') {
         const builder = makeQueryBuilder({ data: devices, error: null });
+        builder.insert = vi.fn(() => Promise.resolve({ data: null, error: deviceInsertErrors[deviceInserts++] ?? null }));
         deviceBuilders.push(builder);
         return builder;
       }
@@ -992,5 +1000,94 @@ describe('AuthScreen — Terms agreement at sign-up (Terms TD10)', () => {
     // The sentence itself still ticks it.
     fireEvent.click(screen.getByText(/I agree to the/));
     expect(screen.getByLabelText(/I agree to the/)).toBeChecked();
+  });
+});
+
+/*
+ * Roadmap #136: the account page could not tell one "Android Phone/Tablet" from
+ * another. The label rides along with registration, and must never be the
+ * reason a sign-in fails -- a database without website migration 084 does not
+ * know the column.
+ */
+describe('AuthScreen — device label for the account page', () => {
+  const session = { user: { id: 'user-1' } };
+  const premium = [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }];
+
+  function renderScreen(supabase: any, onAuthenticated = vi.fn()) {
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+      />
+    );
+    return onAuthenticated;
+  }
+
+  it('registers a phone with its make, model and OS', async () => {
+    platform.isNative = true;
+    const supabase = makeMockSupabase({ session, subscriptions: premium });
+    const onAuthenticated = renderScreen(supabase);
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    const inserted = supabase.__deviceBuilders.find((b: any) => b.insert.mock.calls.length > 0);
+    expect(inserted.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        device_identifier: 'test-device-id',
+        device_name: 'Android Phone/Tablet',
+        device_model: 'Samsung SM-S711U · Android 16'
+      })
+    );
+  });
+
+  it('registers without the label when the database has no column for it', async () => {
+    platform.isNative = true;
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: premium,
+      deviceInsertErrors: [{ code: 'PGRST204', message: "Could not find the 'device_model' column" }]
+    });
+    const onAuthenticated = renderScreen(supabase);
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    const calls = supabase.__deviceBuilders.flatMap((b: any) => b.insert.mock.calls.map((c: any[]) => c[0]));
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toHaveProperty('device_model');
+    expect(calls[1]).not.toHaveProperty('device_model');
+    expect(calls[1]).toMatchObject({ device_identifier: 'test-device-id', product_id: 'prod-1' });
+  });
+
+  it('refreshes the label on every row of a device already registered', async () => {
+    platform.isNative = true;
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: premium,
+      devices: [{ id: 'row-1', product_id: 'prod-1' }]
+    });
+    const onAuthenticated = renderScreen(supabase);
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    const labelled = supabase.__deviceBuilders.find((b: any) =>
+      b.update.mock.calls.some((c: any[]) => 'device_model' in c[0])
+    );
+    expect(labelled.update).toHaveBeenCalledWith({ device_model: 'Samsung SM-S711U · Android 16' });
+    expect(labelled.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(labelled.eq).toHaveBeenCalledWith('device_identifier', 'test-device-id');
+    // The check-in itself is still its own write, untouched by the label.
+    const checkIn = supabase.__deviceBuilders.find((b: any) =>
+      b.update.mock.calls.some((c: any[]) => 'last_active_at' in c[0])
+    );
+    expect(checkIn.update.mock.calls[0][0]).not.toHaveProperty('device_model');
+  });
+
+  it('sends no label from the desktop app', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: premium });
+    const onAuthenticated = renderScreen(supabase);
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    const inserted = supabase.__deviceBuilders.find((b: any) => b.insert.mock.calls.length > 0);
+    expect(inserted.insert.mock.calls[0][0]).not.toHaveProperty('device_model');
   });
 });

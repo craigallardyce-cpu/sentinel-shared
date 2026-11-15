@@ -508,10 +508,11 @@ export function AuthScreen({
 
         // Enforce hardware device limits
         try {
-          const { machineId, platformName } = await resolveDeviceIdentity({
+          const { machineId, platformName, deviceModel } = await resolveDeviceIdentity({
             isNative: Capacitor.isNativePlatform(),
             nativePlatform: Capacitor.getPlatform(),
             getNativeId: () => Device.getId(),
+            getNativeInfo: () => Device.getInfo(),
             fetchMachineId,
             hostname: typeof window !== 'undefined' ? window.location.hostname : '',
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
@@ -561,6 +562,22 @@ export function AuthScreen({
               .from('devices')
               .update({ last_active_at: new Date().toISOString() })
               .eq('id', existingDevice.id);
+            // The label is refreshed on its own, after the check-in, so a database
+            // without the column yet (website migration 084 not applied) or a
+            // refused write costs the account page a label and nothing else. It
+            // goes on every row of this hardware, so the device reads the same
+            // whichever app registered it first; and an OS update shows up here.
+            if (deviceModel) {
+              try {
+                await supabase
+                  .from('devices')
+                  .update({ device_model: deviceModel })
+                  .eq('user_id', userId)
+                  .eq('device_identifier', machineId);
+              } catch (labelErr) {
+                console.warn('Could not refresh the device label:', labelErr);
+              }
+            }
           } else {
             if (!deviceAlreadyCounted) {
               const { data: limits, error: limitErr } = await supabase.rpc('get_user_device_limits');
@@ -577,14 +594,23 @@ export function AuthScreen({
               }
             }
 
-            const { error: insErr } = await supabase
+            const row = {
+              user_id: userId,
+              device_identifier: machineId,
+              device_name: platformName,
+              product_id: productId
+            };
+
+            let { error: insErr } = await supabase
               .from('devices')
-              .insert({
-                user_id: userId,
-                device_identifier: machineId,
-                device_name: platformName,
-                product_id: productId
-              });
+              .insert(deviceModel ? { ...row, device_model: deviceModel } : row);
+
+            // PGRST204: PostgREST does not know the column, which is a database
+            // that has not had website migration 084 yet. Register without the
+            // label rather than refuse the sign-in over a display string.
+            if (insErr && insErr.code === 'PGRST204' && deviceModel) {
+              ({ error: insErr } = await supabase.from('devices').insert(row));
+            }
 
             if (insErr) throw insErr;
           }

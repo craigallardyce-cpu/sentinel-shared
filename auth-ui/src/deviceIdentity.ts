@@ -9,7 +9,27 @@ export const BROWSER_DEVICE_ID_KEY = 'sentinel_browser_device_id';
 export interface DeviceIdentity {
   machineId: string;
   platformName: string;
+  /**
+   * What the account page shows to tell this device from the owner's others:
+   * the make and model and its OS on a phone or tablet ("Samsung SM-S711U ·
+   * Android 16"), the browser and its OS on a browser elsewhere on the LAN
+   * ("Chrome on Android"). Null on the desktop app, where the platform name
+   * is all there is, and whenever it could not be read. Never the name the
+   * owner gave the device, which can carry a person's name.
+   */
+  deviceModel: string | null;
 }
+
+/** The fields of @capacitor/device's DeviceInfo this reads. */
+export interface NativeDeviceInfo {
+  manufacturer?: string;
+  model?: string;
+  operatingSystem?: string;
+  osVersion?: string;
+}
+
+/** Longest label written to `devices.device_model`; website migration 084 checks the same. */
+export const DEVICE_MODEL_MAX_LENGTH = 120;
 
 export interface DeviceIdentityEnv {
   /** Capacitor.isNativePlatform() */
@@ -18,6 +38,8 @@ export interface DeviceIdentityEnv {
   nativePlatform: string;
   /** Device.getId(), called only on native. */
   getNativeId: () => Promise<{ identifier: string }>;
+  /** Device.getInfo(), called only on native. A failure leaves the label out. */
+  getNativeInfo?: () => Promise<NativeDeviceInfo>;
   /** The app's own computer, read from the backend running beside it. */
   fetchMachineId: () => Promise<{ machineId: string }>;
   /** window.location.hostname; empty for a page with no host. */
@@ -47,6 +69,64 @@ function desktopOs(userAgent: string): string {
   if (userAgent.includes('Windows')) return 'Windows';
   if (userAgent.includes('Mac')) return 'Mac';
   return 'Linux';
+}
+
+function clip(label: string): string | null {
+  const text = label.replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  return text.length > DEVICE_MODEL_MAX_LENGTH ? text.slice(0, DEVICE_MODEL_MAX_LENGTH) : text;
+}
+
+const OS_NAMES: Record<string, string> = { android: 'Android', ios: 'iOS' };
+
+/**
+ * "Samsung SM-S711U · Android 16". The manufacturer is dropped when the model
+ * already starts with it ("Google" + "Pixel 8" keeps both; "OnePlus" +
+ * "OnePlus 12" does not repeat itself).
+ */
+export function describeNativeDevice(info: NativeDeviceInfo | null | undefined): string | null {
+  if (!info) return null;
+  const maker = (info.manufacturer || '').trim();
+  const model = (info.model || '').trim();
+  const makerName = maker ? maker.charAt(0).toUpperCase() + maker.slice(1) : '';
+  const hardware =
+    makerName && model.toLowerCase().startsWith(maker.toLowerCase())
+      ? model
+      : [makerName, model].filter(Boolean).join(' ');
+  const osName = OS_NAMES[(info.operatingSystem || '').toLowerCase()] ?? '';
+  const os = [osName, (info.osVersion || '').trim()].filter(Boolean).join(' ');
+  return clip([hardware, os].filter(Boolean).join(' · '));
+}
+
+/** "Chrome on Android", from a browser's user agent. Null when neither part is recognised. */
+export function describeBrowser(userAgent: string): string | null {
+  const ua = userAgent || '';
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /Firefox\/|FxiOS\//.test(ua)
+      ? 'Firefox'
+      : /Chrome\/|CriOS\//.test(ua)
+        ? 'Chrome'
+        : /Safari\//.test(ua)
+          ? 'Safari'
+          : '';
+  const os = /Android/.test(ua)
+    ? 'Android'
+    : /iPad/.test(ua)
+      ? 'iPad'
+      : /iPhone|iPod/.test(ua)
+        ? 'iPhone'
+        : /CrOS/.test(ua)
+          ? 'ChromeOS'
+          : /Windows/.test(ua)
+            ? 'Windows'
+            : /Mac OS X|Macintosh/.test(ua)
+              ? 'Mac'
+              : /Linux/.test(ua)
+                ? 'Linux'
+                : '';
+  if (!browser && !os) return null;
+  return clip(browser && os ? `${browser} on ${os}` : browser || os);
 }
 
 function randomId(): string {
@@ -86,19 +166,26 @@ export async function resolveDeviceIdentity(env: DeviceIdentityEnv): Promise<Dev
   if (env.isNative) {
     const info = await env.getNativeId();
     const platformName = env.nativePlatform === 'ios' ? 'iOS Phone/Tablet' : 'Android Phone/Tablet';
-    return { machineId: info.identifier, platformName };
+    let deviceModel: string | null = null;
+    try {
+      deviceModel = describeNativeDevice(env.getNativeInfo ? await env.getNativeInfo() : null);
+    } catch {
+      // A label is a convenience. Registering the device must not depend on it.
+      deviceModel = null;
+    }
+    return { machineId: info.identifier, platformName, deviceModel };
   }
 
   if (isLoopbackHost(env.hostname)) {
     const { machineId } = await env.fetchMachineId();
-    return { machineId, platformName: `${desktopOs(env.userAgent)} Desktop` };
+    return { machineId, platformName: `${desktopOs(env.userAgent)} Desktop`, deviceModel: null };
   }
 
   let machineId = readCookie(env.cookies) ?? env.storage.getItem(BROWSER_DEVICE_ID_KEY);
   if (!machineId) machineId = `browser-${(env.newId ?? randomId)()}`;
   env.storage.setItem(BROWSER_DEVICE_ID_KEY, machineId);
   writeCookie(env.cookies, machineId);
-  return { machineId, platformName: 'Web Browser' };
+  return { machineId, platformName: 'Web Browser', deviceModel: describeBrowser(env.userAgent) };
 }
 
 const COOKIE_PATTERN = new RegExp(`(?:^|;\\s*)${BROWSER_DEVICE_ID_KEY}=([^;]+)`);
