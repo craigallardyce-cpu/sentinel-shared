@@ -387,8 +387,12 @@ These differences between the apps are intentional. Do not harmonise them.
   restart-on-crash; the other two `require()` theirs in-process. This is why it
   passes `onBeforeInstall: stopBackend` to the shared auto-updater.
 - **Foreground service types differ by purpose:** OceanSentinel `microphone`
-  (VHF audio), HarborSentinel `location` (anchor watch), VesselKeeper none (no
-  background work, requests only `INTERNET`).
+  (VHF audio) and `location` (the Device GPS watch, since 2026-11-15),
+  HarborSentinel `location` (anchor watch), VesselKeeper none (no background
+  work, requests only `INTERNET`). Any app that reads the phone's own GPS with
+  the screen off needs a `location` service held while it does: Android sends a
+  backgrounded app a few fixes an hour without one, and the position-lost alarm
+  fires.
 - **Weather services genuinely differ.** HarborSentinel has caching and offline
   detection; OceanSentinel has the Open-Meteo fallback and wind-grid building.
   Merging them means writing new code, not extracting existing code.

@@ -56,8 +56,9 @@ These differences are intentional. Leave them alone:
   which Vite folds to `false` in every build. Do not widen it, and do not
   "restore" the old behaviour in Ocean.
 - **Foreground service types differ by purpose**: OceanSentinel `microphone` (VHF
-  audio), HarborSentinel `location` (anchor watch), VesselKeeper none (no background
-  work).
+  audio) and `location` (Device GPS watch, 2026-11-15), HarborSentinel `location`
+  (anchor watch), VesselKeeper none (no background work). Reading the phone's GPS
+  with the screen off needs a `location` service held for as long as it does.
 - **Weather services genuinely differ** — Harbor has caching and offline detection,
   Ocean has Open-Meteo fallback and wind-grid building. Merging them means writing new
   code, not extracting existing code.
