@@ -10,11 +10,25 @@ export interface RadarFrame {
     time: number;
     /** Path fragment to append to the host. */
     path: string;
-    /** "14:20 (Live)" — absolute time with how long ago it was. */
+    /** "14:20 (Live)" or "14:20 (-30m)": absolute time with how long ago it was. */
     timeLabel: string;
-    /** "Live" or "-30m". */
+    /** "Live" for a recent newest frame, otherwise "-30m" or "-3h". */
     relativeLabel: string;
 }
+/**
+ * How old the newest frame may be and still be called "Live". RainViewer
+ * publishes about every ten minutes and a frame is a few minutes old when it
+ * appears, so twenty covers a healthy feed and nothing staler.
+ */
+export declare const RADAR_LIVE_MAX_AGE_MIN = 20;
+/**
+ * Frames with their labels as of `nowMs`. The newest is "Live" only while it
+ * is recent; after that it is labelled with its age like any other.
+ */
+export declare function labelFrames(frames: Array<{
+    time: number;
+    path: string;
+}>, nowMs: number): RadarFrame[];
 export interface UseRadarFramesOptions {
     /** Lazy: nothing is fetched until this is true. */
     radarEnabled?: boolean;

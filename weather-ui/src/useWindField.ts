@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { fetchWindField, type Bounds, type WindField } from '@sentinel/weather';
 import type { WindFieldAxes } from './windTypes';
@@ -94,7 +94,10 @@ export interface UseWindFieldResult {
   loading: boolean;
   error: string | null;
   errorKind: WindFieldErrorKind;
-  /** Non-zero only when the field came back from the cache after a failed fetch. */
+  /**
+   * Non-zero only when a refresh failed and the field shown is an older one:
+   * recalled from the cache, or the one already on the chart.
+   */
   ageHours: number;
   reload: () => Promise<void>;
 }
@@ -144,8 +147,12 @@ export function useWindField({
         ? {
             north: Math.min(89, snappedLat + HALF_SPAN_DEG),
             south: Math.max(-89, snappedLat - HALF_SPAN_DEG),
-            east: Math.min(180, snappedLon + HALF_SPAN_DEG),
-            west: Math.max(-180, snappedLon - HALF_SPAN_DEG)
+            // Not clamped at the 180th meridian: a boat at 179°W wants the wind
+            // on both sides of it, and `fetchWindField` folds the longitudes
+            // for the request. The box used to stop at the line, which left a
+            // chart there with half a field or, at 180 itself, none.
+            east: snappedLon + HALF_SPAN_DEG,
+            west: snappedLon - HALF_SPAN_DEG
           }
         : null,
     [snappedLat, snappedLon]
@@ -164,13 +171,27 @@ export function useWindField({
     [hoursNeeded]
   );
 
+  /**
+   * Which load is the current one. A load that finishes after a newer one has
+   * started (the boat moved to another box, or the clock was wound and more
+   * days were asked for) belongs to a request nobody is waiting for, and its
+   * answer, late, used to replace the newer field with the older area's.
+   */
+  const requestRef = useRef(0);
+  /** What the field on the chart is a field OF, and when it was fetched. */
+  const shownRef = useRef<{ bounds: Bounds; fetchedAt: number } | null>(null);
+
   const load = useCallback(async () => {
     if (!bounds) return;
+    const request = ++requestRef.current;
+    const isCurrent = () => request === requestRef.current;
     setLoading(true);
     setError(null);
     setErrorKind(null);
     try {
       const fetched = await fetchWindField(bounds, { resolutionDeg: RESOLUTION_DEG, days });
+      if (!isCurrent()) return;
+      shownRef.current = { bounds, fetchedAt: Date.now() };
       setField(fetched);
       setAgeHours(0);
       cache?.remember(bounds, RESOLUTION_DEG, fetched).catch(() => {
@@ -180,11 +201,24 @@ export function useWindField({
       const recalled = cache
         ? await cache.recall(bounds, RESOLUTION_DEG).catch(() => null)
         : null;
+      if (!isCurrent()) return;
+      const shown = shownRef.current;
       if (recalled) {
+        shownRef.current = { bounds, fetchedAt: Date.now() - recalled.ageHours * 3_600_000 };
         setField(recalled.field);
         setAgeHours(recalled.ageHours);
+      } else if (shown && shown.bounds === bounds) {
+        /*
+          The hourly refresh failed and the field on the chart is for this same
+          box. It stays. An app that passes no cache (HarborSentinel) used to
+          have a perfectly good forecast, an hour old and good for days, wiped
+          off the chart by one failed request, and at anchor on a marginal
+          connection that is most hours. `ageHours` says how old it is.
+        */
+        setAgeHours((Date.now() - shown.fetchedAt) / 3_600_000);
       } else {
         const message = err instanceof Error ? err.message : String(err);
+        shownRef.current = null;
         setField(null);
         setError(message);
         // Open-Meteo meters by coordinate, and one field is a 13x13 grid, so an hourly cap is
@@ -192,7 +226,7 @@ export function useWindField({
         setErrorKind(/\b429\b|rate limit|request limit/i.test(message) ? 'rate-limited' : 'unavailable');
       }
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [bounds, days, cache]);
 
@@ -200,14 +234,22 @@ export function useWindField({
     if (!enabled || !bounds) return undefined;
     load();
     const id = setInterval(load, REFRESH_MS);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      // Whatever is still in flight was for this box or this horizon.
+      requestRef.current++;
+    };
   }, [enabled, bounds, load]);
 
   // Dropped when the overlay is switched off. A sixteen-day field over a hundred and sixty-nine
   // points is megabytes, and holding it for a layer nobody is looking at is how a long passage
   // ends with the tablet out of memory.
   useEffect(() => {
-    if (!enabled) setField(null);
+    if (!enabled) {
+      shownRef.current = null;
+      setField(null);
+      setLoading(false);
+    }
   }, [enabled]);
 
   /**

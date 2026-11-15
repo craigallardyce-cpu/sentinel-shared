@@ -193,6 +193,9 @@ export default function WindCanvasLayer({
       const speed = coords[i * 4 + 2];
       const agePct = coords[i * 4 + 3];
 
+      // Leaflet throws on a position that is not a number, and one bad
+      // particle must not cost the frame.
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
       const point = map.latLngToContainerPoint([lat, lon]);
       const cx = point.x;
       const cy = point.y;
@@ -303,11 +306,25 @@ export default function WindCanvasLayer({
 
     handle.worker.onmessage = (e: MessageEvent) => {
       const { type, coords } = e.data as { type: string; coords: Float32Array };
-      if (type === 'tick' && canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
+      if (type !== 'tick') return;
+      /*
+        Released whatever happens while drawing. `updating` is what paces the
+        animation, one request per frame drawn; when a draw threw, or the canvas
+        was gone for a moment, it stayed set and no frame was ever asked for
+        again. The wind stood still on the chart until the layer was toggled.
+      */
+      try {
+        const ctx = canvasRef.current?.getContext('2d');
         if (ctx) drawWindParticles(ctx, coords);
+      } catch (err) {
+        console.error('[Wind] Could not draw a wind frame:', err);
+      } finally {
         updating = false;
       }
+    };
+    // The same release for a worker that failed instead of answering.
+    handle.worker.onerror = () => {
+      updating = false;
     };
 
     const tick = () => {

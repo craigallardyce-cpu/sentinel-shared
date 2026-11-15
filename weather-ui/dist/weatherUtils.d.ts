@@ -26,4 +26,14 @@ export declare function getWeatherIcon(reasonText: string | undefined, theme?: W
 export declare function formatSyncDateTime(timestamp: number | null | undefined): string;
 /** What the forecast cards say for a value the forecast did not give. */
 export declare const NOT_GIVEN = "Not given";
+/**
+ * A forecast's temperature text ("18°C to 22°C", "-5°C to 3°C", "Low 28 to high 41°F")
+ * in the unit the navigator chose.
+ *
+ * A minus sign belongs to its number. It used to be left behind by the pattern, so
+ * -5°C was converted as 5°C and shown as "-41°F", sign kept and figure wrong, and a
+ * forecast of frost read as a mild day. A hyphen between two numbers ("18-22°C") is
+ * still a separator. A number with no unit of its own takes the unit the text uses
+ * elsewhere, and Fahrenheit only when the text names none, which is what NWS sends.
+ */
 export declare function formatTempRangeString(tempRangeStr: string | undefined, targetUnit: string): string;

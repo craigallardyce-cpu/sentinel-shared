@@ -99,15 +99,28 @@ export function formatSyncDateTime(timestamp: number | null | undefined): string
 /** What the forecast cards say for a value the forecast did not give. */
 export const NOT_GIVEN = 'Not given';
 
+/**
+ * A forecast's temperature text ("18°C to 22°C", "-5°C to 3°C", "Low 28 to high 41°F")
+ * in the unit the navigator chose.
+ *
+ * A minus sign belongs to its number. It used to be left behind by the pattern, so
+ * -5°C was converted as 5°C and shown as "-41°F", sign kept and figure wrong, and a
+ * forecast of frost read as a mild day. A hyphen between two numbers ("18-22°C") is
+ * still a separator. A number with no unit of its own takes the unit the text uses
+ * elsewhere, and Fahrenheit only when the text names none, which is what NWS sends.
+ */
 export function formatTempRangeString(tempRangeStr: string | undefined, targetUnit: string): string {
   if (!tempRangeStr) return NOT_GIVEN;
-  const regex = /(\d+)(?:\s*°?\s*([CF]))?/gi;
-  return tempRangeStr.replace(regex, (_match, numStr, unit) => {
-    const num = parseFloat(numStr);
-    const sourceUnit = unit ? unit.toUpperCase() : 'F';
-    if (sourceUnit === targetUnit) {
-      return `${num}°${targetUnit}`;
-    }
+  const named = tempRangeStr.match(/\d\s*°?\s*([CF])\b/i);
+  const defaultUnit = named ? named[1].toUpperCase() : 'F';
+  const regex = /([-\u2212])?(\d+(?:\.\d+)?)(?:\s*°?\s*([CF])\b)?/gi;
+  return tempRangeStr.replace(regex, (_match, sign, numStr, unit, offset: number, whole: string) => {
+    // "18-22": the hyphen follows a number (or its unit), so it separates.
+    const before = whole.slice(0, offset).trimEnd();
+    const isMinus = Boolean(sign) && !/[\d°CF]$/i.test(before);
+    const separator = sign && !isMinus ? sign : '';
+    const num = parseFloat(numStr) * (isMinus ? -1 : 1);
+    const sourceUnit = unit ? unit.toUpperCase() : defaultUnit;
     let converted;
     if (sourceUnit === 'C' && targetUnit === 'F') {
       converted = Math.round(num * 9/5 + 32);
@@ -116,6 +129,7 @@ export function formatTempRangeString(tempRangeStr: string | undefined, targetUn
     } else {
       converted = num;
     }
-    return `${converted}°${targetUnit}`;
+    // Math.round can give -0, which would print as "0" anyway; make it so.
+    return `${separator}${converted === 0 ? 0 : converted}°${targetUnit}`;
   });
 }
