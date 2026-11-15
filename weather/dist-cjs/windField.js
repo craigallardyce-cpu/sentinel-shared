@@ -1,10 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.wrapLon = wrapLon;
+exports.lonInGrid = lonInGrid;
 exports.boundsForPassage = boundsForPassage;
 exports.toComponents = toComponents;
 exports.fromComponents = fromComponents;
 exports.fetchWindField = fetchWindField;
 exports.createWindSampler = createWindSampler;
+const timeoutSignal_js_1 = require("./timeoutSignal.js");
 /**
  * The wind the router sails through: a grid of forecasts over the passage area,
  * sampled continuously in space and time.
@@ -19,13 +22,52 @@ exports.createWindSampler = createWindSampler;
  */
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const FETCH_TIMEOUT_MS = 20000;
+/** A longitude folded into -180..180, which is what a forecast API wants. */
+function wrapLon(lon) {
+    return ((((lon + 180) % 360) + 360) % 360) - 180;
+}
+/**
+ * A longitude expressed the way a grid's axis expresses it.
+ *
+ * The router keeps positions in -180..180 and a grid over the 180th meridian
+ * runs past 180, so 175°W is -175 to one and 185 to the other. Returns the
+ * longitude shifted by a whole turn when that puts it on the axis, and
+ * unchanged when nothing does (the caller then finds it off the grid).
+ */
+function lonInGrid(lons, lon) {
+    if (!lons.length)
+        return lon;
+    const first = lons[0];
+    const last = lons[lons.length - 1];
+    if (lon >= first && lon <= last)
+        return lon;
+    if (lon + 360 >= first && lon + 360 <= last)
+        return lon + 360;
+    if (lon - 360 >= first && lon - 360 <= last)
+        return lon - 360;
+    return lon;
+}
 /** The area a passage needs wind for, with room to detour around weather. */
 function boundsForPassage(start, destination, marginDeg = 2) {
+    const north = Math.min(90, Math.max(start.lat, destination.lat) + marginDeg);
+    const south = Math.max(-90, Math.min(start.lat, destination.lat) - marginDeg);
+    const lower = Math.min(start.lon, destination.lon);
+    const upper = Math.max(start.lon, destination.lon);
+    /*
+      More than half the world apart in longitude means the short way is across
+      the 180th meridian. Fiji to Samoa is 178°E to 172°W: ten degrees of sea,
+      and the box used to be the other 350, which is a grid of several thousand
+      points the API refuses and a passage that could not be planned. The box now
+      runs east from the eastern-hemisphere end, past 180.
+    */
+    if (upper - lower > 180) {
+        return { north, south, west: upper - marginDeg, east: lower + 360 + marginDeg };
+    }
     return {
-        north: Math.min(90, Math.max(start.lat, destination.lat) + marginDeg),
-        south: Math.max(-90, Math.min(start.lat, destination.lat) - marginDeg),
-        east: Math.min(180, Math.max(start.lon, destination.lon) + marginDeg),
-        west: Math.max(-180, Math.min(start.lon, destination.lon) - marginDeg)
+        north,
+        south,
+        east: Math.min(180, upper + marginDeg),
+        west: Math.max(-180, lower - marginDeg)
     };
 }
 function axis(from, to, stepDeg) {
@@ -62,16 +104,17 @@ async function fetchWindField(bounds, options = {}) {
     const lons = axis(bounds.west, bounds.east, resolutionDeg);
     const latParam = [];
     const lonParam = [];
+    // The axis may run past 180; the API is asked for the same points in -180..180.
     for (const la of lats)
         for (const lo of lons) {
             latParam.push(la);
-            lonParam.push(lo);
+            lonParam.push(Math.round(wrapLon(lo) * 1000) / 1000);
         }
     const url = `${FORECAST_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
         '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn' +
         `&forecast_days=${Math.min(16, Math.max(1, Math.round(days)))}` +
         `&models=${encodeURIComponent(model)}`;
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetchImpl(url, { signal: (0, timeoutSignal_js_1.timeoutSignal)(FETCH_TIMEOUT_MS) });
     if (!res.ok)
         throw new Error(`Open-Meteo wind field returned HTTP ${res.status}`);
     const payload = await res.json();
@@ -146,7 +189,7 @@ function slot(values, target) {
 function createWindSampler(field) {
     return (lat, lon, timeMs) => {
         const y = slot(field.lats, lat);
-        const x = slot(field.lons, lon);
+        const x = slot(field.lons, lonInGrid(field.lons, lon));
         const t = slot(field.times, timeMs);
         if (!y || !x || !t)
             return null;

@@ -40,6 +40,7 @@
  *     still comes back empty on failure, because every consumer reads it that
  *     way, but `alertsStatus` alongside it says which of the two happened.
  */
+import { timeoutSignal } from './timeoutSignal.js';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine';
 /** Forecasts refresh hourly upstream; this keeps us a good citizen of a free API. */
@@ -59,6 +60,32 @@ const FORECAST_TIMEOUT_MS = 8000;
 const MARINE_TIMEOUT_MS = 5000;
 const PERIOD_HOURS = 12;
 const PERIOD_COUNT = 6;
+/*
+  Open-Meteo's hourly series starts at 00:00 UTC today, not now, and the
+  periods are cut from the current hour onward. Four days leaves a full
+  six periods (72 hours) of future whatever the time of day; three left as
+  few as 49.
+*/
+const FORECAST_DAYS = 4;
+/** Entries kept per cache. A boat on passage asks about a new position every few miles. */
+const CACHE_MAX_ENTRIES = 64;
+/**
+ * Drop what has expired, then the oldest beyond the cap. The caches are keyed
+ * by position to a hundredth of a degree and were never emptied, so a backend
+ * left running on a boat under way kept every forecast it had ever fetched.
+ */
+function pruneCache(map, ttlMs, now) {
+    for (const [key, entry] of map) {
+        if (now - entry.at >= ttlMs)
+            map.delete(key);
+    }
+    // A Map iterates in insertion order, so the first keys are the oldest.
+    for (const key of map.keys()) {
+        if (map.size <= CACHE_MAX_ENTRIES)
+            break;
+        map.delete(key);
+    }
+}
 /**
  * Where NWS has data, drawn generously to include offshore approaches.
  * [minLat, maxLat, minLon, maxLon]
@@ -200,7 +227,7 @@ function describePressureTrend(pressures) {
     return `${hPa} hPa steady`;
 }
 async function fetchJson(url, timeoutMs) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(url, { signal: timeoutSignal(timeoutMs) });
     if (!res.ok) {
         throw new Error(`${new URL(url).host} returned HTTP ${res.status}`);
     }
@@ -214,7 +241,7 @@ async function fetchJson(url, timeoutMs) {
 async function fetchMarineHourly(lat, lon) {
     try {
         const url = `${MARINE_URL}?latitude=${lat}&longitude=${lon}` +
-            `&hourly=wave_height,wave_period,wave_direction&forecast_days=3`;
+            `&hourly=wave_height,wave_period,wave_direction&forecast_days=${FORECAST_DAYS}`;
         const data = await fetchJson(url, MARINE_TIMEOUT_MS);
         const hourly = data?.hourly;
         if (!hourly || !Array.isArray(hourly.time))
@@ -248,7 +275,11 @@ async function probeAlertsCached(lat, lon, userAgent) {
         return hit.alerts;
     }
     const alerts = await fetchNwsAlerts(lat, lon, userAgent);
-    alertsCache.set(key, { at: Date.now(), alerts });
+    const now = Date.now();
+    // Re-inserted, not overwritten, so a refreshed key is the newest in the map.
+    alertsCache.delete(key);
+    pruneCache(alertsCache, ALERTS_TTL_MS, now);
+    alertsCache.set(key, { at: now, alerts });
     return alerts;
 }
 /** The result's alerts fields, from a probe's answer (or no probe). */
@@ -273,7 +304,7 @@ async function fetchNwsAlerts(lat, lon, userAgent) {
     try {
         const res = await fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`, {
             headers: { 'User-Agent': userAgent },
-            signal: AbortSignal.timeout(2000)
+            signal: timeoutSignal(2000)
         });
         if (!res.ok) {
             console.warn(`[Weather] NWS alerts check failed: HTTP ${res.status}`);
@@ -315,7 +346,7 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
     }
     const forecastUrl = `${FORECAST_URL}?latitude=${lat}&longitude=${lon}` +
         `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,${precipVariable},pressure_msl` +
-        `&wind_speed_unit=kn&temperature_unit=${temperatureUnit}&forecast_days=3&models=best_match`;
+        `&wind_speed_unit=kn&temperature_unit=${temperatureUnit}&forecast_days=${FORECAST_DAYS}&models=best_match`;
     const [forecastData, marine] = await Promise.all([
         fetchJson(forecastUrl, FORECAST_TIMEOUT_MS),
         fetchMarineHourly(lat, lon)
@@ -346,8 +377,24 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
     }
     const position = formatPosition(lat, lon);
     const periods = [];
+    /*
+      Start at the hour it is now. The series begins at 00:00 UTC today, so at
+      22:00 UTC the first "0h - 12h" period used to be this morning: its wind and
+      its risk level described hours already gone, and the card's worst period
+      could be one the boat had sailed through. If no hour in the series is
+      current or later (a clock that is wrong, or a stale reply) the series is
+      used from its start, as before, rather than showing nothing.
+    */
+    const nowHourMs = Math.floor(Date.now() / 3600000) * 3600000;
+    let firstHour = times.findIndex((t) => {
+        const at = parseUtc(t);
+        return at !== null && at.getTime() >= nowHourMs;
+    });
+    if (firstHour < 0)
+        firstHour = 0;
     for (let p = 0; p < PERIOD_COUNT; p++) {
-        const start = p * PERIOD_HOURS;
+        const offset = p * PERIOD_HOURS;
+        const start = firstHour + offset;
         if (start >= times.length)
             break;
         const end = Math.min(start + PERIOD_HOURS, times.length);
@@ -400,7 +447,7 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
         // still read in the fetched unit after the field had been converted.
         sentences.push(`Precipitation ${precipChance}.`);
         periods.push({
-            periodName: `Vessel Vicinity (${start}h - ${start + PERIOD_HOURS}h)`,
+            periodName: `Vessel Vicinity (${offset}h - ${offset + PERIOD_HOURS}h)`,
             startTime: startTime ? startTime.toISOString() : null,
             endTime: endTime ? endTime.toISOString() : null,
             windRange,
@@ -436,7 +483,10 @@ export async function getOpenMeteoForecast(lat, lon, options = {}) {
         provider: 'open-meteo',
         isFallback: true
     };
-    cache.set(key, { at: Date.now(), value });
+    const storedAt = Date.now();
+    cache.delete(key);
+    pruneCache(cache, CACHE_TTL_MS, storedAt);
+    cache.set(key, { at: storedAt, value });
     return { ...value, ...alertsFields(probeNwsAlerts, probed) };
 }
 /** Test seam: drop memoised forecasts and alerts probes. */

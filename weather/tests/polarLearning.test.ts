@@ -95,6 +95,28 @@ describe('addSample', () => {
     expect(tuned.accepted).toBe(true);
   });
 
+  it('refuses a boat making way closer to the wind than any sail allows', () => {
+    // No engine revolutions on the feed, which is the usual case: the angle is
+    // the only evidence there is, and it is enough.
+    const acc = createPolarAccumulator();
+    const deadUpwind = addSample(acc, { t: T0, stw: 6, tws: 12, twd: 0, heading: 0 });
+    expect(deadUpwind).toEqual({ accepted: false, reason: 'head-to-wind' });
+    const pinching = addSample(acc, { t: T0 + 3_600_000, stw: 6, tws: 12, twd: 0, heading: 25 });
+    expect(pinching.reason).toBe('head-to-wind');
+    expect(acc.accepted).toBe(0);
+    expect(acc.rejections['head-to-wind']).toBe(2);
+
+    const closeHauled = addSample(acc, { t: T0 + 7_200_000, stw: 5, tws: 12, twd: 0, heading: 42 });
+    expect(closeHauled.accepted).toBe(true);
+  });
+
+  it('lets the no-go angle be set for a boat that points differently', () => {
+    const acc = createPolarAccumulator();
+    expect(addSample(acc, { t: T0, stw: 5, tws: 12, twd: 0, heading: 28 }, { noGoTwaDeg: 25 }).accepted).toBe(true);
+    expect(addSample(acc, { t: T0 + 7_200_000, stw: 5, tws: 12, twd: 0, heading: 42 }, { noGoTwaDeg: 45 }).reason)
+      .toBe('head-to-wind');
+  });
+
   it('counts what it refused, so a boat can find out why nothing is filling in', () => {
     const acc = createPolarAccumulator();
     feed(acc, 5, { stw: 6, tws: 12, twd: 0, heading: 90, engineRpm: 1500 });
@@ -166,6 +188,26 @@ describe('derivePolar', () => {
     expect(result.warnings.some((w) => /comes from your own sailing/.test(w))).toBe(true);
     // And it is not scolded for being generic, because it is not.
     expect(result.warnings.some((w) => /generic polar \(/.test(w))).toBe(false);
+  });
+
+  it('never gives the boat a speed where its fallback says she cannot sail', () => {
+    // What an accumulator saved before head-to-wind samples were refused can
+    // hold: five minutes of motoring dead upwind, binned at the 0 degree node.
+    const acc = createPolarAccumulator();
+    acc.bins['0:3'] = { count: 30, hist: { 24: 30 } }; // TWA 0, TWS 12, 6.0 kt
+    acc.bins['1:3'] = { count: 30, hist: { 24: 30 } }; // TWA 35, TWS 12, 6.0 kt
+    acc.accepted = 60;
+
+    const { polar, coverage } = derivePolar(acc);
+    expect(boatSpeed(polar, 0, 12)).toBe(0);
+    expect(boatSpeed(polar, 35, 12)).toBe(0);
+    expect(coverage.measuredNodes).toBe(0);
+    expect(coverage.cells.find((c) => c.twaDeg === 0 && c.twsKts === 12)?.measured).toBe(false);
+
+    // A fallback that does sail at 35 degrees lets that node be measured.
+    const higher = derivePolar(acc, { fallback: GENERIC_POLARS.performanceMonohull });
+    expect(boatSpeed(higher.polar, 35, 12)).toBe(6);
+    expect(boatSpeed(higher.polar, 0, 12)).toBe(0);
   });
 
   it('does not count unsailable angles against coverage', () => {

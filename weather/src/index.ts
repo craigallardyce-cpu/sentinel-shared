@@ -71,6 +71,8 @@ export {
   fetchWindField,
   createWindSampler,
   boundsForPassage,
+  wrapLon,
+  lonInGrid,
   toComponents,
   fromComponents
 } from './windField.js';

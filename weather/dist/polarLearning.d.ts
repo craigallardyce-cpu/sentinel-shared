@@ -39,7 +39,7 @@ export interface TelemetrySample {
     /** Engine revolutions, when known. Motoring is not sailing. */
     engineRpm?: number;
 }
-export type RejectionReason = 'incomplete' | 'implausible' | 'motoring' | 'becalmed' | 'not-moving' | 'manoeuvring' | 'wind-unsettled';
+export type RejectionReason = 'incomplete' | 'implausible' | 'motoring' | 'head-to-wind' | 'becalmed' | 'not-moving' | 'manoeuvring' | 'wind-unsettled';
 export interface AddSampleResult {
     accepted: boolean;
     reason?: RejectionReason;
@@ -48,6 +48,15 @@ export interface AddSampleResult {
 export interface LearningOptions {
     /** Engine revolutions above which the boat counts as motoring. Default 400. */
     motoringRpm?: number;
+    /**
+     * The closest to the wind a boat can be sailing, degrees. A boat making way
+     * closer than this is under engine, whatever its instruments say: most
+     * feeds carry no engine revolutions at all, so the RPM check above never
+     * fires for them, and an hour motoring to windward was learned as an hour
+     * sailing dead upwind at six knots. Default 30, which is inside what any of
+     * the generic polars claims.
+     */
+    noGoTwaDeg?: number;
     /** Ignore samples in less wind than this. Default 2 kt. */
     minTwsKts?: number;
     /** Ignore samples slower than this. Default 0.3 kt. */

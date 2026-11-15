@@ -12,7 +12,7 @@ export { compareSecondOpinion } from './secondOpinion.js';
 export type { SecondOpinion, DepartureOutcome } from './secondOpinion.js';
 export { createObstacleField, userZone, landZones } from './obstacles.js';
 export type { ObstacleField, ObstacleZone, ObstacleRing } from './obstacles.js';
-export { fetchWindField, createWindSampler, boundsForPassage, toComponents, fromComponents } from './windField.js';
+export { fetchWindField, createWindSampler, boundsForPassage, wrapLon, lonInGrid, toComponents, fromComponents } from './windField.js';
 export type { WindField, WindFieldOptions, Bounds } from './windField.js';
 export { fetchMarineField, createWaveSampler, createCurrentSampler, waveToComponents, waveFromComponents, currentToComponents, currentFromComponents, speedToKnots } from './marineField.js';
 export type { MarineField, MarineFieldOptions } from './marineField.js';
