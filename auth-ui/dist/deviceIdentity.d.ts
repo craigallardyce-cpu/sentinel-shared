@@ -7,7 +7,25 @@ export declare const BROWSER_DEVICE_ID_KEY = "sentinel_browser_device_id";
 export interface DeviceIdentity {
     machineId: string;
     platformName: string;
+    /**
+     * What the account page shows to tell this device from the owner's others:
+     * the make and model and its OS on a phone or tablet ("Samsung SM-S711U ·
+     * Android 16"), the browser and its OS on a browser elsewhere on the LAN
+     * ("Chrome on Android"). Null on the desktop app, where the platform name
+     * is all there is, and whenever it could not be read. Never the name the
+     * owner gave the device, which can carry a person's name.
+     */
+    deviceModel: string | null;
 }
+/** The fields of @capacitor/device's DeviceInfo this reads. */
+export interface NativeDeviceInfo {
+    manufacturer?: string;
+    model?: string;
+    operatingSystem?: string;
+    osVersion?: string;
+}
+/** Longest label written to `devices.device_model`; website migration 084 checks the same. */
+export declare const DEVICE_MODEL_MAX_LENGTH = 120;
 export interface DeviceIdentityEnv {
     /** Capacitor.isNativePlatform() */
     isNative: boolean;
@@ -17,6 +35,8 @@ export interface DeviceIdentityEnv {
     getNativeId: () => Promise<{
         identifier: string;
     }>;
+    /** Device.getInfo(), called only on native. A failure leaves the label out. */
+    getNativeInfo?: () => Promise<NativeDeviceInfo>;
     /** The app's own computer, read from the backend running beside it. */
     fetchMachineId: () => Promise<{
         machineId: string;
@@ -42,6 +62,14 @@ export interface DeviceIdentityEnv {
  * desktop apps load from (`http://localhost:<port>`).
  */
 export declare function isLoopbackHost(hostname: string): boolean;
+/**
+ * "Samsung SM-S711U · Android 16". The manufacturer is dropped when the model
+ * already starts with it ("Google" + "Pixel 8" keeps both; "OnePlus" +
+ * "OnePlus 12" does not repeat itself).
+ */
+export declare function describeNativeDevice(info: NativeDeviceInfo | null | undefined): string | null;
+/** "Chrome on Android", from a browser's user agent. Null when neither part is recognised. */
+export declare function describeBrowser(userAgent: string): string | null;
 /**
  * The identifier this device registers under in `public.devices`, and the name
  * shown beside it on the account page.
