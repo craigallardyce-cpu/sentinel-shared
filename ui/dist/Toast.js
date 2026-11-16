@@ -104,15 +104,25 @@ const KIND = {
 };
 function ToastCard({ item, onDismiss }) {
     const timer = useRef(null);
-    const start = useCallback(() => {
-        if (item.duration > 0)
-            timer.current = setTimeout(onDismiss, item.duration);
-    }, [item.duration, onDismiss]);
+    /*
+      The host passes a new `onDismiss` function on every render, and the timer
+      used to be keyed on it: each time the toast list re-rendered (another toast
+      arriving is enough) every toast on screen started its countdown again, so
+      a run of messages kept the first one up indefinitely. The timer now starts
+      once per toast and calls whichever `onDismiss` is current when it fires.
+    */
+    const dismissRef = useRef(onDismiss);
+    dismissRef.current = onDismiss;
     const stop = useCallback(() => {
         if (timer.current)
             clearTimeout(timer.current);
         timer.current = null;
     }, []);
+    const start = useCallback(() => {
+        stop();
+        if (item.duration > 0)
+            timer.current = setTimeout(() => dismissRef.current(), item.duration);
+    }, [item.duration, stop]);
     useEffect(() => {
         start();
         return stop;
