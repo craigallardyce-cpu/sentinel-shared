@@ -221,8 +221,9 @@ without the `@source` line.
 ## `@sentinel/vessel`
 
 One vessel identity for the fleet. The record lives in `public.vessels` in the
-shared Supabase project (one row, keyed by `vessel_slug`, historically
-`'sentinel'`); this package is just the `VesselProfile` type plus
+shared Supabase project (one row per account, keyed by `id` since migration
+`053`; `vessel_slug`, historically `'sentinel'`, is now the display handle);
+this package is just the `VesselProfile` type plus
 `fetchVesselProfile()` / `saveVesselProfile()`. It takes any Supabase client as
 an argument, so it has no runtime dependencies and never bundles a second client.
 
@@ -240,11 +241,17 @@ an argument, so it has no runtime dependencies and never bundles a second client
 - **Writes are best-effort by design**: offline or signed-out returns false
   quietly and the app keeps its local value. Treat the shared record as
   eventually consistent, not a hard dependency.
+- **A blank is not a name.** `saveVesselProfile` never writes an empty or
+  all-spaces `name` (the rest of the patch still goes), and stores a blank
+  `vesselType` or `mmsi` as NULL. It returns true only when a row was changed:
+  an update that matched no row, which PostgREST reports as success, is false.
 
-Column grants decide who may write what (migrations `002` and `007` in the
-MarinerSentinel Website repo): `anon` reads the identity columns and may update
-only `mmsi`/`updated_at`; `authenticated` may also update `name`/`vessel_type`;
-the site secrets are not client-readable at all.
+Who may touch what is decided in the MarinerSentinel Website migrations. A
+signed-out client holds nothing on the table (`027`, restated in `053`). A
+signed-in one sees and changes only its own row (`053`'s owner policy; `059`
+allows one vessel per account), reads the identity columns and may update only
+`name`, `vessel_type`, `mmsi` and `updated_at`. The site secrets are not
+client-readable at all.
 
 ## `@sentinel/weather-ui`: `WarningsBanner`
 
@@ -481,6 +488,11 @@ or the boat's name.
   drops writes still queued for the server, and notifies, so values re-resolve
   and the next `load()` addresses the new account. A `load()` or write for the
   previous account that is still in flight is discarded when it lands.
+  `reset({ keepQueued: true })` is for a caller that knows the account has
+  **not** changed (the same person signing back in after an offline spell): it
+  does everything else and keeps the queued writes, which the next `load()`
+  sends. Never pass it across a change of account: the queue would be written
+  to the new account's boat.
 - **Call `dispose()` on a settings store you replace.** `createSettingsStore`
   subscribes to every layer it is given; `dispose()` unsubscribes from each and
   drops the store's own listeners, so a store rebuilt on sign-in does not leave
@@ -493,6 +505,26 @@ the start of the next `load()` that can reach the row, where they win over
 anything saved meanwhile. OceanSentinel queues its alarm limits this way: they
 belong to the boat, and are usually set with no signal. `pendingKeys()` lists
 what has not reached the server yet.
+
+Three things a write can cross, and what the store does:
+
+- **A `load()` that was already out.** The read answers with what the server
+  held before the write, so for any key written since the read began, or whose
+  write is still in the air, the device's value stands and the read's answer is
+  kept only as what to go back to if that write fails.
+- **Another write to the same key.** Writes to one key go to the server one at
+  a time, in the order they were made, and a failed one rolls back only when no
+  later write to that key is waiting: to the last value the server accepted or
+  reported, never to another failed attempt.
+- **No row.** A vessel column (`vessel.name`, `vessel.mmsi`, `vessel.type`) is
+  an UPDATE, and PostgREST answers an UPDATE that matched nothing with success.
+  The store asks for the rows it changed and rejects with `NoRowError` when
+  there are none; a queued write that fails this way stays queued without
+  holding up the ones behind it.
+
+A device-scope write that storage refuses (full, or blocked in a private
+window) now throws "could not be saved on this device" instead of reporting a
+save that did not happen. Reads and clears still never throw.
 
 **Adopting loses nothing, but not for free.** A setting declares where it used to
 live per app, and the device store reads those names when the namespaced key is
