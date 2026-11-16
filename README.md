@@ -253,6 +253,46 @@ allows one vessel per account), reads the identity columns and may update only
 `name`, `vessel_type`, `mmsi` and `updated_at`. The site secrets are not
 client-readable at all.
 
+## `@sentinel/auth-ui`: when the session ends, and who an offline start is
+
+`AuthScreen` is on screen only until sign-in succeeds, so three things an app
+needs for the rest of the session are exports rather than behaviour of the
+screen:
+
+- **`onSignedOut` (a prop).** Called once each time the screen sees the session
+  end: its own Sign Out button, a sign-out made elsewhere, or a refresh token
+  the server rejected. The access flag, the offline grant and the entitlement
+  cache are already cleared by then. It is where an app drops what it holds for
+  that account on this device (a local cache, an outbox, a settings store), so
+  the next account to sign in does not start with the last one's data. The
+  screen does not wait for it; it may be async and may call Supabase.
+- **`watchForSignOut(supabase, { storage, accessStorageKey, onSignedOut })`.**
+  The same, after sign-in. Call it when `onAuthenticated` fires and keep it for
+  as long as the app is open: without it a session that was revoked ended with
+  nobody listening, and the app stayed open with every request failing. On
+  `SIGNED_OUT` it clears what the screen clears and calls `onSignedOut`, where
+  the app shows the sign-in screen again. Being offline is not a sign-out and
+  fires nothing. It returns the function that stops listening.
+- **`offlineGrantUserId(storage, accessStorageKey, offlineGraceDays, sessionError?)`.**
+  An offline start is admitted with no session at all, so `getSession()` cannot
+  say whose it is. This names the account, by the rule the screen admits on: a
+  device that verified online within `offlineGraceDays`, whose session is
+  missing because the network could not be reached (pass the `error` from
+  `getSession()`, or the browser reports itself offline). Null otherwise,
+  including after a sign-out. Use it to attach an account settings layer on an
+  offline start instead of treating it as nobody.
+
+Access checks are single-flight per account. auth-js emits `SIGNED_IN` as it
+restores a stored session, and again whenever the window regains focus, beside
+the screen's own `getSession()`; sign-up asks twice the same way. Two checks
+running together both found the device unregistered and both inserted it. A
+caller that arrives while a check for the same account is running gets that
+check. Every check ends by clearing the form's busy state, whatever its answer.
+
+`Entitlements.currentPeriodEnd` is the **latest** end among the product's
+grants, and null when any one grant has no end date. It was the soonest, which
+counted two overlapping trials down to the first to end.
+
 ## `@sentinel/weather-ui`: `WarningsBanner`
 
 The marine-warnings banner over the chart, one component for HarborSentinel and

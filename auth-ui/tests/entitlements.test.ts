@@ -308,16 +308,19 @@ describe('fetchEntitlements: status and period end', () => {
     expect(ent.status).toBe('trialing');
   });
 
-  it('reports the soonest period end among this product grants, from the row values', async () => {
+  // Review L12: access lasts until the last grant ends, so that is the date.
+  // This reported the soonest, which counted two overlapping trials down to
+  // the first to end and dated a lapsed trial too early on the no-plan screen.
+  it('reports the latest period end among this product grants, from the row values', async () => {
     const soon = '2026-10-01T00:00:00.000Z';
     const later = '2027-03-01T00:00:00.000Z';
-    const elsewhere = '2026-01-01T00:00:00.000Z';
+    const elsewhere = '2027-09-01T00:00:00.000Z';
     const supabase = makeMockSupabase({
       active_user_subscriptions: {
         data: [
           sub({ id: 'tier-premium', name: 'Premium', product_id: PRODUCT }, { status: 'trialing', current_period_end: later }),
           sub({ id: 'tier-basic', name: 'Basic', product_id: PRODUCT }, { status: 'trialing', current_period_end: soon }),
-          // Another product's earlier end must not shorten this product's countdown.
+          // Another product's later end must not lengthen this product's countdown.
           sub({ id: 'tier-other', name: 'Basic', product_id: 'other-product' }, { status: 'trialing', current_period_end: elsewhere })
         ],
         error: null
@@ -327,8 +330,26 @@ describe('fetchEntitlements: status and period end', () => {
     });
 
     const ent = await fetchEntitlements(supabase, 'user-1', PRODUCT);
-    expect(ent.currentPeriodEnd).toBe(Date.parse(soon));
+    expect(ent.currentPeriodEnd).toBe(Date.parse(later));
     expect(ent.status).toBe('trialing');
+  });
+
+  it('is open-ended when any one grant has no end date, whatever the others say', async () => {
+    const supabase = makeMockSupabase({
+      active_user_subscriptions: {
+        data: [
+          sub({ id: 'tier-premium', name: 'Premium', product_id: PRODUCT }, { status: 'active', current_period_end: null }),
+          sub({ id: 'tier-basic', name: 'Basic', product_id: PRODUCT }, { status: 'trialing', current_period_end: '2026-10-01T00:00:00.000Z' })
+        ],
+        error: null
+      },
+      active_user_bundles: { data: [], error: null },
+      tier_features: { data: [{ features: { feature_key: 'anchor_alarm' } }], error: null }
+    });
+
+    const ent = await fetchEntitlements(supabase, 'user-1', PRODUCT);
+    expect(ent.currentPeriodEnd).toBeNull();
+    expect(ent.status).toBe('active');
   });
 
   it('reports null for an open-ended grant', async () => {

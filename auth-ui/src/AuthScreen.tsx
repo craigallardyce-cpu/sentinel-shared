@@ -1,5 +1,5 @@
 import type { StorageLike } from './storage';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut, Trash2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
@@ -92,6 +92,22 @@ export interface AuthScreenProps {
    * see the box before the Terms are published. Null shows no box.
    */
   termsVersion?: string | null;
+  /**
+   * Called once each time this screen sees the account's session end: the Sign
+   * Out button on the no-plan screen, a sign-out made elsewhere, or a refresh
+   * token the server rejected. By then the access flag, the offline grant and
+   * the entitlement cache are already cleared.
+   *
+   * It is where an app drops what it holds for that account on this device: a
+   * local cache, an outbox of queued writes, a settings store. Without it the
+   * next account to sign in on the device starts with the previous one's data
+   * (VesselKeeper review M1). The screen does not wait for it, so it may be
+   * async and may call Supabase.
+   *
+   * This screen is only mounted until sign-in succeeds. `watchForSignOut` is
+   * the same thing for the rest of the session.
+   */
+  onSignedOut?: () => void | Promise<void>;
 }
 
 /** Shape stored under `${accessStorageKey}_offline_grant`. */
@@ -195,6 +211,70 @@ function clearOfflineGrant(storage: StorageLike, accessStorageKey: string): void
   }
 }
 
+/** Everything that lets this device in without proving itself again. */
+function forgetVerifiedDevice(storage: StorageLike, accessStorageKey: string): void {
+  try {
+    storage.removeItem(accessStorageKey);
+  } catch {
+    /* ignore */
+  }
+  clearOfflineGrant(storage, accessStorageKey);
+  clearEntitlements(storage, accessStorageKey);
+}
+
+/**
+ * Runs an app's sign-out hook without waiting for it and without letting it
+ * break the caller. auth-js calls its listeners while holding its session
+ * lock, so a listener that awaited a hook which itself calls Supabase would
+ * wait on a lock it is holding.
+ */
+function runSignedOutHook(hook: (() => void | Promise<void>) | undefined): void {
+  if (!hook) return;
+  try {
+    const result = hook();
+    if (result && typeof (result as Promise<void>).catch === 'function') {
+      (result as Promise<void>).catch((err) => console.error('onSignedOut failed:', err));
+    }
+  } catch (err) {
+    console.error('onSignedOut failed:', err);
+  }
+}
+
+export interface WatchForSignOutOptions {
+  storage: StorageLike;
+  accessStorageKey: string;
+  /** Called each time the session ends. Not awaited; may be async and may call Supabase. */
+  onSignedOut: () => void | Promise<void>;
+}
+
+/**
+ * Hear the session end after sign-in.
+ *
+ * `AuthScreen` listens for a sign-out only while it is on screen, and an app
+ * takes it down the moment sign-in succeeds. From then on a session that was
+ * revoked, or whose refresh token the server rejected, ended with nobody
+ * listening: the app stayed open, every request failed, and queued edits were
+ * sent with no session (VesselKeeper review M4).
+ *
+ * Call this when `onAuthenticated` fires and keep it for as long as the app is
+ * open. On `SIGNED_OUT` it clears the access flag, the offline grant and the
+ * entitlement cache, exactly as the screen does, then calls `onSignedOut`,
+ * where the app drops that account's local data and shows the sign-in screen
+ * again. Being offline is not a sign-out: auth-js keeps the stored session when
+ * a refresh cannot reach the server, and no event fires.
+ *
+ * Returns the function that stops listening.
+ */
+export function watchForSignOut(supabase: SupabaseClientLike, options: WatchForSignOutOptions): () => void {
+  const { storage, accessStorageKey, onSignedOut } = options;
+  const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (event !== 'SIGNED_OUT') return;
+    forgetVerifiedDevice(storage, accessStorageKey);
+    runSignedOutHook(onSignedOut);
+  });
+  return () => data.subscription.unsubscribe();
+}
+
 /**
  * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
  * Exported so apps can show the remaining allowance alongside their offline indicator.
@@ -226,6 +306,57 @@ function isOfflineFailure(error: any): boolean {
   );
 }
 
+/**
+ * The grant this device may be admitted on with no session: it has verified
+ * online before, and did so within the allowance. Null otherwise.
+ */
+function standingOfflineGrant(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number): OfflineGrant | null {
+  if (!(offlineGraceDays > 0)) return null;
+  let verifiedBefore = false;
+  try {
+    verifiedBefore = storage.getItem(accessStorageKey) === 'true';
+  } catch {
+    verifiedBefore = false;
+  }
+  if (!verifiedBefore) return null;
+  const grant = readOfflineGrant(storage, accessStorageKey);
+  if (!grant || Date.now() - grant.grantedAt >= offlineGraceDays * DAY_MS) return null;
+  return grant;
+}
+
+/**
+ * The account an offline start was admitted as, or null.
+ *
+ * An offline start is admitted with no session at all: `getSession()` returns
+ * none once the access token has outlived its lifetime and the refresh cannot
+ * reach Supabase. An app that keys anything by account (its account settings
+ * layer, a cache) was left treating that start as nobody, so account-scoped
+ * settings read as defaults until the next online start (OceanSentinel review
+ * M3). This answers who, by the rule this screen admits on, so no app keeps a
+ * second copy of it:
+ *
+ * - `offlineGraceDays` is above zero;
+ * - this device has verified online before, and within that many days;
+ * - the session is missing because the network could not be reached: pass the
+ *   `error` that came back from `getSession()`, or the browser reports itself
+ *   offline.
+ *
+ * Anything else is null. In particular a device that was signed out, or whose
+ * refresh token the server rejected, has had its grant cleared and gets null,
+ * and so does a start that simply has no session while online.
+ */
+export function offlineGrantUserId(
+  storage: StorageLike,
+  accessStorageKey: string,
+  offlineGraceDays: number,
+  sessionError?: unknown
+): string | null {
+  const unreachable =
+    isOfflineFailure(sessionError) || (typeof navigator !== 'undefined' && navigator.onLine === false);
+  if (!unreachable) return null;
+  return standingOfflineGrant(storage, accessStorageKey, offlineGraceDays)?.userId ?? null;
+}
+
 export function AuthScreen({
   appName,
   appId,
@@ -240,7 +371,8 @@ export function AuthScreen({
   legacyStorageKey,
   allowOfflineMode = false,
   offlineGraceDays = 0,
-  termsVersion = TERMS_VERSION
+  termsVersion = TERMS_VERSION,
+  onSignedOut
 }: AuthScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -264,6 +396,24 @@ export function AuthScreen({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
+  // The access check now running, and for whom. See `checkAccess`.
+  const accessCheck = useRef<{ userId: string; promise: Promise<void> } | null>(null);
+  // Counts the sign-outs this screen has dealt with, so the Sign Out button can
+  // tell whether auth-js reported the one it just asked for.
+  const signOutsSeen = useRef(0);
+  // The latest hook, so the listener registered on mount calls the current one.
+  const signedOutHook = useRef(onSignedOut);
+  signedOutHook.current = onSignedOut;
+
+  /** A session ended: forget this device's standing, reset the screen, tell the app. */
+  const sessionEnded = () => {
+    signOutsSeen.current += 1;
+    forgetVerifiedDevice(storage, accessStorageKey);
+    setHasNoSubscription(false);
+    setLapsedTrialEndMs(null);
+    setChecking(false);
+    runSignedOutHook(signedOutHook.current);
+  };
   /*
     A store build says nothing about buying. Plans are sold on the website, and
     Google Play does not allow an app that sells nothing in-app to send people
@@ -305,10 +455,8 @@ export function AuthScreen({
     // navigator.onLine only ever short-circuits the wait -- it is not trusted as proof
     // of anything. It reports true on a LAN with no internet, and that case still falls
     // through to the real getSession() check below.
-    if (offlineGraceDays > 0 && typeof navigator !== 'undefined' && !navigator.onLine) {
-      const grant = readOfflineGrant(storage, accessStorageKey);
-      const verifiedBefore = storage.getItem(accessStorageKey) === 'true';
-      if (grant && verifiedBefore && Date.now() - grant.grantedAt < offlineGraceDays * DAY_MS) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (standingOfflineGrant(storage, accessStorageKey, offlineGraceDays)) {
         onAuthenticated();
         return;
       }
@@ -354,12 +502,7 @@ export function AuthScreen({
       } else if (event === 'SIGNED_OUT') {
         // A real sign-out, or a refresh token the server rejected. Either way this
         // device has to prove itself again -- drop the offline allowance with it.
-        storage.removeItem(accessStorageKey);
-        clearOfflineGrant(storage, accessStorageKey);
-        clearEntitlements(storage, accessStorageKey);
-        setHasNoSubscription(false);
-        setLapsedTrialEndMs(null);
-        setChecking(false);
+        sessionEnded();
       }
     });
 
@@ -372,10 +515,14 @@ export function AuthScreen({
   // Background polling for active subscription
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    // The session lookup is asynchronous, so the cleanup can run before the
+    // timer exists. Without this the timer was then created with nothing left
+    // to clear it, and polled every five seconds for the life of the page.
+    let cancelled = false;
 
     if (hasNoSubscription) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
+        if (session && !cancelled) {
           intervalId = setInterval(() => {
             checkAccessSilent(session.user.id);
           }, 5000);
@@ -384,6 +531,7 @@ export function AuthScreen({
     }
 
     return () => {
+      cancelled = true;
       if (intervalId) clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -464,7 +612,28 @@ export function AuthScreen({
     }
   };
 
-  const checkAccess = async (userId: string) => {
+  /**
+   * One access check per account at a time.
+   *
+   * Several things ask at once. Opening with a stored session asks from
+   * `getSession()` and again from the `SIGNED_IN` auth-js emits as it restores
+   * that session (and emits again each time the window regains focus); sign-up
+   * asks from its own handler and from the same event. Two checks running
+   * together both find the device unregistered, both pass the limit, and both
+   * insert it. A caller that arrives while a check for the same account is
+   * running is given that check.
+   */
+  const checkAccess = (userId: string): Promise<void> => {
+    const running = accessCheck.current;
+    if (running && running.userId === userId) return running.promise;
+    const promise: Promise<void> = runAccessCheck(userId).finally(() => {
+      if (accessCheck.current?.promise === promise) accessCheck.current = null;
+    });
+    accessCheck.current = { userId, promise };
+    return promise;
+  };
+
+  const runAccessCheck = async (userId: string) => {
     try {
       const hasAccess = await hasActiveSubscription(userId);
 
@@ -673,6 +842,14 @@ export function AuthScreen({
         setError('Could not verify your licence. Connect to the internet and try again.');
         setChecking(false);
       }
+    } finally {
+      // Whatever the answer, the form is usable again. A typed sign-in sets
+      // `loading` and its check runs from the SIGNED_IN event, not from the
+      // handler, so nothing else was placed to clear it: an account refused
+      // here (no plan, device limit, desktop needs Premium) was left with
+      // "Checking..." and a disabled Sign Out, or a Sign In button stuck on
+      // "Processing...".
+      setLoading(false);
     }
   };
 
@@ -736,11 +913,17 @@ export function AuthScreen({
 
   const handleSignOut = async () => {
     setLoading(true);
-    await supabase.auth.signOut();
-    storage.removeItem(accessStorageKey);
-    clearEntitlements(storage, accessStorageKey);
-    setHasNoSubscription(false);
-    setLapsedTrialEndMs(null);
+    const seen = signOutsSeen.current;
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Sign-out failed:', err);
+    }
+    // auth-js reports a sign-out it completed as SIGNED_OUT, which the listener
+    // above has handled by now. Offline it reports nothing and leaves the
+    // session stored, and the person has still asked to leave this account, so
+    // this device forgets it either way and the app is told once.
+    if (signOutsSeen.current === seen) sessionEnded();
     setError('');
     setLoading(false);
   };
