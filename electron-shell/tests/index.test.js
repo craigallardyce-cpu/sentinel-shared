@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   applyLinuxGpuCompatibility,
+  needsX11Relaunch,
+  relaunchOnX11,
   attachWindowDiagnostics,
   claimSingleInstanceLock,
   setupAutoUpdater,
@@ -39,6 +41,94 @@ describe('applyLinuxGpuCompatibility', () => {
     expect(switches).toContain('no-sandbox');
     expect(switches).toContain('disable-gpu');
     expect(switches).toContain('disable-dev-shm-usage');
+  });
+
+  it('restarts on X11 instead of carrying on, when started on Wayland without the switch', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    const app = { ...fakeApp(), relaunch: vi.fn(), exit: vi.fn() };
+    const env = { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' };
+    expect(applyLinuxGpuCompatibility(app, { env, argv: ['/opt/app/app'] })).toBe(false);
+    expect(app.relaunch).toHaveBeenCalledOnce();
+    expect(app.exit).toHaveBeenCalledWith(0);
+    expect(app.disableHardwareAcceleration).not.toHaveBeenCalled();
+  });
+
+  it('carries on as before when the launcher passed the switch', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    const app = { ...fakeApp(), relaunch: vi.fn(), exit: vi.fn() };
+    const env = { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' };
+    const argv = ['/opt/app/app', '--no-sandbox', '--ozone-platform=x11'];
+    expect(applyLinuxGpuCompatibility(app, { env, argv })).toBe(true);
+    expect(app.relaunch).not.toHaveBeenCalled();
+    expect(app.disableHardwareAcceleration).toHaveBeenCalledOnce();
+  });
+});
+
+describe('the X11 restart', () => {
+  const wayland = { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' };
+  const argv = ['/opt/app/app', '--some-flag'];
+  const needs = (env, args = argv) => needsX11Relaunch({ env, argv: args, platform: 'linux' });
+
+  it('is wanted on a Wayland session with an X display and no switch', () => {
+    expect(needs(wayland)).toBe(true);
+    expect(needs({ XDG_SESSION_TYPE: 'wayland', DISPLAY: ':0' })).toBe(true);
+  });
+
+  it('is not wanted on X11, on another platform, or with nowhere to go', () => {
+    expect(needs({ DISPLAY: ':0', XDG_SESSION_TYPE: 'x11' })).toBe(false);
+    expect(needsX11Relaunch({ env: wayland, argv, platform: 'win32' })).toBe(false);
+    expect(needs({ WAYLAND_DISPLAY: 'wayland-0' })).toBe(false); // no X server at all
+  });
+
+  it('respects a platform chosen on the command line, either one', () => {
+    expect(needs(wayland, [...argv, '--ozone-platform=x11'])).toBe(false);
+    expect(needs(wayland, [...argv, '--ozone-platform=wayland'])).toBe(false);
+    expect(needs(wayland, [...argv, '--ozone-platform', 'x11'])).toBe(false);
+  });
+
+  it('never happens twice, and can be turned off', () => {
+    expect(needs({ ...wayland, SENTINEL_X11_RELAUNCHED: '1' })).toBe(false);
+    expect(needs({ ...wayland, SENTINEL_NO_X11_RELAUNCH: '1' })).toBe(false);
+    expect(needs({ ...wayland, ELECTRON_RUN_AS_NODE: '1' })).toBe(false);
+  });
+
+  describe('relaunchOnX11', () => {
+    const originalPlatform = process.platform;
+    beforeEach(() => Object.defineProperty(process, 'platform', { value: 'linux' }));
+    afterEach(() => Object.defineProperty(process, 'platform', { value: originalPlatform }));
+
+    it('keeps the arguments, adds the switch, marks the environment and exits', () => {
+      const app = { relaunch: vi.fn(), exit: vi.fn() };
+      const env = { ...wayland };
+      expect(relaunchOnX11(app, { env, argv })).toBe(true);
+      expect(app.relaunch).toHaveBeenCalledWith({ args: ['--some-flag', '--ozone-platform=x11'] });
+      expect(env.SENTINEL_X11_RELAUNCHED).toBe('1');
+      expect(app.exit).toHaveBeenCalledWith(0);
+    });
+
+    it('restarts an AppImage through the AppImage file, not the executable in its mount', () => {
+      const app = { relaunch: vi.fn(), exit: vi.fn() };
+      const env = { ...wayland, APPIMAGE: '/home/skipper/HarborSentinel.AppImage' };
+      relaunchOnX11(app, { env, argv: ['/tmp/.mount_abc/harborsentinel'] });
+      expect(app.relaunch).toHaveBeenCalledWith({
+        args: ['--ozone-platform=x11'],
+        execPath: '/home/skipper/HarborSentinel.AppImage'
+      });
+    });
+
+    it('carries on, unmarked, when the restart cannot be arranged', () => {
+      const app = { relaunch: vi.fn(() => { throw new Error('no relauncher'); }), exit: vi.fn() };
+      const env = { ...wayland };
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect(relaunchOnX11(app, { env, argv })).toBe(false);
+      expect(app.exit).not.toHaveBeenCalled();
+      expect(env.SENTINEL_X11_RELAUNCHED).toBeUndefined();
+      error.mockRestore();
+    });
+
+    it('does nothing with an app object that cannot relaunch', () => {
+      expect(relaunchOnX11({}, { env: { ...wayland }, argv })).toBe(false);
+    });
   });
 });
 
@@ -114,6 +204,89 @@ describe('setupAutoUpdater', () => {
     const result = await ipcMain.invoke('updater:install');
     expect(result).toEqual({ ok: true });
     expect(callOrder).toEqual(['onBeforeInstall', 'quitAndInstall']);
+  });
+
+  describe('when the install does not happen', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    function ready(extra = {}) {
+      const onBeforeInstall = vi.fn();
+      const onInstallFailed = vi.fn();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      setupAutoUpdater({
+        app, autoUpdater, ipcMain, getMainWindow: () => mainWindow, onBeforeInstall, onInstallFailed, ...extra
+      });
+      autoUpdater.emit('update-downloaded', { version: '2.0.0' });
+      return { onBeforeInstall, onInstallFailed };
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('undoes onBeforeInstall and tells the renderer when quitAndInstall throws', async () => {
+      const { onBeforeInstall, onInstallFailed } = ready();
+      autoUpdater.quitAndInstall = vi.fn(() => { throw new Error('installer missing'); });
+      const result = await ipcMain.invoke('updater:install');
+      expect(result).toEqual({ ok: false, error: 'installer missing' });
+      expect(onBeforeInstall).toHaveBeenCalledOnce();
+      expect(onInstallFailed).toHaveBeenCalledOnce();
+      expect(sentEvents).toContainEqual({ type: 'error', message: 'installer missing' });
+    });
+
+    it('does the same when onBeforeInstall itself throws, without asking to quit', async () => {
+      const onInstallFailed = vi.fn();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      setupAutoUpdater({
+        app, autoUpdater, ipcMain, getMainWindow: () => mainWindow,
+        onBeforeInstall: () => { throw new Error('backend would not stop'); },
+        onInstallFailed
+      });
+      autoUpdater.emit('update-downloaded', { version: '2.0.0' });
+      const result = await ipcMain.invoke('updater:install');
+      expect(result.ok).toBe(false);
+      expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+      expect(onInstallFailed).toHaveBeenCalledOnce();
+    });
+
+    it('treats an app still running after the timeout as a failed install', async () => {
+      // electron-updater returns normally when it cannot start the installer.
+      const { onInstallFailed } = ready({ installTimeoutMs: 5000 });
+      expect(await ipcMain.invoke('updater:install')).toEqual({ ok: true });
+      vi.advanceTimersByTime(4999);
+      expect(onInstallFailed).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onInstallFailed).toHaveBeenCalledOnce();
+      expect(sentEvents.some((e) => e.type === 'error')).toBe(true);
+    });
+
+    it('does not run the install twice for a second press, and can be tried again after a failure', async () => {
+      const { onBeforeInstall } = ready({ installTimeoutMs: 5000 });
+      await ipcMain.invoke('updater:install');
+      await ipcMain.invoke('updater:install');
+      expect(onBeforeInstall).toHaveBeenCalledOnce();
+      expect(autoUpdater.quitAndInstall).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(5000);
+      await ipcMain.invoke('updater:install');
+      expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(2);
+    });
+
+    it('survives an onInstallFailed that throws', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      setupAutoUpdater({
+        app, autoUpdater, ipcMain, getMainWindow: () => mainWindow,
+        onInstallFailed: () => { throw new Error('restart failed'); }
+      });
+      autoUpdater.emit('update-downloaded', { version: '2.0.0' });
+      autoUpdater.quitAndInstall = vi.fn(() => { throw new Error('installer missing'); });
+      const result = await ipcMain.invoke('updater:install');
+      expect(result).toEqual({ ok: false, error: 'installer missing' });
+    });
+
+    it('rejects a timeout that is not a positive number', () => {
+      expect(() =>
+        setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow: () => mainWindow, installTimeoutMs: 0 })
+      ).toThrow(TypeError);
+    });
   });
 
   it('updater:get-version reads from app.getVersion()', async () => {

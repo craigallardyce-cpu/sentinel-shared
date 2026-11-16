@@ -57,7 +57,9 @@
 ;    own, then force-ends whatever is left.
 ;  - Waits, re-checking every 250 ms for at most 15 s, until no such process is
 ;    left AND every installed file can be renamed (probed by renaming each one
-;    and straight back), i.e. until the old uninstaller can do its job. This
+;    and straight back; a file that will not come back is retried and, failing
+;    that, put back on the next pass), i.e. until the old uninstaller can do
+;    its job. This
 ;    absorbs the locks that follow a process exit and antivirus scans, on top
 ;    of the old uninstaller's own retries (in testing a 30 s lock got through,
 ;    a 5-minute one did not). The 15 s is only spent if something really is
@@ -111,14 +113,24 @@
   ; "Released" means what the old version's uninstaller is about to need: every
   ; installed file can be renamed (it moves them all away and gives up if one
   ; will not move). Probed by renaming each file and straight back.
-  FileWrite $R9 `function Test-Released { if (-not (Test-Path -LiteralPath $$dir)) { return $$true }; foreach ($$f in @(Get-ChildItem -LiteralPath $$dir -Recurse -File -Force -ErrorAction SilentlyContinue)) { $$a = $$f.FullName; $$b = $$a + '.sentinel-probe'; try { [IO.File]::Move($$a, $$b) } catch { return $$false }; try { [IO.File]::Move($$b, $$a) } catch { } }; return $$true }$\r$\n`
+  ;
+  ; The rename back used to be tried once and its failure swallowed, which could
+  ; leave an installed file under its probe name: a scanner that opens the file
+  ; in the instant between the two renames is enough. It is now retried for a
+  ; second, a file that still will not come back makes the probe answer "not
+  ; released" so the loop comes round again, and every pass (and the way out)
+  ; first puts back any file an earlier pass or an earlier run left stranded.
+  FileWrite $R9 `$$probe = '.sentinel-probe'$\r$\n`
+  FileWrite $R9 `function Restore-Probes { if (-not (Test-Path -LiteralPath $$dir)) { return }; foreach ($$p in @(Get-ChildItem -LiteralPath $$dir -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $$_.Name.EndsWith($$probe) })) { $$b = $$p.FullName; $$a = $$b.Substring(0, $$b.Length - $$probe.Length); if (-not (Test-Path -LiteralPath $$a)) { try { [IO.File]::Move($$b, $$a) } catch { } } } }$\r$\n`
+  FileWrite $R9 `function Move-Back($$b, $$a) { for ($$i = 0; $$i -lt 20; $$i++) { try { [IO.File]::Move($$b, $$a); return $$true } catch { Start-Sleep -Milliseconds 50 } }; return $$false }$\r$\n`
+  FileWrite $R9 `function Test-Released { if (-not (Test-Path -LiteralPath $$dir)) { return $$true }; Restore-Probes; foreach ($$f in @(Get-ChildItem -LiteralPath $$dir -Recurse -File -Force -ErrorAction SilentlyContinue)) { $$a = $$f.FullName; if ($$a.EndsWith($$probe)) { if (Test-Path -LiteralPath ($$a.Substring(0, $$a.Length - $$probe.Length))) { continue }; return $$false }; $$b = $$a + $$probe; try { [IO.File]::Move($$a, $$b) } catch { return $$false }; if (-not (Move-Back $$b $$a)) { return $$false } }; return $$true }$\r$\n`
   FileWrite $R9 `$$left = @(Get-Targets)$\r$\n`
   FileWrite $R9 `if ($$left.Count -gt 0 -and $$grace -gt 0) { $$g = (Get-Date).AddMilliseconds($$grace); while ($$left.Count -gt 0 -and (Get-Date) -lt $$g) { Start-Sleep -Milliseconds 250; $$left = @(Get-Targets) } }$\r$\n`
   FileWrite $R9 `$$deadline = (Get-Date).AddSeconds(15)$\r$\n`
   FileWrite $R9 `while ($$true) {$\r$\n`
   FileWrite $R9 `  foreach ($$id in $$left) { Stop-Process -Id $$id -Force -ErrorAction SilentlyContinue }$\r$\n`
   FileWrite $R9 `  if ($$left.Count -eq 0 -and (Test-Released)) { exit 0 }$\r$\n`
-  FileWrite $R9 `  if ((Get-Date) -ge $$deadline) { exit 3 }$\r$\n`
+  FileWrite $R9 `  if ((Get-Date) -ge $$deadline) { Restore-Probes; exit 3 }$\r$\n`
   FileWrite $R9 `  Start-Sleep -Milliseconds 250$\r$\n`
   FileWrite $R9 `  $$left = @(Get-Targets)$\r$\n`
   FileWrite $R9 `}$\r$\n`
