@@ -1303,6 +1303,20 @@ describe('AuthScreen — telling the app the session ended (VesselKeeper review 
     expect(cleared()).toBe(true);
   });
 
+  it('signs out this device only, never every session on the account', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    supabase.auth.signOut = vi.fn(async () => {
+      supabase.__triggerAuthChange('SIGNED_OUT', null);
+      return { error: null };
+    });
+    renderNoPlan(supabase, vi.fn());
+    await screen.findByText('No active plan');
+    fireEvent.click(screen.getByRole('button', { name: /Sign Out/ }));
+
+    await screen.findByText('Sign in to continue');
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
   it('still calls it once when the sign-out could not reach the server and no event came', async () => {
     const supabase = makeMockSupabase({ session, subscriptions: [] });
     supabase.auth.signOut = vi.fn(async () => ({ error: { name: 'AuthRetryableFetchError', message: 'Failed to fetch' } }));
