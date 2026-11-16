@@ -27,7 +27,7 @@ Projects/
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (48/40 px, a lit `active` state, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField`, `InstrumentCell`, `Tabs`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `AppShell`, `SettingsShell` (whose About carries `OpenSourceLicences`), `openExternal(url)` and `openUserGuide(section)` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
-| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes when its `Host` header is local too, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
+| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes when its `Host` header is local too and no browser marks it as sent by another site's page (`Origin`, `Sec-Fetch-Site`), anything else presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
 | `@mariner-sentinel/charts` | Nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. **Note the scope** — this is the one package published as `@mariner-sentinel/*` rather than `@sentinel/*`, which is a real trap: tooling that matched packages by the `@sentinel/` prefix skipped it entirely until 2026-09-08. See `charts/README.md` | see `charts/README.md` |
@@ -635,6 +635,29 @@ setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow: () => mainWindow,
 // in createWindow(), in place of the app's own setWindowOpenHandler:
 installWindowGuards(mainWindow, { appUrl: APP_URL });
 ```
+
+## `@sentinel/electron-shell`: an install that does not happen, and X11
+
+`setupAutoUpdater({ ..., onBeforeInstall, onInstallFailed, installTimeoutMs })`.
+`onBeforeInstall` is where an app shuts things down before `quitAndInstall`
+(VesselKeeper stops its forked backend). If the install then does not happen,
+`onInstallFailed(err)` is called so the app can undo that, and the renderer is
+sent an `error` updater event. "Does not happen" is either call throwing, or the
+app still running `installTimeoutMs` (default 15 s) after asking to quit:
+electron-updater returns normally when it cannot start the installer, so that
+case can only be seen by the app not having gone. An app that takes longer than
+that to quit should raise the timeout.
+
+`applyLinuxGpuCompatibility(app)` restarts the app once with
+`--ozone-platform=x11` when it was started without the switch on a Wayland
+session (a terminal, an AppImage run directly); the in-process switch reaches
+only the child processes. It returns `false` when that restart is under way,
+and the process ends inside the call, so callers need no change. It does
+nothing when the command line names a platform (either one), when there is no
+X display, or when `SENTINEL_NO_X11_RELAUNCH=1` is set. An AppImage restarts
+through the AppImage file (`APPIMAGE`). The launchers must still carry the
+switch (`build.linux.executableArgs`, which the drift checker enforces): a
+restart costs a second, and the switch on the command line costs nothing.
 
 ## `@sentinel/electron-shell`: the Windows installer include
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, installCommand, resolveCommit, canonicalRepoName, extract } from './verify-clean.mjs';
+import { parseArgs, installCommand, resolveCommit, canonicalRepoName, extract, sharedGitEnv } from './verify-clean.mjs';
 
 test('parseArgs defaults to HEAD for both refs', () => {
   assert.deepEqual(parseArgs(['../HarborSentinel']), {
@@ -112,5 +112,26 @@ test('extract unpacks a git archive into dest via a relative tar path', async ()
     assert.ok(!existsSync(join(root, 'scratch', 'MainRepo.tar')), 'tar file is cleaned up');
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sharedGitEnv tells the checks where the real repository is, and adds nothing outside a repository', async () => {
+  const { mkdtempSync, rmSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const repo = mkdtempSync(join(tmpdir(), 'verify-clean-env-'));
+  const plain = mkdtempSync(join(tmpdir(), 'verify-clean-env-'));
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    const env = sharedGitEnv(repo, { ...process.env, KEEP: '1' });
+    assert.equal(env.KEEP, '1');
+    assert.ok(existsSync(join(env.SENTINEL_SHARED_GIT_DIR, 'HEAD')), 'points at a git directory');
+    // GIT_CEILING_DIRECTORIES keeps git from finding a repository above the temp folder.
+    const outside = sharedGitEnv(plain, { ...process.env, GIT_CEILING_DIRECTORIES: tmpdir() });
+    assert.equal(outside.SENTINEL_SHARED_GIT_DIR, undefined);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(plain, { recursive: true, force: true });
   }
 });
