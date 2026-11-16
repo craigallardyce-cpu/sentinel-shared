@@ -102,9 +102,13 @@ const CARDINAL_DIRECTIONS = [
   'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'
 ];
 
-/** Returns the 16-point cardinal direction string for a bearing in degrees. */
+/** Returns the 16-point cardinal direction string for a bearing in degrees, or '' when it is not a number. */
 export function getCardinalDirection(degrees: number): string {
-  const index = Math.round(degrees / 22.5) % 16;
+  if (typeof degrees !== 'number' || !Number.isFinite(degrees)) return '';
+  // Wrapped first: a bearing of -10 or 725 is still a direction, and the bare
+  // remainder of a negative number is negative, which indexed nothing.
+  const wrapped = ((degrees % 360) + 360) % 360;
+  const index = Math.round(wrapped / 22.5) % 16;
   return CARDINAL_DIRECTIONS[index];
 }
 

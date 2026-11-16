@@ -138,6 +138,18 @@ describe('getCardinalDirection', () => {
   ])('getCardinalDirection(%d) === %s', (deg, expected) => {
     expect(getCardinalDirection(deg)).toBe(expected);
   });
+
+  it('wraps a bearing outside 0 to 360 rather than returning nothing', () => {
+    expect(getCardinalDirection(-10)).toBe('N');
+    expect(getCardinalDirection(-90)).toBe('W');
+    expect(getCardinalDirection(725)).toBe('N');
+    expect(getCardinalDirection(450)).toBe('E');
+  });
+
+  it('returns an empty string for something that is not a bearing', () => {
+    expect(getCardinalDirection(NaN)).toBe('');
+    expect(getCardinalDirection(undefined as unknown as number)).toBe('');
+  });
 });
 
 describe('calculateAnchorPosition', () => {

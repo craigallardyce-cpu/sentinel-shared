@@ -372,6 +372,75 @@ describe('getOpenMeteoForecast', () => {
     expect(calls.length).toBe(afterFirst);
   });
 
+  describe('periods start now, not at midnight UTC', () => {
+    // The fixture series starts at 2026-08-22T00:00Z, as Open-Meteo's does on
+    // that day, and blows 30 kts for its first twelve hours only.
+    const morningGale = () => {
+      const forecast = buildForecast({ wind: 10, gust: 12 });
+      for (let i = 0; i < 12; i++) {
+        forecast.hourly.wind_speed_10m[i] = 30;
+        forecast.hourly.wind_gusts_10m[i] = 40;
+      }
+      return forecast;
+    };
+    beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+    afterEach(() => vi.useRealTimers());
+
+    it('leaves out the hours that have already gone', async () => {
+      vi.setSystemTime(new Date(Date.UTC(2026, 7, 22, 14, 20, 0)));
+      stubFetch({ forecast: morningGale(), marine: buildMarine() });
+      const fc = await getOpenMeteoForecast(43.55, 7.02);
+
+      expect(fc.periods[0].startTime).toBe('2026-08-22T14:00:00.000Z');
+      expect(fc.periods[0].periodName).toBe('Vessel Vicinity (0h - 12h)');
+      expect(fc.periods[1].startTime).toBe('2026-08-23T02:00:00.000Z');
+      // The morning's gale is over and is not this afternoon's forecast.
+      expect(fc.periods[0].windRange).toBe('10 kts');
+      expect(fc.overallRisk).toBe('low');
+    });
+
+    it('still shows the whole series at midnight', async () => {
+      vi.setSystemTime(new Date(Date.UTC(2026, 7, 22, 0, 5, 0)));
+      stubFetch({ forecast: morningGale(), marine: buildMarine() });
+      const fc = await getOpenMeteoForecast(43.55, 7.02);
+      expect(fc.periods[0].startTime).toBe('2026-08-22T00:00:00.000Z');
+      expect(fc.periods[0].windRange).toBe('30 kts');
+      expect(fc.periods).toHaveLength(6);
+    });
+
+    it('asks for enough days that six periods remain late in the day', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      await getOpenMeteoForecast(43.55, 7.02);
+      expect(calls.filter((u) => u.includes('open-meteo')).every((u) => u.includes('forecast_days=4'))).toBe(true);
+    });
+
+    it('uses the series from its start when none of it is current', async () => {
+      // A device clock a year fast: better yesterday's numbers than a blank card.
+      vi.setSystemTime(new Date(Date.UTC(2027, 7, 22, 14, 0, 0)));
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      const fc = await getOpenMeteoForecast(43.55, 7.02);
+      expect(fc.periods).toHaveLength(6);
+      expect(fc.periods[0].startTime).toBe('2026-08-22T00:00:00.000Z');
+    });
+  });
+
+  describe('the caches do not grow without bound', () => {
+    const forecastCalls = () => calls.filter((u) => u.startsWith('https://api.open-meteo.com/')).length;
+
+    it('forgets the oldest positions once it holds more than it keeps', async () => {
+      stubFetch({ forecast: buildForecast(), marine: buildMarine() });
+      // A passage: a new position every call, 100 of them.
+      for (let i = 0; i < 100; i++) await getOpenMeteoForecast(30 + i * 0.1, -40);
+      expect(forecastCalls()).toBe(100);
+
+      // The latest is still held; the first has been dropped and is fetched again.
+      await getOpenMeteoForecast(30 + 99 * 0.1, -40);
+      expect(forecastCalls()).toBe(100);
+      await getOpenMeteoForecast(30, -40);
+      expect(forecastCalls()).toBe(101);
+    });
+  });
+
   /*
     The alerts probe has its own cache. It used to ride in the forecast's
     20 minutes, so one failed probe read "Couldn't check" for 20 minutes after

@@ -144,3 +144,74 @@ describe('a patch says what to write, and nothing else', () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe('a blank is not a name (handed over from the VesselKeeper review)', () => {
+  it('never writes an empty or all-spaces name, and writes the rest of the patch', async () => {
+    for (const name of ['', '   ']) {
+      const calls: Call[] = [];
+      const ok = await saveVesselProfile(fakeClient([ROW], calls) as any, { name, vesselType: 'Ketch' }, { id: 'a1b2' });
+      expect(ok).toBe(true);
+      const values = calls[0].values as Record<string, unknown>;
+      expect(values).not.toHaveProperty('name');
+      expect(values.vessel_type).toBe('Ketch');
+    }
+  });
+
+  it('sends nothing, and reports failure, when a blank name is all that was asked', async () => {
+    const calls: Call[] = [];
+    expect(await saveVesselProfile(fakeClient([ROW], calls) as any, { name: ' ' })).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it('stores a blank type or MMSI as NULL, which is how VesselKeeper clears an MMSI', async () => {
+    const calls: Call[] = [];
+    await saveVesselProfile(fakeClient([ROW], calls) as any, { vesselType: '', mmsi: '  ' }, { id: 'a1b2' });
+    expect(calls[0].values).toMatchObject({ vessel_type: null, mmsi: null });
+  });
+
+  it('leaves a real name exactly as typed', async () => {
+    const calls: Call[] = [];
+    await saveVesselProfile(fakeClient([ROW], calls) as any, { name: 'Saorsa II' }, { id: 'a1b2' });
+    expect((calls[0].values as Record<string, unknown>).name).toBe('Saorsa II');
+  });
+});
+
+describe('an update that matched no row (L2)', () => {
+  it('is not reported as saved', async () => {
+    // The row named by the caller is not there, or is not this account's.
+    expect(await saveVesselProfile(fakeClient([]) as any, { mmsi: '111' }, { id: 'gone' })).toBe(false);
+  });
+
+  it('asks for the changed row back, by id', async () => {
+    const asked: unknown[] = [];
+    const client = {
+      from() {
+        const chain: any = {
+          update() { return chain; },
+          eq() { return chain; },
+          select(columns: unknown) { asked.push(columns); return Promise.resolve({ data: [{ id: 'a1b2' }], error: null }); },
+        };
+        return chain;
+      },
+    };
+    expect(await saveVesselProfile(client as any, { mmsi: '111' }, { id: 'a1b2' })).toBe(true);
+    expect(asked).toEqual(['id']);
+  });
+
+  it('keeps the old answer for a client whose update cannot be asked', async () => {
+    const client = {
+      from() {
+        const chain: any = {
+          update() { return chain; },
+          eq() { return Promise.resolve({ error: null }); },
+        };
+        return chain;
+      },
+    };
+    expect(await saveVesselProfile(client as any, { mmsi: '111' }, { id: 'a1b2' })).toBe(true);
+  });
+
+  it('is still false when the update fails outright', async () => {
+    expect(await saveVesselProfile(fakeClient([ROW], [], { message: 'offline' }) as any, { mmsi: '111' }, { id: 'a1b2' })).toBe(false);
+  });
+});

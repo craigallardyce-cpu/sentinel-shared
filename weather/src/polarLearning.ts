@@ -74,6 +74,7 @@ export type RejectionReason =
   | 'incomplete'
   | 'implausible'
   | 'motoring'
+  | 'head-to-wind'
   | 'becalmed'
   | 'not-moving'
   | 'manoeuvring'
@@ -88,6 +89,15 @@ export interface AddSampleResult {
 export interface LearningOptions {
   /** Engine revolutions above which the boat counts as motoring. Default 400. */
   motoringRpm?: number;
+  /**
+   * The closest to the wind a boat can be sailing, degrees. A boat making way
+   * closer than this is under engine, whatever its instruments say: most
+   * feeds carry no engine revolutions at all, so the RPM check above never
+   * fires for them, and an hour motoring to windward was learned as an hour
+   * sailing dead upwind at six knots. Default 30, which is inside what any of
+   * the generic polars claims.
+   */
+  noGoTwaDeg?: number;
   /** Ignore samples in less wind than this. Default 2 kt. */
   minTwsKts?: number;
   /** Ignore samples slower than this. Default 0.3 kt. */
@@ -168,6 +178,7 @@ export function addSample(
 ): AddSampleResult {
   const {
     motoringRpm = 400,
+    noGoTwaDeg = 30,
     minTwsKts = 2,
     minStwKts = 0.3,
     maxHeadingChangeDeg = 12,
@@ -204,6 +215,9 @@ export function addSample(
   }
 
   const twa = trueWindAngle(twd, heading);
+  // After the steadiness checks, so a tack through the wind is still a
+  // manoeuvre: this is for a boat holding a course no sail can.
+  if (twa < noGoTwaDeg) return reject('head-to-wind');
   const twaIndex = nearestIndex(accumulator.twaValues, twa);
   const twsIndex = nearestIndex(accumulator.twsValues, tws);
   const key = `${twaIndex}:${twsIndex}`;
@@ -346,7 +360,16 @@ export function derivePolar(
       if (sailable) sailableNodes++;
       if (measured && sailable) measuredNodes++;
 
-      row.push(measured ? percentileOf(bin as PolarBin, percentile) : generic);
+      /*
+        And whatever was recorded at one is not used. A sample there is a boat
+        under engine (see `noGoTwaDeg`), and accumulators saved before samples
+        were refused at the door still hold them: thirty of them, five minutes
+        of motoring into the wind, gave the measured polar a speed dead upwind
+        and the router then planned straight into it. The cost is that a boat
+        which points higher than its fallback curve cannot teach the polar
+        that at this node; the next node out is still hers to fill.
+      */
+      row.push(measured && sailable ? percentileOf(bin as PolarBin, percentile) : generic);
       cells.push({ twaDeg: twa, twsKts: tws, count, measured: measured && sailable });
     }
     speeds.push(row);

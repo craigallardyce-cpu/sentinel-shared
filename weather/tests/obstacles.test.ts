@@ -71,6 +71,24 @@ describe('createObstacleField', () => {
   });
 });
 
+describe('a leg across the 180th meridian', () => {
+  // Land in the Atlantic, at the same latitude as a leg in the Pacific.
+  const atlantic = createObstacleField([island('atlantic', -30, -5, -20, 5)]);
+
+  it('is not blocked by land on the other side of the world', () => {
+    expect(atlantic.blocks(0, 179.9, 0, -179.9)).toBeNull();
+    expect(atlantic.blocks(0, -179.9, 0, 179.9)).toBeNull();
+  });
+
+  it('is still blocked by land that straddles the line on either side', () => {
+    const east = createObstacleField([island('taveuni', 179.2, -1, 180, 1)]);
+    expect(east.blocks(0, 179, 0, -179)?.id).toBe('taveuni');
+    const west = createObstacleField([island('west', -180, -1, -179.4, 1)]);
+    expect(west.blocks(0, 179.5, 0, -179)?.id).toBe('west');
+    expect(west.blocks(3, 179.5, 3, -179)).toBeNull();
+  });
+});
+
 describe('userZone', () => {
   it('converts drawn lat/lon points into [lon, lat] ring order', () => {
     const zone = userZone('z1', 'Firing range', [[10, 20], [10, 21], [11, 21]]);

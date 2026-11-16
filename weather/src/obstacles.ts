@@ -244,6 +244,26 @@ export function createObstacleField(zones: ObstacleZone[]): ObstacleField {
     },
 
     blocks(lat1, lon1, lat2, lon2) {
+      /*
+        A leg whose ends are more than half the world apart in longitude is a
+        short leg across the 180th meridian, not a long one the other way.
+        Tested as drawn, 179.9°E to 179.9°W swept every cell around the globe
+        at that latitude and was blocked by the first continent in the way.
+        It is two legs: up to the meridian, and on from it.
+      */
+      if (Math.abs(lon2 - lon1) > 180) {
+        const edge = lon1 > lon2 ? 180 : -180;
+        const lon2Unwrapped = lon2 + (lon1 > lon2 ? 360 : -360);
+        const span = lon2Unwrapped - lon1;
+        const fraction = span === 0 ? 0 : (edge - lon1) / span;
+        const latAtEdge = lat1 + (lat2 - lat1) * fraction;
+        return blocksLeg(lat1, lon1, latAtEdge, edge) ?? blocksLeg(latAtEdge, -edge, lat2, lon2);
+      }
+      return blocksLeg(lat1, lon1, lat2, lon2);
+    }
+  };
+
+  function blocksLeg(lat1: number, lon1: number, lat2: number, lon2: number): ObstacleZone | null {
       const minX = Math.min(lon1, lon2);
       const maxX = Math.max(lon1, lon2);
       const minY = Math.min(lat1, lat2);
@@ -279,8 +299,7 @@ export function createObstacleField(zones: ObstacleZone[]): ObstacleField {
         if (polyContains(polys[pi], lon2, lat2)) return polys[pi].zone;
       }
       return null;
-    }
-  };
+  }
 }
 
 /**

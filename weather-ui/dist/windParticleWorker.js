@@ -67,7 +67,14 @@ self.onmessage = function(e) {
     }
   } else if (type === 'update') {
     if (!grid) return;
-    updateParticles();
+    // A tick is always answered. The layer asks for the next frame only after
+    // it has drawn this one, so an update that threw left it waiting for a
+    // reply that never came and the wind stopped on the chart for good.
+    try {
+      updateParticles();
+    } catch (err) {
+      initParticles();
+    }
 
     const coords = new Float32Array(particles.length * 4);
     for (let i = 0; i < particles.length; i++) {
@@ -125,10 +132,16 @@ function createParticle() {
 function interpolateWind(lat, lon) {
   if (!grid || !grid.uGrid || grid.uGrid.length === 0) return [0, 0];
 
+  // A particle that has drifted to nowhere is recycled, not looked up: NaN
+  // passes every bounds test below (each comparison is false) and then indexes
+  // the grid with it.
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+
   const lats = grid.latGrid;
   const lons = grid.lonGrid;
   const rows = lats.length;
   const cols = lats[0].length;
+  if (rows < 2 || cols < 2) return [0, 0];
 
   const lat1 = lats[0][0];
   const lat2 = lats[rows - 1][0];
@@ -168,6 +181,10 @@ function interpolateWind(lat, lon) {
   const u = (1-t)*(1-s)*u00 + t*(1-s)*u10 + (1-t)*s*u01 + t*s*u11;
   const v = (1-t)*(1-s)*v00 + t*(1-s)*v10 + (1-t)*s*v01 + t*s*v11;
 
+  // A cell with a hole in it (the model gave no wind at a corner) has no wind
+  // to follow. Moving a particle by NaN is what sent it to nowhere.
+  if (!isFinite(u) || !isFinite(v)) return null;
+
   return [u, v];
 }
 
@@ -194,7 +211,8 @@ function updateParticles() {
     p.lat += v * speedScale;
     p.lon += u * speedScale / (cosLat || 1);
 
-    if (p.lat < bounds.latMin || p.lat > bounds.latMax || p.lon < bounds.lonMin || p.lon > bounds.lonMax) {
+    if (!isFinite(p.lat) || !isFinite(p.lon) ||
+        p.lat < bounds.latMin || p.lat > bounds.latMax || p.lon < bounds.lonMin || p.lon > bounds.lonMax) {
       particles[i] = createParticle();
     }
   }

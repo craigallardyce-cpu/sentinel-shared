@@ -101,6 +101,19 @@ describe('parsePolarFile', () => {
     expect(parsePolarFile(text).twsValues).toEqual([6, 10, 14]);
   });
 
+  it('reads a header with a bare 0 in the corner, and one with no corner at all', () => {
+    const zeroCorner = ['0\t6\t10\t14', '40\t3.8\t5.2\t5.7', '90\t5.3\t6.8\t7.5'].join('\n');
+    expect(parsePolarFile(zeroCorner).twsValues).toEqual([6, 10, 14]);
+
+    // One cell shorter than its rows: every cell is a wind speed. The first
+    // used to be thrown away, and each speed read against the next wind up.
+    const noCorner = ['6\t10\t14', '40\t3.8\t5.2\t5.7', '90\t5.3\t6.8\t7.5'].join('\n');
+    const p = parsePolarFile(noCorner);
+    expect(p.twsValues).toEqual([6, 10, 14]);
+    expect(boatSpeed(p, 90, 6)).toBeCloseTo(5.3, 5);
+    expect(boatSpeed(p, 90, 14)).toBeCloseTo(7.5, 5);
+  });
+
   it('sorts rows given in descending order', () => {
     const reversed = ['twa/tws\t6\t10', '150\t3.9\t5.4', '40\t3.8\t5.2'].join('\n');
     expect(parsePolarFile(reversed).twaValues).toEqual([0, 35, 40, 150]);

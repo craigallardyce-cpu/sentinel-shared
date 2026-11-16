@@ -25,9 +25,14 @@
  * namespaces (Ubuntu 23.10 onwards, by default) take away the other sandbox
  * too, so dropping the switch risks the app not starting at all. Change this
  * only with a launch test of the packaged AppImage on such a distribution.
+ *
+ * Returns false when the app is being restarted on X11 (see `relaunchOnX11`)
+ * and true otherwise. Callers that ignore the result are unaffected: the
+ * process ends inside this call when a restart is arranged.
  */
-function applyLinuxGpuCompatibility(app) {
-  if (process.platform !== 'linux') return;
+function applyLinuxGpuCompatibility(app, { env = process.env, argv = process.argv } = {}) {
+  if (process.platform !== 'linux') return true;
+  if (relaunchOnX11(app, { env, argv })) return false;
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('no-sandbox');
   app.commandLine.appendSwitch('disable-gpu');
@@ -35,6 +40,64 @@ function applyLinuxGpuCompatibility(app) {
   app.commandLine.appendSwitch('disable-gpu-compositing');
   app.commandLine.appendSwitch('disable-dev-shm-usage');
   app.commandLine.appendSwitch('ozone-platform', 'x11');
+  return true;
+}
+
+const X11_SWITCH = '--ozone-platform=x11';
+
+/**
+ * Whether this start should be handed to a fresh process on X11.
+ *
+ * `appendSwitch('ozone-platform', 'x11')` above reaches only the child
+ * processes: by the time any JavaScript runs, the main process has already
+ * chosen Wayland where a Wayland session exists, and on ChromeOS the window
+ * then never appears although the page loads (roadmap #135). The installed
+ * launchers carry the switch on their command line, so this is about every
+ * other way in: a terminal, an AppImage run directly, a file manager.
+ *
+ * True only when all of these hold: no `--ozone-platform` on the command line
+ * (one naming Wayland is somebody's deliberate choice and is left alone); a
+ * Wayland session; an X display to go to; this process is not itself the
+ * restarted one; and `SENTINEL_NO_X11_RELAUNCH=1` is not set.
+ */
+function needsX11Relaunch({ env = process.env, argv = process.argv, platform = process.platform } = {}) {
+  if (platform !== 'linux') return false;
+  if (env.SENTINEL_NO_X11_RELAUNCH === '1' || env.SENTINEL_X11_RELAUNCHED === '1') return false;
+  if (env.ELECTRON_RUN_AS_NODE) return false;
+  if (argv.some((arg) => typeof arg === 'string' && arg.startsWith('--ozone-platform'))) return false;
+  const wayland = Boolean(env.WAYLAND_DISPLAY) || env.XDG_SESSION_TYPE === 'wayland';
+  return wayland && Boolean(env.DISPLAY);
+}
+
+/**
+ * Restarts the app once with the X11 switch on its command line, when
+ * `needsX11Relaunch` says so. Returns true when the restart is under way, and
+ * the caller must do nothing more; `app.exit` before 'ready' ends the process
+ * there and then, so in practice nothing after this runs.
+ *
+ * An AppImage is restarted through the AppImage file itself (`APPIMAGE`), not
+ * the executable inside its mount, which is gone once this process exits. The
+ * marker in the environment is what stops a loop if the new process still does
+ * not see the switch. A restart that cannot be arranged is logged and the app
+ * carries on as it would have before.
+ */
+function relaunchOnX11(app, { env = process.env, argv = process.argv } = {}) {
+  if (!needsX11Relaunch({ env, argv })) return false;
+  if (typeof app.relaunch !== 'function' || typeof app.exit !== 'function') return false;
+  try {
+    env.SENTINEL_X11_RELAUNCHED = '1';
+    app.relaunch({
+      args: argv.slice(1).concat(X11_SWITCH),
+      ...(env.APPIMAGE ? { execPath: env.APPIMAGE } : {})
+    });
+    console.log('[Linux] Started on Wayland without', X11_SWITCH + '; restarting with it.');
+    app.exit(0);
+    return true;
+  } catch (err) {
+    delete env.SENTINEL_X11_RELAUNCHED;
+    console.error('[Linux] Could not restart on X11; continuing:', err);
+    return false;
+  }
 }
 
 /**
@@ -182,14 +245,32 @@ function createAppTray({ iconPath, tooltip, onShow, onQuit }) {
  * @param {() => import('electron').BrowserWindow | null} opts.getMainWindow
  * @param {() => void} [opts.onBeforeInstall] - called just before quitAndInstall
  *   (e.g. VesselKeeper stops its forked backend process here first).
+ * @param {(err: Error) => void} [opts.onInstallFailed] - called when the install
+ *   did not happen after all, to undo what onBeforeInstall did (VesselKeeper
+ *   starts its backend again). The renderer is sent an `error` updater event
+ *   either way.
+ * @param {number} [opts.installTimeoutMs] - how long after asking to quit the
+ *   app may still be running before the install counts as failed. Default 15 s.
  * @param {number} [opts.periodicCheckMs] - when set, and the app is packaged,
  *   checks for updates in the background once now and then every this many ms
  *   (checkForUpdatesAndNotify), on one process-wide timer. Left out, nothing is
  *   checked in the background, as before.
  */
-function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeInstall, periodicCheckMs }) {
+function setupAutoUpdater({
+  app,
+  autoUpdater,
+  ipcMain,
+  getMainWindow,
+  onBeforeInstall,
+  onInstallFailed,
+  installTimeoutMs = 15000,
+  periodicCheckMs
+}) {
   if (periodicCheckMs !== undefined && !(Number.isFinite(periodicCheckMs) && periodicCheckMs > 0)) {
     throw new TypeError('setupAutoUpdater: periodicCheckMs must be a positive number of milliseconds');
+  }
+  if (!(Number.isFinite(installTimeoutMs) && installTimeoutMs > 0)) {
+    throw new TypeError('setupAutoUpdater: installTimeoutMs must be a positive number of milliseconds');
   }
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -230,12 +311,52 @@ function setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow, onBeforeIn
     }
   });
 
+  // Installing has a way back. `onBeforeInstall` is where an app shuts things
+  // down (VesselKeeper stops its backend), and until now nothing undid that
+  // when the install then did not happen: the app stayed up with a dead
+  // backend and no message. Two ways it does not happen. Either call throws;
+  // or quitAndInstall returns normally having failed to start the installer,
+  // which electron-updater only logs. The second cannot be seen from here, so
+  // it is inferred: an app still running `installTimeoutMs` after asking to
+  // quit did not quit.
+  let installTimer = null;
+
+  function installFailed(err) {
+    if (installTimer) {
+      clearTimeout(installTimer);
+      installTimer = null;
+    }
+    const message = err?.message || String(err);
+    console.error('[Updater] Install did not start:', err);
+    if (onInstallFailed) {
+      try {
+        onInstallFailed(err);
+      } catch (hookErr) {
+        console.error('[Updater] onInstallFailed threw:', hookErr);
+      }
+    }
+    sendUpdaterEvent('error', { message });
+    return message;
+  }
+
   ipcMain.handle('updater:install', () => {
     if (!updateDownloaded) {
       return { ok: false, error: 'No update downloaded yet.' };
     }
-    if (onBeforeInstall) onBeforeInstall();
-    autoUpdater.quitAndInstall();
+    // A second press while the first is still on its way out.
+    if (installTimer) return { ok: true };
+    try {
+      if (onBeforeInstall) onBeforeInstall();
+      autoUpdater.quitAndInstall();
+    } catch (err) {
+      return { ok: false, error: installFailed(err) };
+    }
+    installTimer = setTimeout(() => {
+      installTimer = null;
+      installFailed(new Error('The update could not be installed. The app is still running; try again.'));
+    }, installTimeoutMs);
+    // Never the reason the process stays alive.
+    if (typeof installTimer.unref === 'function') installTimer.unref();
     return { ok: true };
   });
 
@@ -393,6 +514,8 @@ const { installWindowGuards } = require('./windowGuards.js');
 
 module.exports = {
   applyLinuxGpuCompatibility,
+  needsX11Relaunch,
+  relaunchOnX11,
   claimSingleInstanceLock,
   attachWindowDiagnostics,
   enableDevToolsToggle,

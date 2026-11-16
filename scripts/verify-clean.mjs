@@ -19,7 +19,10 @@
  *      Only those two, because that is what CI checks out, so the drift checker
  *      runs at the same per-app scope CI gives it.
  *   2. Install: `npm run verify:install` if the repo defines it, else `npm ci`.
- *   3. `npm run verify`.
+ *   3. `npm run verify`. The checks are told where this repository's .git is
+ *      (`SENTINEL_SHARED_GIT_DIR`), because the scratch copy has none and the
+ *      drift checker's pin checks need `origin/main`. Fetch it first if the pin
+ *      may be newer than this clone's last fetch.
  *   4. Print the two SHAs and each step's result, for the PR's "Verified" section.
  *
  * Exit code: 0 only if every step passed. The scratch directory is removed
@@ -120,10 +123,23 @@ export function extract(repoDir, ref, dest, scratch, mustExist = 'package.json')
   }
 }
 
-function run(label, command, cwd) {
+/**
+ * The environment the repo's checks run in: the caller's, plus where the real
+ * sentinel-shared repository is. The scratch copy has no .git, so without this
+ * the drift checker cannot ask whether an app's pinned sentinel-shared commit
+ * is published, which is the one pin mistake that stops a release build in all
+ * three apps. Null when this checkout is not a git repository. Exported for tests.
+ */
+export function sharedGitEnv(sharedDir = SHARED_DIR, env = process.env) {
+  const r = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: sharedDir, encoding: 'utf8', env });
+  const gitDir = r.status === 0 ? r.stdout.trim() : '';
+  return gitDir ? { ...env, SENTINEL_SHARED_GIT_DIR: gitDir } : { ...env };
+}
+
+function run(label, command, cwd, env) {
   console.log(`\n=== ${label}: ${command}`);
   const started = Date.now();
-  const r = spawnSync(command, { cwd, shell: true, stdio: 'inherit' });
+  const r = spawnSync(command, { cwd, shell: true, stdio: 'inherit', env });
   const seconds = Math.round((Date.now() - started) / 1000);
   return { label, command, status: r.status ?? 1, seconds };
 }
@@ -165,6 +181,10 @@ function main() {
 
   const results = [];
   let failed = false;
+  const checkEnv = sharedGitEnv();
+  // What an app's pin is compared with. Only as current as this clone's last fetch.
+  const publishedMain = spawnSync('git', ['rev-parse', '--verify', '--quiet', 'origin/main^{commit}'], { cwd: SHARED_DIR, encoding: 'utf8' });
+  const publishedSha = publishedMain.status === 0 ? publishedMain.stdout.trim() : '';
   try {
     extract(repoDir, repoSha, appDir, scratch);
     if (repoName !== 'sentinel-shared') extract(SHARED_DIR, sharedSha, sharedDir, scratch, 'scripts/check-fleet-drift.mjs');
@@ -173,7 +193,7 @@ function main() {
     if (!pkg.scripts?.verify) throw new Error(`${repoName}@${opts.ref} has no "verify" script in package.json`);
 
     for (const [label, command] of [['install', installCommand(pkg)], ['verify', 'npm run verify']]) {
-      const r = run(label, command, appDir);
+      const r = run(label, command, appDir, checkEnv);
       results.push(r);
       if (r.status !== 0) { failed = true; break; }
     }
@@ -184,6 +204,9 @@ function main() {
     console.log('\n=== verify-clean summary');
     console.log(`repo           ${repoName} @ ${repoSha.slice(0, 7)} (${opts.ref})`);
     console.log(`sentinel-shared  @ ${sharedSha.slice(0, 7)} (${opts.sharedRef})`);
+    if (repoName !== 'sentinel-shared') {
+      console.log(`pins checked against  ${publishedSha ? `origin/main @ ${publishedSha.slice(0, 7)} (as last fetched)` : 'nothing: this clone has no origin/main'}`);
+    }
     console.log(`npm            ${npmVersion}`);
     for (const r of results) console.log(`${r.status === 0 ? 'PASS' : 'FAIL'}  ${r.label.padEnd(8)} ${r.command}  (${r.seconds}s)`);
     console.log(failed ? 'RESULT: FAIL' : 'RESULT: PASS');

@@ -80,7 +80,7 @@ function headingDelta(a, b) {
  * is being rejected as motoring because its RPM sensor reads 600 at idle.
  */
 function addSample(accumulator, sample, options = {}) {
-    const { motoringRpm = 400, minTwsKts = 2, minStwKts = 0.3, maxHeadingChangeDeg = 12, maxTwsChangeKts = 6, steadyWindowMs = 60000 } = options;
+    const { motoringRpm = 400, noGoTwaDeg = 30, minTwsKts = 2, minStwKts = 0.3, maxHeadingChangeDeg = 12, maxTwsChangeKts = 6, steadyWindowMs = 60000 } = options;
     const reject = (reason) => {
         accumulator.rejected++;
         accumulator.rejections = accumulator.rejections ?? {};
@@ -113,6 +113,10 @@ function addSample(accumulator, sample, options = {}) {
             return reject('wind-unsettled');
     }
     const twa = trueWindAngle(twd, heading);
+    // After the steadiness checks, so a tack through the wind is still a
+    // manoeuvre: this is for a boat holding a course no sail can.
+    if (twa < noGoTwaDeg)
+        return reject('head-to-wind');
     const twaIndex = nearestIndex(accumulator.twaValues, twa);
     const twsIndex = nearestIndex(accumulator.twsValues, tws);
     const key = `${twaIndex}:${twsIndex}`;
@@ -203,7 +207,16 @@ function derivePolar(accumulator, options = {}) {
                 sailableNodes++;
             if (measured && sailable)
                 measuredNodes++;
-            row.push(measured ? percentileOf(bin, percentile) : generic);
+            /*
+              And whatever was recorded at one is not used. A sample there is a boat
+              under engine (see `noGoTwaDeg`), and accumulators saved before samples
+              were refused at the door still hold them: thirty of them, five minutes
+              of motoring into the wind, gave the measured polar a speed dead upwind
+              and the router then planned straight into it. The cost is that a boat
+              which points higher than its fallback curve cannot teach the polar
+              that at this node; the next node out is still hers to fill.
+            */
+            row.push(measured && sailable ? percentileOf(bin, percentile) : generic);
             cells.push({ twaDeg: twa, twsKts: tws, count, measured: measured && sailable });
         }
         speeds.push(row);

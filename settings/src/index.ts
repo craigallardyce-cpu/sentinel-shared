@@ -36,6 +36,7 @@ export {
   createAccountStore,
   createCloudStore,
   createVesselStore,
+  NoRowError,
 } from './cloudStore.js';
 export type { CloudStore, CloudStoreOptions, SupabaseLike } from './cloudStore.js';
 

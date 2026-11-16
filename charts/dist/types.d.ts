@@ -49,6 +49,13 @@ export interface ChartProvider {
     background: ProviderBackground;
     /** `null` means worldwide. */
     coverage: CoverageBox[] | null;
+    /**
+     * A wider area the provider charts some part of, where `coverage` is drawn
+     * tightly so as not to claim a neighbour's water. `selectBaseProvider` asks
+     * it only after every official provider's `coverage` has been asked. Not
+     * sent to clients.
+     */
+    reach?: CoverageBox[];
     /** Required credit. Several sources licence on the condition that this is displayed. */
     attribution: string;
     maxZoom: number;

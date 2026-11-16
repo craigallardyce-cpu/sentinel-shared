@@ -105,6 +105,22 @@ export interface AuthScreenProps {
      * see the box before the Terms are published. Null shows no box.
      */
     termsVersion?: string | null;
+    /**
+     * Called once each time this screen sees the account's session end: the Sign
+     * Out button on the no-plan screen, a sign-out made elsewhere, or a refresh
+     * token the server rejected. By then the access flag, the offline grant and
+     * the entitlement cache are already cleared.
+     *
+     * It is where an app drops what it holds for that account on this device: a
+     * local cache, an outbox of queued writes, a settings store. Without it the
+     * next account to sign in on the device starts with the previous one's data
+     * (VesselKeeper review M1). The screen does not wait for it, so it may be
+     * async and may call Supabase.
+     *
+     * This screen is only mounted until sign-in succeeds. `watchForSignOut` is
+     * the same thing for the rest of the session.
+     */
+    onSignedOut?: () => void | Promise<void>;
 }
 /**
  * The website's Delete account dialog, the same address each app's Settings
@@ -144,9 +160,56 @@ export declare const PRIVACY_URL = "https://marinersentinel.com/privacy";
 export declare const TERMS_VERSION: string | null;
 export declare const TERMS_AGREEMENT_LABEL = "I agree to the Terms of Service and Privacy Policy.";
 export declare const TERMS_REQUIRED_MESSAGE = "To create an account, agree to the Terms of Service and Privacy Policy.";
+export interface WatchForSignOutOptions {
+    storage: StorageLike;
+    accessStorageKey: string;
+    /** Called each time the session ends. Not awaited; may be async and may call Supabase. */
+    onSignedOut: () => void | Promise<void>;
+}
+/**
+ * Hear the session end after sign-in.
+ *
+ * `AuthScreen` listens for a sign-out only while it is on screen, and an app
+ * takes it down the moment sign-in succeeds. From then on a session that was
+ * revoked, or whose refresh token the server rejected, ended with nobody
+ * listening: the app stayed open, every request failed, and queued edits were
+ * sent with no session (VesselKeeper review M4).
+ *
+ * Call this when `onAuthenticated` fires and keep it for as long as the app is
+ * open. On `SIGNED_OUT` it clears the access flag, the offline grant and the
+ * entitlement cache, exactly as the screen does, then calls `onSignedOut`,
+ * where the app drops that account's local data and shows the sign-in screen
+ * again. Being offline is not a sign-out: auth-js keeps the stored session when
+ * a refresh cannot reach the server, and no event fires.
+ *
+ * Returns the function that stops listening.
+ */
+export declare function watchForSignOut(supabase: SupabaseClientLike, options: WatchForSignOutOptions): () => void;
 /**
  * Whole days left on the offline grant, or 0 if there is none or it has lapsed.
  * Exported so apps can show the remaining allowance alongside their offline indicator.
  */
 export declare function offlineGraceRemaining(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number): number;
-export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays, termsVersion }: AuthScreenProps): React.JSX.Element;
+/**
+ * The account an offline start was admitted as, or null.
+ *
+ * An offline start is admitted with no session at all: `getSession()` returns
+ * none once the access token has outlived its lifetime and the refresh cannot
+ * reach Supabase. An app that keys anything by account (its account settings
+ * layer, a cache) was left treating that start as nobody, so account-scoped
+ * settings read as defaults until the next online start (OceanSentinel review
+ * M3). This answers who, by the rule this screen admits on, so no app keeps a
+ * second copy of it:
+ *
+ * - `offlineGraceDays` is above zero;
+ * - this device has verified online before, and within that many days;
+ * - the session is missing because the network could not be reached: pass the
+ *   `error` that came back from `getSession()`, or the browser reports itself
+ *   offline.
+ *
+ * Anything else is null. In particular a device that was signed out, or whose
+ * refresh token the server rejected, has had its grant cleared and gets null,
+ * and so does a start that simply has no session while online.
+ */
+export declare function offlineGrantUserId(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number, sessionError?: unknown): string | null;
+export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays, termsVersion, onSignedOut }: AuthScreenProps): React.JSX.Element;

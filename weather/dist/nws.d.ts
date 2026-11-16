@@ -76,7 +76,22 @@ export declare function parseNwsWindSpeed(field: unknown): {
     max: number;
 } | null;
 /**
- * The wind in one NWS period, in knots: from its text, and from its `windSpeed`
- * field when the text names no sustained wind.
+ * The wind in one NWS period, in knots: every speed its text gives, and its
+ * `windSpeed` field.
+ *
+ * A period often names more than one wind: "NW winds 10 to 15 kt, increasing
+ * to 20 to 25 kt in the afternoon", "N winds 5 to 10 kt, becoming NW 15 to 20
+ * kt". Only the first used to be read, so that afternoon was reported as 15
+ * knots, and the figure an anchor watch is judged by was the lightest wind of
+ * the period rather than the strongest. Every speed is read now: the sustained
+ * range runs from the lowest to the highest of them, and the gust is the
+ * highest gust.
+ *
+ * A speed is a gust when a "gust" word stands between it and the speed before
+ * it (or the start of its sentence): "with gusts as high as 36 mph", "gusting
+ * to 30 kt", "winds could gust as high as 30 mph".
+ *
+ * The gridpoint `windSpeed` field covers the whole period and is taken with
+ * the text, not only when the text names no wind.
  */
 export declare function parseNwsWind(text: string, windSpeedField?: unknown): NwsWind;

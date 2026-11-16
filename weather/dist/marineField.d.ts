@@ -1,5 +1,5 @@
 import type { WaveSampler, CurrentSample, CurrentSampler } from './routing.js';
-import type { Bounds } from './windField.js';
+import { type Bounds } from './windField.js';
 export interface MarineField {
     lats: number[];
     lons: number[];

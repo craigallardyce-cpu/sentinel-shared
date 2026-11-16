@@ -1,5 +1,6 @@
 import type { WaveSample, WaveSampler, CurrentSample, CurrentSampler } from './routing.js';
-import type { Bounds } from './windField.js';
+import { lonInGrid, wrapLon, type Bounds } from './windField.js';
+import { timeoutSignal } from './timeoutSignal.js';
 
 /**
  * The sea the router sails through: a grid of wave AND current forecasts over
@@ -179,14 +180,15 @@ export async function fetchMarineField(
 
   const latParam: number[] = [];
   const lonParam: number[] = [];
-  for (const la of lats) for (const lo of lons) { latParam.push(la); lonParam.push(lo); }
+  // As for the wind field: the axis may run past 180, the request may not.
+  for (const la of lats) for (const lo of lons) { latParam.push(la); lonParam.push(Math.round(wrapLon(lo) * 1000) / 1000); }
 
   const url =
     `${MARINE_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
     '&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction' +
     `&forecast_days=${Math.min(MAX_MARINE_DAYS, Math.max(1, Math.round(days)))}`;
 
-  const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  const res = await fetchImpl(url, { signal: timeoutSignal(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Open-Meteo wave field returned HTTP ${res.status}`);
   const payload = await res.json();
 
@@ -314,7 +316,7 @@ function slot(values: number[], target: number): { lo: number; hi: number; frac:
 export function createWaveSampler(field: MarineField): WaveSampler {
   return (lat: number, lon: number, timeMs: number): WaveSample | null => {
     const y = slot(field.lats, lat);
-    const x = slot(field.lons, lon);
+    const x = slot(field.lons, lonInGrid(field.lons, lon));
     const t = slot(field.times, timeMs);
     if (!y || !x || !t) return null;
 
@@ -402,7 +404,7 @@ export function createWaveSampler(field: MarineField): WaveSampler {
 export function createCurrentSampler(field: MarineField): CurrentSampler {
   return (lat: number, lon: number, timeMs: number): CurrentSample | null => {
     const y = slot(field.lats, lat);
-    const x = slot(field.lons, lon);
+    const x = slot(field.lons, lonInGrid(field.lons, lon));
     const t = slot(field.times, timeMs);
     if (!y || !x || !t) return null;
 

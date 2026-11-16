@@ -2,9 +2,25 @@ import type { WindSample, WindSampler } from './routing.js';
 export interface Bounds {
     north: number;
     south: number;
+    /**
+     * May exceed 180 for an area that spans the 180th meridian: a box from 170°E
+     * to 170°W is `west: 170, east: 190`. `west` is always the smaller number, so
+     * a grid's longitudes ascend, and `lonInGrid` maps a position onto them.
+     */
     east: number;
     west: number;
 }
+/** A longitude folded into -180..180, which is what a forecast API wants. */
+export declare function wrapLon(lon: number): number;
+/**
+ * A longitude expressed the way a grid's axis expresses it.
+ *
+ * The router keeps positions in -180..180 and a grid over the 180th meridian
+ * runs past 180, so 175°W is -175 to one and 185 to the other. Returns the
+ * longitude shifted by a whole turn when that puts it on the axis, and
+ * unchanged when nothing does (the caller then finds it off the grid).
+ */
+export declare function lonInGrid(lons: number[], lon: number): number;
 export interface WindField {
     /** The model this field came from, as Open-Meteo names it. */
     model: string;

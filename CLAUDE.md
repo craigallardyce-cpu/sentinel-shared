@@ -90,9 +90,11 @@ reproduce this layout before anything builds.
   to be reviewed, CI has something to report on, and a session that did not write
   it can pick it up. Two conventions make a change that spans repos legible
   without any tooling:
-  - **Branch name `fleet/<initiative>/<repo>`** for a change that has companions
-    in other repositories, so the set can be found by prefix. A change confined
-    to one repo takes any name.
+  - **One branch name across the set** for a change that has companions in
+    other repositories, so the set can be found by name. A Project thread is
+    given its name, `claude/project-thread-<id>`, the same in every repo, and
+    pushes to nothing else. A session started outside the Project uses
+    `fleet/<initiative>/<repo>`. A change confined to one repo takes any name.
   - **A `Fleet:` line in each PR body** naming its companions by URL and saying
     which merges first. A shared-package change merges before the apps that
     consume it; a migration merges before, or with, the client half that needs it.
@@ -118,7 +120,10 @@ reproduce this layout before anything builds.
   It `git archive`s the repo and this repository side by side into a scratch
   directory, installs (`npm run verify:install`, else `npm ci`), runs
   `npm run verify`, and prints both SHAs and a PASS/FAIL line to paste under a
-  PR's **Verified**. A PR in a private repo is not reviewable without that output
+  PR's **Verified**. The scratch copy has no `.git`, so it tells the drift
+  checker where this repository's is: an app's `sentinel-shared` pin is checked
+  against this clone's `origin/main`, which the summary names and which is only
+  as current as the last fetch. A PR in a private repo is not reviewable without that output
   for its head, and the reviewer re-runs it before merging rather than trusting
   the author's. This repository is public, its minutes are free, and its CI
   stays as it is. The Website's nightly `fleet-health.yml` also stays (about a
@@ -167,7 +172,7 @@ reproduce this layout before anything builds.
   It covers cross-app dependency alignment, version alignment, Vite aliases for
   every bare import a shared package makes, the dev server's `fs.allow` reaching this repo, local re-copies of extracted
   modules, Android parity and `applicationId` vs Electron `appId`, OceanSentinel's
-  backend-dep mirroring, stale or unpublished `sentinel-shared` SHA pins, palette
+  backend-dep mirroring, the Linux launchers' switches, stale or unpublished `sentinel-shared` SHA pins, palette
   integrity, the installed `sentinel-check` skill, settings drift, theme
   adoption and the open-source licence list each build ships. It is part of each app's `npm run verify`, run at the same per-app
   scope CI gave it, so what `verify-clean` reports is what CI would have.
@@ -214,12 +219,18 @@ reproduce this layout before anything builds.
   ```
   Check the extraction actually produced files before trusting a pass.
 - **On Linux the X11 choice has to be on the command line.** Each app's
-  `build.linux.executableArgs` puts `--ozone-platform=x11` in the `.deb`'s
-  launcher entry, and the three must keep it. `applyLinuxGpuCompatibility`
-  appends the same switch, but in Electron 45 that reaches only the child
-  processes: the main process has already chosen Wayland where one exists, and
-  on ChromeOS the window then never appears, although the page loads (roadmap
-  #135, found 2026-11-14). A run from a terminal needs the flag typed.
+  `build.linux.executableArgs` puts `--ozone-platform=x11` in the launcher
+  entry of both the `.deb` and the AppImage, and the drift checker fails an app
+  that drops it. `applyLinuxGpuCompatibility` appends the same switch, but in
+  Electron 45 that reaches only the child processes: the main process has
+  already chosen Wayland where one exists, and on ChromeOS the window then
+  never appears, although the page loads (roadmap #135, found 2026-11-14). A
+  start that bypasses the launcher (a terminal, an AppImage run directly)
+  restarts itself once with the switch; `SENTINEL_NO_X11_RELAUNCH=1` turns
+  that off. The AppImage's launcher also carries `--no-sandbox`, under
+  `build.appImage.executableArgs`: electron-builder supplies it only while
+  `executableArgs` is unset, and an AppImage cannot ship the sandbox helper.
+  The `.deb` installs the helper and is not given the switch.
 - **Every fleet app requires sign-in.** Licensing and entitlements live in
   Supabase. The dev-server bypass each app carries is `import.meta.env.DEV`,
   which Vite substitutes at compile time, so it is literally `false` in every

@@ -105,9 +105,22 @@ const readText = (p) => fs.readFileSync(p, 'utf8');
  * simply means "no". Callers degrade instead of crashing, so a checkout without
  * usable git history still runs every other check.
  */
+// verify-clean runs this script from a `git archive` copy of sentinel-shared,
+// which has no .git, so every question asked of git below came back empty and
+// the pin checks in section 8 could only warn that they could not run. Since
+// the checks moved off Actions that copy is where they run, which left an
+// unpublished pin to be found by the nightly full clone, after the fact.
+// verify-clean now names the repository the copy was taken from, and the
+// questions (all of them about commits and refs, none about the working tree)
+// are put to that. A real checkout answers for itself and ignores the variable.
+const SHARED_GIT_DIR =
+  !exists(path.join(SHARED_ROOT, '.git')) && process.env.SENTINEL_SHARED_GIT_DIR
+    ? process.env.SENTINEL_SHARED_GIT_DIR
+    : null;
+
 function git(args) {
   try {
-    return execFileSync('git', args, {
+    return execFileSync('git', SHARED_GIT_DIR ? ['--git-dir', SHARED_GIT_DIR, ...args] : args, {
       cwd: SHARED_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -648,6 +661,43 @@ for (const app of presentApps.filter((a) => a.mirrorsBackendDeps)) {
 }
 
 // ---------------------------------------------------------------------------
+// 7c. The Linux launchers carry the switches the app cannot give itself.
+//
+//    `--ozone-platform=x11` has to be on the command line: set in-process it
+//    reaches only the child processes, and on ChromeOS the window then never
+//    appears (roadmap #135). CLAUDE.md said "the three must keep it" and
+//    nothing checked that they did.
+//
+//    The AppImage's launcher also needs `--no-sandbox`. electron-builder puts
+//    it there by default, but only while `executableArgs` is unset, so setting
+//    the X11 switch took it away: an AppImage cannot ship Chromium's setuid
+//    sandbox helper, and where unprivileged user namespaces are restricted
+//    (Ubuntu 23.10 onwards) it aborts at start-up without the switch. It goes
+//    under `build.appImage.executableArgs`, which electron-builder adds to the
+//    `build.linux` list for that target only; the .deb installs the helper and
+//    keeps its sandbox.
+// ---------------------------------------------------------------------------
+const X11_ARG = '--ozone-platform=x11';
+for (const app of presentApps) {
+  const build = readJson(path.join(app.dir, 'package.json')).build;
+  if (!build || !build.linux) continue;
+  const targets = [].concat(build.linux.target || []).map((t) => String(typeof t === 'string' ? t : t?.target).toLowerCase());
+  const linuxArgs = Array.isArray(build.linux.executableArgs) ? build.linux.executableArgs : [];
+  // electron-builder merges a target's own options over build.linux, and merges
+  // arrays by union (builder-util-runtime's deepAssign).
+  const argsFor = (key) => [...linuxArgs, ...(Array.isArray(build[key]?.executableArgs) ? build[key].executableArgs : [])];
+  for (const [target, key] of [['deb', 'deb'], ['appimage', 'appImage']]) {
+    if (!targets.includes(target)) continue;
+    if (!argsFor(key).includes(X11_ARG)) {
+      fail('linux', `${app.name}: the ${key} launcher does not pass ${X11_ARG} (build.linux.executableArgs) — started on a Wayland session the window never appears on ChromeOS`);
+    }
+  }
+  if (targets.includes('appimage') && !argsFor('appImage').includes('--no-sandbox')) {
+    fail('linux', `${app.name}: the AppImage launcher does not pass --no-sandbox — setting executableArgs removed electron-builder's default; add "appImage": { "executableArgs": ["--no-sandbox", "${X11_ARG}"] } under "build"`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 8. The workflow pins sentinel-shared by SHA.
 //
 //    A pin only means anything against what is PUBLISHED. actions/checkout
@@ -677,7 +727,13 @@ const shallow = git(['rev-parse', '--is-shallow-repository']) === 'true';
 // so a new package directory is treated as consumable by default -- the
 // fail-safe direction, since the cost of a spurious warning is far below the
 // cost of silently shipping stale shared code.
-const NOT_CONSUMED = ['scripts/', 'skills/', '*.md', '.gitignore'];
+// The two fleet-*.json files are read by this checker and by nothing an app
+// builds, so a version bump (which touches only fleet-version.json here) used to
+// make every pin report stale on the release that had just moved it.
+const NOT_CONSUMED = [
+  'scripts/', 'skills/', '.github/', '*.md', '.gitignore', '.gitattributes',
+  'fleet-version.json', 'fleet-dependencies.json',
+];
 
 /**
  * The newest published commit touching a path an app builds against, or null if

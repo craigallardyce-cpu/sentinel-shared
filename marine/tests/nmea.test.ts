@@ -8,7 +8,12 @@ import {
   handleNmeaSentence,
   createNmeaLiveData,
   isFixFresh,
-  FIX_MAX_AGE_MS
+  FIX_MAX_AGE_MS,
+  resolveTrueHeading,
+  resolveDepth,
+  createDepthState,
+  DEPTH_DATUM_HOLD_MS,
+  WIND_TRUE_HOLD_MS
 } from '../src/nmea.js';
 
 /**
@@ -159,11 +164,31 @@ describe('parseNmeaSentence', () => {
   });
 
   it('parses true wind from an MWD sentence', () => {
-    const sentence = withChecksum('WIMWD,,,270.0,M,12.5,N,6.4,M');
+    const sentence = withChecksum('WIMWD,270.0,T,,,12.5,N,6.4,M');
     const result = parseNmeaSentence(sentence);
     expect(result).not.toBeNull();
     expect(result.twd).toBeCloseTo(270.0, 6);
     expect(result.tws).toBeCloseTo(12.5, 6);
+  });
+
+  it('does not call a magnetic MWD direction true, or its speed apparent', () => {
+    // The true field is empty: the bearing is magnetic and has to say so.
+    const result = parseNmeaSentence(withChecksum('WIMWD,,,270.0,M,12.5,N,6.4,M'));
+    expect(result.twd).toBeUndefined();
+    expect(result.twdMagnetic).toBeCloseTo(270.0, 6);
+    expect(result.tws).toBeCloseTo(12.5, 6);
+    // MWD is the true wind. It used to be written into aws and awd as well.
+    expect('aws' in result).toBe(false);
+    expect('awd' in result).toBe(false);
+  });
+
+  it('corrects a magnetic MWD direction by the variation once the feed gives one', () => {
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('WIMWD,,,270.0,M,12.5,N,6.4,M'), live);
+    expect(live.w_dir).toBeCloseTo(270, 6); // No variation yet: used as it is.
+    handleNmeaSentence(withChecksum('GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,010.0,W'), live);
+    handleNmeaSentence(withChecksum('WIMWD,,,270.0,M,12.5,N,6.4,M'), live);
+    expect(live.w_dir).toBeCloseTo(260, 6);
   });
 
   it('parses relative apparent wind from an MWV sentence', () => {
@@ -315,5 +340,284 @@ describe('isFixFresh', () => {
   it('calls a fix from the future fresh rather than stale', () => {
     // A gateway whose clock is ahead should not read as a lost position.
     expect(isFixFresh(2_000_000, 1_000_000)).toBe(true);
+  });
+});
+
+/**
+ * Heading. Course over ground is where the boat is going and heading is where
+ * it points; RMC used to hand back the first as the second, VHW's magnetic
+ * heading went into the same field, and the HDG sentence's own heading was
+ * thrown away. So `heading` alternated between two different things, and at
+ * anchor it was GPS course noise.
+ */
+describe('heading', () => {
+  it('RMC gives course over ground and no heading', () => {
+    const result = parseNmeaSentence(withChecksum('GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W'));
+    expect(result.cog).toBeCloseTo(84.4, 6);
+    expect('heading' in result).toBe(false);
+    expect(result.magVar).toBeCloseTo(-3.1, 6);
+  });
+
+  it('RMC leaves out what the sentence left empty, so a merge keeps what it had', () => {
+    // No speed, course or variation in this one.
+    const result = parseNmeaSentence(withChecksum('GPRMC,123519,A,4807.038,N,01131.000,E,,,230394,,'));
+    expect(result.latDec).toBeCloseTo(48 + 7.038 / 60, 6);
+    for (const key of ['sog', 'cog', 'heading', 'magVar']) {
+      expect(key in result).toBe(false);
+    }
+    // The merge OceanSentinel does: HDG's variation survives the next RMC.
+    const held = { magVar: -14.2 };
+    Object.assign(held, result);
+    expect(held.magVar).toBe(-14.2);
+  });
+
+  it('reads HDT as a true heading', () => {
+    expect(parseNmeaSentence(withChecksum('HEHDT,274.5,T')).heading).toBeCloseTo(274.5, 6);
+  });
+
+  it('reads HDM as a magnetic heading', () => {
+    const result = parseNmeaSentence(withChecksum('HCHDM,238.5,M'));
+    expect(result.headingMagnetic).toBeCloseTo(238.5, 6);
+    expect('heading' in result).toBe(false);
+  });
+
+  it('reads HDG: sensor plus deviation is magnetic, plus variation is true', () => {
+    const result = parseNmeaSentence(withChecksum('HCHDG,098.3,1.5,E,12.6,W'));
+    expect(result.headingMagnetic).toBeCloseTo(99.8, 6);
+    expect(result.heading).toBeCloseTo(87.2, 6);
+    expect(result.magVar).toBeCloseTo(-12.6, 6);
+  });
+
+  it('reads an HDG with no variation as magnetic only', () => {
+    const result = parseNmeaSentence(withChecksum('HCHDG,098.3,,,,'));
+    expect(result.headingMagnetic).toBeCloseTo(98.3, 6);
+    expect('heading' in result).toBe(false);
+    expect('magVar' in result).toBe(false);
+  });
+
+  it('wraps an HDG heading that crosses north', () => {
+    const result = parseNmeaSentence(withChecksum('HCHDG,005.0,,,10.0,W'));
+    expect(result.heading).toBeCloseTo(355, 6);
+  });
+
+  it('reads THS only when the mode is a real reading', () => {
+    expect(parseNmeaSentence(withChecksum('GPTHS,077.5,A')).heading).toBeCloseTo(77.5, 6);
+    expect(parseNmeaSentence(withChecksum('GPTHS,077.5,E'))).toBeNull();
+    expect(parseNmeaSentence(withChecksum('GPTHS,077.5,V'))).toBeNull();
+  });
+
+  it('keeps VHW true and magnetic headings apart', () => {
+    const both = parseNmeaSentence(withChecksum('VWVHW,115.6,T,129.8,M,6.2,N,11.5,K'));
+    expect(both.heading).toBeCloseTo(115.6, 6);
+    expect(both.headingMagnetic).toBeCloseTo(129.8, 6);
+    expect(both.stw).toBeCloseTo(6.2, 6);
+
+    const magneticOnly = parseNmeaSentence(withChecksum('VWVHW,,,129.8,M,6.2,N,,'));
+    expect('heading' in magneticOnly).toBe(false);
+    expect(magneticOnly.headingMagnetic).toBeCloseTo(129.8, 6);
+
+    const speedOnly = parseNmeaSentence(withChecksum('VWVHW,,,,,6.2,N,,'));
+    expect(speedOnly).toEqual({ stw: 6.2 });
+  });
+
+  it('resolveTrueHeading prefers a true heading, then magnetic plus variation, and never a course', () => {
+    expect(resolveTrueHeading({ heading: 12, headingMagnetic: 30, magVar: -10 })).toBe(12);
+    expect(resolveTrueHeading({ headingMagnetic: 5, magVar: -10 })).toBe(355);
+    expect(resolveTrueHeading({ headingMagnetic: 5 })).toBeUndefined();
+    expect(resolveTrueHeading({})).toBeUndefined();
+  });
+});
+
+/**
+ * A fix the receiver does not have. Quality 6 and mode E are dead reckoning:
+ * the receiver has lost its satellites and is extrapolating. Each such sentence
+ * used to count as a fix and refresh `lastFixAt`, so the position-lost alarm
+ * stayed quiet.
+ */
+describe('engine revolutions', () => {
+  it('reads RPM from an engine or a shaft', () => {
+    expect(parseNmeaSentence(withChecksum('IIRPM,E,1,1850.0,,A'))).toEqual({ engineRpm: 1850, engineNumber: 1 });
+    expect(parseNmeaSentence(withChecksum('IIRPM,S,2,-640.5,10.0,A'))).toEqual({ engineRpm: 640.5, engineNumber: 2 });
+    expect(parseNmeaSentence(withChecksum('IIRPM,E,1,0.0,,A'))).toEqual({ engineRpm: 0, engineNumber: 1 });
+  });
+
+  it('refuses a reading marked invalid, or with no figure', () => {
+    expect(parseNmeaSentence(withChecksum('IIRPM,E,1,1850.0,,V'))).toBeNull();
+    expect(parseNmeaSentence(withChecksum('IIRPM,E,1,,,A'))).toBeNull();
+  });
+});
+
+describe('fix quality', () => {
+  const gga = (quality: string) =>
+    parseNmeaSentence(withChecksum(`GPGGA,123519,4807.038,N,01131.000,E,${quality},08,0.9,545.4,M,46.9,M,,`));
+
+  it('accepts GPS, differential, PPS, RTK and simulator qualities', () => {
+    for (const quality of ['1', '2', '3', '4', '5', '8']) {
+      expect(gga(quality), `quality ${quality}`).not.toBeNull();
+    }
+  });
+
+  it('refuses no fix, estimated, manual and an unreadable quality', () => {
+    for (const quality of ['0', '6', '7', '', 'x', '9']) {
+      expect(gga(quality), `quality "${quality}"`).toBeNull();
+    }
+  });
+
+  it('refuses an RMC whose mode is estimated, manual or not valid', () => {
+    const rmc = (mode: string) =>
+      parseNmeaSentence(withChecksum(`GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W,${mode}`));
+    for (const mode of ['A', 'D', 'F', 'P', 'R', 'S']) expect(rmc(mode), `mode ${mode}`).not.toBeNull();
+    for (const mode of ['E', 'M', 'N']) expect(rmc(mode), `mode ${mode}`).toBeNull();
+  });
+
+  it('takes an RMC with no mode field at its status flag', () => {
+    expect(parseNmeaSentence(withChecksum('GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,,'))).not.toBeNull();
+  });
+
+  it('refuses a GLL whose mode is estimated', () => {
+    expect(parseNmeaSentence(withChecksum('GPGLL,4807.038,N,01131.000,E,123519,A,A'))).not.toBeNull();
+    expect(parseNmeaSentence(withChecksum('GPGLL,4807.038,N,01131.000,E,123519,A,E'))).toBeNull();
+  });
+
+  it('does not refresh lastFixAt from a dead-reckoned sentence', () => {
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('GPGGA,123519,4807.038,N,01131.000,E,6,08,0.9,545.4,M,46.9,M,,'), live);
+    expect(live.lastFixAt).toBeNull();
+    expect(live.lat).toBeNull();
+  });
+
+  it('refuses a position that cannot exist', () => {
+    expect(parseNmeaLatitude('9100.000', 'N')).toBeNull();
+    expect(parseNmeaLatitude('4860.000', 'N')).toBeNull();
+    expect(parseNmeaLongitude('18100.000', 'E')).toBeNull();
+    expect(parseNmeaLongitude('01160.500', 'E')).toBeNull();
+    expect(parseNmeaLatitude('9000.000', 'S')).toBe(-90);
+    expect(parseNmeaLongitude('18000.000', 'W')).toBe(-180);
+  });
+
+  it('carries 59.9996 minutes into the degrees', () => {
+    expect(formatCoords(41 + 59.9996 / 60, -(71 + 59.9996 / 60))).toEqual({
+      latStr: "N 42° 00.000'",
+      lngStr: "W 072° 00.000'"
+    });
+  });
+});
+
+/**
+ * Depth, and what it is measured from. A sounder set up with a keel offset
+ * reports depth below the keel; that was added up as if the offset ran to the
+ * waterline and handed on as depth of water.
+ */
+describe('depth datum', () => {
+  it('reports each depth sentence on its own datum, in metres', () => {
+    expect(parseNmeaSentence(withChecksum('SDDBT,,,4.9,M,,')).depthBelowTransducer).toBeCloseTo(4.9, 6);
+    expect(parseNmeaSentence(withChecksum('SDDBK,,,3.2,M,,')).depthBelowKeel).toBeCloseTo(3.2, 6);
+    expect(parseNmeaSentence(withChecksum('SDDBS,,,5.4,M,,')).depthBelowSurface).toBeCloseTo(5.4, 6);
+    const dpt = parseNmeaSentence(withChecksum('IIDPT,4.5,-1.5'));
+    expect(dpt.depthBelowTransducer).toBeCloseTo(4.5, 6);
+    expect(dpt.transducerOffset).toBeCloseTo(-1.5, 6);
+  });
+
+  it('reads a depth given only in fathoms', () => {
+    expect(parseNmeaSentence(withChecksum('SDDBT,,,,,2.7,F')).depthBelowTransducer).toBeCloseTo(2.7 * 1.8288, 6);
+  });
+
+  it('a positive DPT offset gives depth of water', () => {
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIDPT,4.5,0.5'), live);
+    expect(live.depth_datum).toBe('surface');
+    expect(live.depth).toBeCloseTo(5.0 / 0.3048, 6);
+  });
+
+  it('a negative DPT offset gives depth below the keel, and says so', () => {
+    // 5 m of water, transducer 0.5 m down, keel 1.5 m below the transducer.
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIDPT,4.5,-1.5'), live);
+    expect(live.depth_datum).toBe('keel');
+    expect(live.depth).toBeCloseTo(3.0 / 0.3048, 6);
+    expect(live.depth_offset_ft).toBeCloseTo(-1.5 / 0.3048, 6);
+    // DBT from the same sounder lands on the same datum.
+    handleNmeaSentence(withChecksum('IIDBT,,,4.5,M,,'), live);
+    expect(live.depth_datum).toBe('keel');
+    expect(live.depth).toBeCloseTo(3.0 / 0.3048, 6);
+  });
+
+  it('a DPT with no offset is a transducer reading', () => {
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIDPT,4.5,'), live);
+    expect(live.depth_datum).toBe('transducer');
+    expect(live.depth).toBeCloseTo(4.5 / 0.3048, 6);
+  });
+
+  it('holds the best datum when a sounder sends DBT, DBK and DBS', () => {
+    const state = createDepthState();
+    const t0 = 1_000_000;
+    const feed = [
+      { depthBelowTransducer: 4.5 },
+      { depthBelowKeel: 3.0 },
+      { depthBelowSurface: 5.0 },
+      { depthBelowTransducer: 4.5 },
+      { depthBelowKeel: 3.0 },
+      { depthBelowSurface: 5.1 }
+    ];
+    const accepted = feed.map((parsed, i) => resolveDepth(state, parsed, t0 + i * 300));
+    // The first two are taken while nothing better has been seen; once the
+    // surface reading arrives it is the only one accepted.
+    expect(accepted.map((r) => r?.datum ?? null)).toEqual(['transducer', 'keel', 'surface', null, null, 'surface']);
+    expect(accepted[5]?.depthM).toBe(5.1);
+  });
+
+  it('prefers a keel reading to a bare transducer reading', () => {
+    const state = createDepthState();
+    expect(resolveDepth(state, { depthBelowKeel: 3.0 }, 0)?.datum).toBe('keel');
+    expect(resolveDepth(state, { depthBelowTransducer: 4.5 }, 500)).toBeNull();
+  });
+
+  it('falls back to a worse datum when the better one stops', () => {
+    const state = createDepthState();
+    resolveDepth(state, { depthBelowSurface: 5.0 }, 0);
+    expect(resolveDepth(state, { depthBelowTransducer: 4.5 }, DEPTH_DATUM_HOLD_MS)).toBeNull();
+    expect(resolveDepth(state, { depthBelowTransducer: 4.5 }, DEPTH_DATUM_HOLD_MS + 1)?.datum).toBe('transducer');
+  });
+
+  it('works on a live-data object built before depth_state existed', () => {
+    const live = createNmeaLiveData();
+    delete live.depth_state;
+    handleNmeaSentence(withChecksum('IIDPT,4.5,0.5'), live);
+    expect(live.depth_datum).toBe('surface');
+  });
+});
+
+/** True wind where the feed has it; apparent only when it does not. */
+describe('wind speed reference', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('does not let apparent wind replace a recent true wind', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIMWV,021.3,T,014.1,N,A'), live);
+    vi.advanceTimersByTime(300);
+    handleNmeaSentence(withChecksum('IIMWV,024.5,R,019.7,N,A'), live);
+    expect(live.w_speed).toBeCloseTo(14.1, 6);
+    expect(live.w_speed_ref).toBe('true');
+  });
+
+  it('uses apparent wind when the feed has no true wind', () => {
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIMWV,024.5,R,019.7,N,A'), live);
+    expect(live.w_speed).toBeCloseTo(19.7, 6);
+    expect(live.w_speed_ref).toBe('apparent');
+  });
+
+  it('goes back to apparent wind when the true wind stops', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const live = createNmeaLiveData();
+    handleNmeaSentence(withChecksum('IIMWV,021.3,T,014.1,N,A'), live);
+    vi.advanceTimersByTime(WIND_TRUE_HOLD_MS + 1);
+    handleNmeaSentence(withChecksum('IIMWV,024.5,R,019.7,N,A'), live);
+    expect(live.w_speed).toBeCloseTo(19.7, 6);
+    expect(live.w_speed_ref).toBe('apparent');
   });
 });

@@ -50,7 +50,10 @@ export interface UseWindFieldResult {
     loading: boolean;
     error: string | null;
     errorKind: WindFieldErrorKind;
-    /** Non-zero only when the field came back from the cache after a failed fetch. */
+    /**
+     * Non-zero only when a refresh failed and the field shown is an older one:
+     * recalled from the cache, or the one already on the chart.
+     */
     ageHours: number;
     reload: () => Promise<void>;
 }

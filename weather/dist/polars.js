@@ -129,11 +129,16 @@ export function parsePolarFile(text, name = 'Imported polar') {
     if (rows.length < 2) {
         throw new Error('Polar file needs a wind speed header row and at least one wind angle row.');
     }
-    // The header's first cell is a label like "twa/tws" in most exports, but is
-    // occasionally a bare 0. Treat a leading non-numeric cell as the label.
+    // The header's first cell is a label like "twa/tws" in most exports, and
+    // occasionally a bare 0; either way it sits over the angle column and is not
+    // a wind speed. Some exports leave that corner out altogether, and then the
+    // header is one cell shorter than the rows under it and every cell of it is
+    // a wind speed. (This used to skip the first cell in both cases, which
+    // dropped the lightest wind and slid every speed one column over.)
     const header = rows[0];
-    const headerStart = Number.isFinite(Number(header[0])) && header.length > 1 ? 1 : 1;
-    const twsValues = header.slice(headerStart).map(Number);
+    const widestRow = Math.max(...rows.slice(1).map((row) => row.length));
+    const hasCornerCell = header.length >= widestRow || !Number.isFinite(Number(header[0]));
+    const twsValues = header.slice(hasCornerCell ? 1 : 0).map(Number);
     if (!twsValues.length || twsValues.some((v) => !Number.isFinite(v))) {
         throw new Error('Could not read true wind speeds from the polar header row.');
     }

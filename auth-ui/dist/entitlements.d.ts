@@ -53,7 +53,11 @@ export interface Entitlements {
     fetchedAt: number;
     /** Strongest status among this product's grants: 'active' if any grant is active, else 'trialing'. */
     status?: 'active' | 'trialing';
-    /** Epoch ms when this product's access ends. Null/undefined = open-ended. When trialing, the soonest end among the trialing grants. */
+    /**
+     * Epoch ms when this product's access ends: the latest end among its grants,
+     * since access lasts until the last of them does. Null when any grant has no
+     * end date (open-ended); undefined when it was never recorded.
+     */
     currentPeriodEnd?: number | null;
     /** The account's whole subscription shape, across every product. */
     account?: AccountEntitlements;

@@ -213,7 +213,12 @@ export async function fetchEntitlements(supabase, userId, productId) {
     // row's status and period cover every tier that bundle reaches.
     let hasActiveGrant = false;
     let hasTrialingGrant = false;
-    let soonestPeriodEnd = null;
+    // Access ends when the LAST grant does, so the date kept is the latest, and
+    // one grant with no end date makes the whole thing open-ended. This kept the
+    // soonest until review L12: two overlapping trials counted down to the first
+    // to end, and the no-plan screen then dated the trial's end too early.
+    let latestPeriodEnd = null;
+    let hasOpenEndedGrant = false;
     const recordAccountTier = (tier) => {
         const pid = tier?.product_id;
         if (typeof pid !== 'string')
@@ -248,8 +253,10 @@ export async function fetchEntitlements(supabase, userId, productId) {
         else if (row?.status === 'trialing')
             hasTrialingGrant = true;
         const end = toEpochMs(row?.current_period_end);
-        if (end !== null && (soonestPeriodEnd === null || end < soonestPeriodEnd))
-            soonestPeriodEnd = end;
+        if (end === null)
+            hasOpenEndedGrant = true;
+        else if (latestPeriodEnd === null || end > latestPeriodEnd)
+            latestPeriodEnd = end;
     };
     // Directly held tiers.
     const { data: subs, error: subsError } = await supabase
@@ -324,7 +331,7 @@ export async function fetchEntitlements(supabase, userId, productId) {
     else if (hasTrialingGrant)
         entitlements.status = 'trialing';
     // There is a grant, so an absent end date means open-ended rather than unknown.
-    entitlements.currentPeriodEnd = soonestPeriodEnd;
+    entitlements.currentPeriodEnd = hasOpenEndedGrant ? null : latestPeriodEnd;
     return entitlements;
 }
 /**

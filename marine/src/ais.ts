@@ -14,7 +14,15 @@ export interface AisTargetData {
   cog?: number;
   heading?: number;
   isOwnVessel?: boolean;
+  /** When any message from this vessel last arrived, a name or call sign included. */
   lastSeen?: number;
+  /**
+   * When a POSITION report last arrived (types 1 to 3, 18 and 19). A static
+   * report moves `lastSeen` and carries no position, so this is the one that
+   * says how old `lat` and `lon` are, and whether two readings of a target are
+   * two reports or the same one seen twice.
+   */
+  lastPositionAt?: number;
 }
 
 /**
@@ -264,7 +272,9 @@ export function parseAisSentence(sentence: string): AisTargetData | null {
   try {
     const bits = decode6BitPayload(fullPayload);
     const msgType = getBitsInt(bits, 0, 6);
-    const mmsi = getBitsInt(bits, 8, 30).toString();
+    // Nine digits, always. A coast station (00MIDxxxx) or a group call
+    // (0MIDxxxxx) starts with zeros, and as a bare number it lost them.
+    const mmsi = getBitsInt(bits, 8, 30).toString().padStart(9, '0');
 
     // Position report (Types 1, 2, 3)
     if ([1, 2, 3].includes(msgType)) {
@@ -281,9 +291,12 @@ export function parseAisSentence(sentence: string): AisTargetData | null {
       const cog = cogRaw < 3600 ? cogRaw / 10 : 0;
 
       const hdgRaw = getBitsInt(bits, 128, 9);
-      const heading = hdgRaw > 0 && hdgRaw < 360 ? hdgRaw : cog;
+      // 0 to 359 is a heading and 511 means none. Due north is 0, and it used
+      // to be taken for "not available" and replaced by the course.
+      const heading = hdgRaw < 360 ? hdgRaw : cog;
 
       if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 && (lat !== 0 || lon !== 0)) {
+        const now = Date.now();
         return {
           mmsi,
           type: 'AIS Class A',
@@ -293,7 +306,8 @@ export function parseAisSentence(sentence: string): AisTargetData | null {
           cog,
           heading,
           isOwnVessel,
-          lastSeen: Date.now()
+          lastSeen: now,
+          lastPositionAt: now
         };
       }
     }
@@ -313,9 +327,12 @@ export function parseAisSentence(sentence: string): AisTargetData | null {
       const cog = cogRaw < 3600 ? cogRaw / 10 : 0;
 
       const hdgRaw = getBitsInt(bits, 124, 9);
-      const heading = hdgRaw > 0 && hdgRaw < 360 ? hdgRaw : cog;
+      // 0 to 359 is a heading and 511 means none. Due north is 0, and it used
+      // to be taken for "not available" and replaced by the course.
+      const heading = hdgRaw < 360 ? hdgRaw : cog;
 
       if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 && (lat !== 0 || lon !== 0)) {
+        const now = Date.now();
         return {
           mmsi,
           type: 'AIS Class B',
@@ -325,7 +342,8 @@ export function parseAisSentence(sentence: string): AisTargetData | null {
           cog,
           heading,
           isOwnVessel,
-          lastSeen: Date.now()
+          lastSeen: now,
+          lastPositionAt: now
         };
       }
     }
@@ -403,7 +421,12 @@ export function calculateTargetMetrics(
 
   // Distance (Range in NM)
   const dLat = (tgtLat - ownLat) * 60;
-  const dLon = (tgtLon - ownLon) * 60 * Math.cos(((ownLat + tgtLat) / 2) * rad);
+  // The short way round: either side of the 180th meridian two vessels a mile
+  // apart differ by nearly 360 degrees of longitude.
+  let dLonDeg = tgtLon - ownLon;
+  if (dLonDeg > 180) dLonDeg -= 360;
+  else if (dLonDeg < -180) dLonDeg += 360;
+  const dLon = dLonDeg * 60 * Math.cos(((ownLat + tgtLat) / 2) * rad);
   const distNM = Math.sqrt(dLat * dLat + dLon * dLon);
 
   // Bearing (degrees 0-360)
@@ -430,8 +453,11 @@ export function calculateTargetMetrics(
   let cpaNM = distNM;
   let tcpaMin = 0;
   let isPassed = false;
+  // Under a hundredth of a knot of relative speed the two are not approaching
+  // at all: two boats at anchor, or two alongside in a marina.
+  const hasRelativeMotion = rv2 > 0.0001;
 
-  if (rv2 > 0.0001) {
+  if (hasRelativeMotion) {
     const tCpaHours = -(rx * rvx + ry * rvy) / rv2;
     if (tCpaHours < 0) {
       isPassed = true;
@@ -452,6 +478,9 @@ export function calculateTargetMetrics(
   let tcpaStr = '00m 00s';
   if (isPassed) {
     tcpaStr = 'PASSED';
+  } else if (!hasRelativeMotion) {
+    // There is no closest approach to count down to.
+    tcpaStr = '---';
   } else {
     const mins = Math.floor(tcpaMin);
     const secs = Math.floor((tcpaMin - mins) * 60);
@@ -459,7 +488,14 @@ export function calculateTargetMetrics(
   }
 
   // Threat assessment: ADVISORY if CPA/TCPA indicate close quarters.
-  const isThreat = (cpaNM <= 0.8 && tcpaMin <= 20 && !isPassed) || (distNM <= 2.0 && cpaNM <= 0.5);
+  //
+  // Only between vessels that are moving relative to each other. With no
+  // relative motion the "closest approach" is the present distance and the time
+  // to it is zero, which passed the first test for every target within 0.8 NM:
+  // at anchor or in a marina, every neighbour was flagged.
+  const isThreat =
+    hasRelativeMotion &&
+    ((cpaNM <= 0.8 && tcpaMin <= 20 && !isPassed) || (distNM <= 2.0 && cpaNM <= 0.5));
   const threatLevel = isThreat ? 'ADVISORY' : 'SAFE';
 
   return {

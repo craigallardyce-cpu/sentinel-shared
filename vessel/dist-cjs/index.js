@@ -3,13 +3,15 @@
  * The fleet's canonical vessel identity record.
  *
  * It lives in `public.vessels` in the shared Supabase project — one row per
- * vessel, keyed by `vessel_slug` (historically 'sentinel'). OceanSentinel's
- * shared-logbook view and MMSI sync already read and write it; VesselKeeper's
- * profile editor writes `name` and `vessel_type` through it. Column grants
- * (migrations 002 and 007 in the MarinerSentinel Website repo) decide who may
- * touch what: anon can read the identity columns and update only
- * mmsi/updated_at; authenticated can also update name and vessel_type; the
- * site secrets are not client-readable at all.
+ * vessel, keyed by `id` since migration 053 (`vessel_slug`, historically
+ * 'sentinel', is now only the display handle). OceanSentinel's shared-logbook
+ * view and MMSI sync already read and write it; VesselKeeper's profile editor
+ * writes `name` and `vessel_type` through it. Who may touch what is decided in
+ * the MarinerSentinel Website migrations: a signed-out client holds nothing on
+ * the table (027, restated in 053); a signed-in one sees and changes only its
+ * own row (053's owner policy; 059 allows one vessel per account), can read the
+ * identity columns and can update only name, vessel_type, mmsi and updated_at;
+ * the site secrets are not client-readable at all.
  *
  * The helpers take any Supabase client (`from(...)` shaped) so this package has
  * zero runtime dependencies and never bundles its own client copy.
@@ -93,22 +95,29 @@ async function resolveOwnVessel(supabase) {
         return null;
     return { id: profile.id, vesselSlug: profile.vesselSlug };
 }
+const isBlank = (value) => value === null || (typeof value === 'string' && value.trim() === '');
 /**
  * Write identity fields through to the shared record. Best-effort by design:
  * returns false (and stays quiet) when offline or unauthorised, so callers can
  * treat the shared record as eventually consistent rather than a hard
- * dependency. Requires a signed-in client for name/vesselType (migration 007).
+ * dependency. Requires a signed-in client (migrations 007 and 027).
+ *
+ * True means the row was changed. False covers every way it was not: the
+ * request failed, no vessel resolved, the update matched no row, or the patch
+ * asked only for a blank name, which is refused (see `VesselProfilePatch`).
+ * A blank name beside other fields is dropped and the rest is written.
  */
 async function saveVesselProfile(supabase, patch, target) {
     const values = { updated_at: new Date().toISOString() };
-    if (patch.name !== undefined)
+    const refusedName = patch.name !== undefined && isBlank(patch.name);
+    if (patch.name !== undefined && !refusedName)
         values.name = patch.name;
     if (patch.vesselType !== undefined)
-        values.vessel_type = patch.vesselType;
+        values.vessel_type = isBlank(patch.vesselType) ? null : patch.vesselType;
     if (patch.mmsi !== undefined)
-        values.mmsi = patch.mmsi;
+        values.mmsi = isBlank(patch.mmsi) ? null : patch.mmsi;
     if (Object.keys(values).length === 1)
-        return true; // nothing to write
+        return !refusedName; // nothing to write
     try {
         /*
           An untargeted write resolves to an id first rather than sending an
@@ -123,8 +132,18 @@ async function saveVesselProfile(supabase, patch, target) {
         if (target === undefined && !own)
             return false;
         const resolved = target ?? { id: own.id };
-        const { error } = await narrow(supabase.from('vessels').update(values), resolved);
-        return !error;
+        const update = narrow(supabase.from('vessels').update(values), resolved);
+        /*
+          PostgREST answers an UPDATE that matched no row with success, so "no
+          error" used to be reported as saved when the row had gone, or was never
+          this account's to change. Asking for the changed rows back is the only
+          way to tell; a client without `.select()` on an update (an older mock)
+          keeps the old answer.
+        */
+        const { data, error } = typeof update?.select === 'function' ? await update.select('id') : await update;
+        if (error)
+            return false;
+        return !(Array.isArray(data) && data.length === 0);
     }
     catch {
         return false;

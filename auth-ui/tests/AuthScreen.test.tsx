@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { AuthScreen, DELETE_ACCOUNT_URL, PASSWORD_RESET_URL, TERMS_VERSION, TERMS_URL, TERMS_REQUIRED_MESSAGE, PRIVACY_URL } from '../src/AuthScreen';
+import { AuthScreen, offlineGrantUserId, watchForSignOut, DELETE_ACCOUNT_URL, PASSWORD_RESET_URL, TERMS_VERSION, TERMS_URL, TERMS_REQUIRED_MESSAGE, PRIVACY_URL } from '../src/AuthScreen';
 import { memoryStorage } from './memoryStorage';
 import { writeEntitlements } from '../src/entitlements';
 
@@ -1089,5 +1089,367 @@ describe('AuthScreen — device label for the account page', () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
     const inserted = supabase.__deviceBuilders.find((b: any) => b.insert.mock.calls.length > 0);
     expect(inserted.insert.mock.calls[0][0]).not.toHaveProperty('device_model');
+  });
+});
+
+/*
+ * The 2026-11-15 review of this package. Every test above reaches a refusal
+ * from a stored session, where nobody pressed a button; these reach it the way
+ * a person does, by typing a sign-in, and from two directions at once.
+ */
+describe('AuthScreen — a typed sign-in that is refused (review H1)', () => {
+  const session = { user: { id: 'user-1' } };
+
+  function renderScreen(supabase: any, extra: Record<string, unknown> = {}) {
+    const onAuthenticated = vi.fn();
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+        {...extra}
+      />
+    );
+    return onAuthenticated;
+  }
+
+  /** Types a sign-in; auth-js answers it with SIGNED_IN, as the real client does. */
+  async function typeSignIn(supabase: any) {
+    await screen.findByText('Sign in to continue');
+    fireEvent.change(screen.getByPlaceholderText('captain@vessel.com'), { target: { value: 'cap@ship.com' } });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'hunter2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
+    await waitFor(() => expect(supabase.auth.signInWithPassword).toHaveBeenCalled());
+    supabase.__triggerAuthChange('SIGNED_IN', session);
+  }
+
+  it('leaves Check Again and Sign Out usable on the no-plan screen', async () => {
+    const supabase = makeMockSupabase({ session: null, subscriptions: [] });
+    renderScreen(supabase);
+    await typeSignIn(supabase);
+
+    await screen.findByText('No active plan');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Check Again/ })).toBeEnabled());
+    expect(screen.queryByText('Checking...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sign Out/ })).toBeEnabled();
+  });
+
+  it('leaves Sign In usable after a device-limit refusal, so it can be tried again', async () => {
+    const supabase = makeMockSupabase({
+      session: null,
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }],
+      deviceLimits: [{ active_devices: 5, max_devices: 5 }]
+    });
+    renderScreen(supabase);
+    await typeSignIn(supabase);
+
+    await screen.findByText(/Device limit reached/);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sign In' })).toBeEnabled());
+    expect(screen.queryByText('Processing...')).not.toBeInTheDocument();
+  });
+
+  it('leaves Sign In usable after the desktop-needs-Premium refusal', async () => {
+    const supabase = makeMockSupabase({
+      session: null,
+      subscriptions: [{ tiers: { id: 'tier-basic', name: 'Basic', product_id: 'prod-1' } }],
+      tierFeatures: [{ features: { feature_key: 'anchor_alarm' } }]
+    });
+    renderScreen(supabase, { desktopRequiresFeature: 'n2k_stream' });
+    await typeSignIn(supabase);
+
+    await screen.findByText(/needs Premium to run here/);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sign In' })).toBeEnabled());
+  });
+});
+
+describe('AuthScreen — one access check at a time (review L11)', () => {
+  const session = { user: { id: 'user-1' } };
+  const premium = [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }];
+  const inserts = (supabase: any) =>
+    supabase.__deviceBuilders.reduce((n: number, b: any) => n + b.insert.mock.calls.length, 0);
+
+  function renderScreen(supabase: any) {
+    const onAuthenticated = vi.fn();
+    const view = render(
+      <AuthScreen
+        storage={storage}
+        appName="Harbor Sentinel"
+        appId="HarborSentinel"
+        accessStorageKey="harborsentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+      />
+    );
+    return { onAuthenticated, view };
+  }
+
+  it('registers the device once when a stored session and SIGNED_IN both ask', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: premium });
+    const { onAuthenticated } = renderScreen(supabase);
+    // auth-js emits this as it restores the stored session, beside getSession().
+    supabase.__triggerAuthChange('SIGNED_IN', session);
+    supabase.__triggerAuthChange('SIGNED_IN', session);
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(inserts(supabase)).toBe(1);
+    expect(onAuthenticated).toHaveBeenCalledTimes(1);
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers the device once at sign-up, where the handler and SIGNED_IN both ask', async () => {
+    const supabase = makeMockSupabase({ session: null, subscriptions: premium });
+    supabase.auth.signUp = vi.fn(async () => {
+      supabase.__triggerAuthChange('SIGNED_IN', session);
+      return { data: { session }, error: null };
+    });
+    const { onAuthenticated } = renderScreen(supabase);
+    await screen.findByText('Sign in to continue');
+    fireEvent.click(screen.getByText("Don't have an account? Create one"));
+    fireEvent.change(screen.getByPlaceholderText('captain@vessel.com'), { target: { value: 'skipper@example.com' } });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'correct-horse' } });
+    fireEvent.click(screen.getByLabelText(/I'm 18 or older/));
+    fireEvent.submit(screen.getByText('Register Account').closest('form')!);
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(inserts(supabase)).toBe(1);
+    expect(onAuthenticated).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks again for a later request, once the first has finished', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    renderScreen(supabase);
+    await screen.findByText('No active plan');
+    const before = supabase.from.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /Check Again/ }));
+    await waitFor(() => expect(supabase.from.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('starts no polling timer when the screen has gone before its session lookup answers', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    // The first lookup is the one on mount. The second belongs to the no-plan
+    // polling, and is held open until after the screen is taken down.
+    let release!: (value: any) => void;
+    const held = new Promise((resolve) => (release = resolve));
+    const lookups = { count: 0 };
+    supabase.auth.getSession = vi.fn(() => {
+      lookups.count += 1;
+      return lookups.count === 2 ? held : Promise.resolve({ data: { session } });
+    });
+    const { view } = renderScreen(supabase);
+    await screen.findByText('No active plan');
+    await waitFor(() => expect(lookups.count).toBe(2));
+
+    view.unmount();
+    const timers = vi.spyOn(globalThis, 'setInterval');
+    release({ data: { session } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(timers.mock.calls.filter((call) => call[1] === 5000)).toHaveLength(0);
+  });
+});
+
+describe('AuthScreen — telling the app the session ended (VesselKeeper review M1)', () => {
+  const session = { user: { id: 'user-1' } };
+  const KEY = 'vesselkeeper_access';
+
+  function renderNoPlan(supabase: any, onSignedOut: any) {
+    storage.setItem(KEY, 'true');
+    storage.setItem(`${KEY}_offline_grant`, JSON.stringify({ userId: 'user-1', grantedAt: Date.now() }));
+    writeEntitlements(storage, KEY, { features: ['anchor_alarm'], tierNames: ['Premium'], fetchedAt: Date.now() });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Vessel Keeper"
+        appId="VesselKeeper"
+        accessStorageKey={KEY}
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+        onSignedOut={onSignedOut}
+      />
+    );
+  }
+
+  const cleared = () =>
+    storage.getItem(KEY) === null &&
+    storage.getItem(`${KEY}_offline_grant`) === null &&
+    storage.getItem(`${KEY}_entitlements`) === null;
+
+  it('calls the hook once when Sign Out is pressed and auth-js reports it', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    supabase.auth.signOut = vi.fn(async () => {
+      supabase.__triggerAuthChange('SIGNED_OUT', null);
+      return { error: null };
+    });
+    const onSignedOut = vi.fn();
+    renderNoPlan(supabase, onSignedOut);
+    await screen.findByText('No active plan');
+    fireEvent.click(screen.getByRole('button', { name: /Sign Out/ }));
+
+    await screen.findByText('Sign in to continue');
+    expect(onSignedOut).toHaveBeenCalledTimes(1);
+    expect(cleared()).toBe(true);
+  });
+
+  it('still calls it once when the sign-out could not reach the server and no event came', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    supabase.auth.signOut = vi.fn(async () => ({ error: { name: 'AuthRetryableFetchError', message: 'Failed to fetch' } }));
+    const onSignedOut = vi.fn();
+    renderNoPlan(supabase, onSignedOut);
+    await screen.findByText('No active plan');
+    fireEvent.click(screen.getByRole('button', { name: /Sign Out/ }));
+
+    await screen.findByText('Sign in to continue');
+    expect(onSignedOut).toHaveBeenCalledTimes(1);
+    expect(cleared()).toBe(true);
+  });
+
+  it('calls it for a sign-out that came from somewhere else', async () => {
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    const onSignedOut = vi.fn();
+    renderNoPlan(supabase, onSignedOut);
+    await screen.findByText('No active plan');
+    supabase.__triggerAuthChange('SIGNED_OUT', null);
+
+    await screen.findByText('Sign in to continue');
+    expect(onSignedOut).toHaveBeenCalledTimes(1);
+    expect(cleared()).toBe(true);
+  });
+
+  it('is not held up or broken by a hook that fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const supabase = makeMockSupabase({ session, subscriptions: [] });
+    renderNoPlan(supabase, vi.fn(async () => { throw new Error('cache would not clear'); }));
+    await screen.findByText('No active plan');
+    supabase.__triggerAuthChange('SIGNED_OUT', null);
+    expect(await screen.findByText('Sign in to continue')).toBeInTheDocument();
+  });
+});
+
+describe('watchForSignOut — hearing the session end after sign-in (VesselKeeper review M4)', () => {
+  const KEY = 'vesselkeeper_access';
+
+  function seeded() {
+    storage.setItem(KEY, 'true');
+    storage.setItem(`${KEY}_offline_grant`, JSON.stringify({ userId: 'user-1', grantedAt: Date.now() }));
+    writeEntitlements(storage, KEY, { features: ['anchor_alarm'], tierNames: ['Premium'], fetchedAt: Date.now() });
+  }
+
+  it('clears what admitted this device and tells the app, on SIGNED_OUT only', () => {
+    seeded();
+    const supabase = makeMockSupabase();
+    const onSignedOut = vi.fn();
+    watchForSignOut(supabase, { storage, accessStorageKey: KEY, onSignedOut });
+
+    supabase.__triggerAuthChange('TOKEN_REFRESHED', { user: { id: 'user-1' } });
+    supabase.__triggerAuthChange('SIGNED_IN', { user: { id: 'user-1' } });
+    expect(onSignedOut).not.toHaveBeenCalled();
+    expect(storage.getItem(KEY)).toBe('true');
+
+    supabase.__triggerAuthChange('SIGNED_OUT', null);
+    expect(onSignedOut).toHaveBeenCalledTimes(1);
+    expect(storage.getItem(KEY)).toBeNull();
+    expect(storage.getItem(`${KEY}_offline_grant`)).toBeNull();
+    expect(storage.getItem(`${KEY}_entitlements`)).toBeNull();
+  });
+
+  it('stops listening when asked', () => {
+    const supabase = makeMockSupabase();
+    const stop = watchForSignOut(supabase, { storage, accessStorageKey: KEY, onSignedOut: vi.fn() });
+    const subscription = supabase.auth.onAuthStateChange.mock.results[0].value.data.subscription;
+    stop();
+    expect(subscription.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a failing hook reach auth-js', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const supabase = makeMockSupabase();
+    watchForSignOut(supabase, { storage, accessStorageKey: KEY, onSignedOut: () => { throw new Error('boom'); } });
+    expect(() => supabase.__triggerAuthChange('SIGNED_OUT', null)).not.toThrow();
+  });
+});
+
+describe('offlineGrantUserId — who an offline start was admitted as (OceanSentinel review M3)', () => {
+  const KEY = 'oceansentinel_access';
+  const DAY = 24 * 60 * 60 * 1000;
+  const offline = { name: 'AuthRetryableFetchError', message: 'Failed to fetch' };
+
+  function grant(userId: string, ageDays: number, verified = true) {
+    if (verified) storage.setItem(KEY, 'true');
+    storage.setItem(`${KEY}_offline_grant`, JSON.stringify({ userId, grantedAt: Date.now() - ageDays * DAY }));
+  }
+
+  it('names the account the last online verification was for, when the session could not be fetched', async () => {
+    const session = { user: { id: 'user-7' } };
+    const supabase = makeMockSupabase({
+      session,
+      subscriptions: [{ tiers: { id: 'tier-premium', name: 'Premium', product_id: 'prod-1' } }]
+    });
+    const onAuthenticated = vi.fn();
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="Ocean Sentinel"
+        appId="OceanSentinel"
+        accessStorageKey={KEY}
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={onAuthenticated}
+        offlineGraceDays={30}
+      />
+    );
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+    expect(offlineGrantUserId(storage, KEY, 30, offline)).toBe('user-7');
+  });
+
+  it('answers when the browser says it is offline, with no error to go on', () => {
+    grant('user-7', 3);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    expect(offlineGrantUserId(storage, KEY, 30)).toBe('user-7');
+  });
+
+  it('is null while online with no fetch failure: no session then means signed out', () => {
+    grant('user-7', 3);
+    expect(offlineGrantUserId(storage, KEY, 30)).toBeNull();
+    expect(offlineGrantUserId(storage, KEY, 30, { name: 'AuthApiError', status: 400, message: 'Invalid Refresh Token' })).toBeNull();
+  });
+
+  it('is null once the allowance has run out, or where the app grants none', () => {
+    grant('user-7', 31);
+    expect(offlineGrantUserId(storage, KEY, 30, offline)).toBeNull();
+    grant('user-7', 3);
+    expect(offlineGrantUserId(storage, KEY, 0, offline)).toBeNull();
+  });
+
+  it('is null for a device that never verified, or holds no readable grant', () => {
+    grant('user-7', 3, false);
+    expect(offlineGrantUserId(storage, KEY, 30, offline)).toBeNull();
+    storage.setItem(KEY, 'true');
+    storage.setItem(`${KEY}_offline_grant`, 'not json');
+    expect(offlineGrantUserId(storage, KEY, 30, offline)).toBeNull();
+    storage.removeItem(`${KEY}_offline_grant`);
+    expect(offlineGrantUserId(storage, KEY, 30, offline)).toBeNull();
+  });
+
+  it('is null after a sign-out, which clears the grant', () => {
+    grant('user-7', 3);
+    const supabase = makeMockSupabase();
+    watchForSignOut(supabase, { storage, accessStorageKey: KEY, onSignedOut: vi.fn() });
+    supabase.__triggerAuthChange('SIGNED_OUT', null);
+    expect(offlineGrantUserId(storage, KEY, 30, offline)).toBeNull();
   });
 });

@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
+import { timeoutSignal } from '../src/timeoutSignal.js';
 import {
   fetchWindField,
   createWindSampler,
   boundsForPassage,
+  wrapLon,
+  lonInGrid,
   toComponents,
   fromComponents,
   type WindField
@@ -47,6 +50,99 @@ describe('boundsForPassage', () => {
     const b = boundsForPassage({ lat: 89, lon: 179 }, { lat: 89.5, lon: 179.5 }, 5);
     expect(b.north).toBe(90);
     expect(b.east).toBe(180);
+  });
+});
+
+describe('a passage across the 180th meridian', () => {
+  const fiji = { lat: -18, lon: 178 };
+  const samoa = { lat: -14, lon: -172 };
+
+  it('boxes the ten degrees of sea between the ends, not the other 350', () => {
+    const b = boundsForPassage(fiji, samoa, 2);
+    expect(b.west).toBe(176);
+    expect(b.east).toBe(190);
+    expect(b.east - b.west).toBe(14);
+    // The same box whichever way the passage is sailed.
+    expect(boundsForPassage(samoa, fiji, 2)).toEqual(b);
+  });
+
+  it('leaves a passage that does not cross it exactly as it was', () => {
+    const b = boundsForPassage({ lat: 41.5, lon: -71.3 }, { lat: 32.3, lon: -64.8 }, 2);
+    expect(b.east).toBeCloseTo(-62.8);
+    expect(b.west).toBeCloseTo(-73.3);
+  });
+
+  it('folds longitudes for the request and unfolds them for the grid', () => {
+    expect(wrapLon(190)).toBe(-170);
+    expect(wrapLon(180)).toBe(-180);
+    expect(wrapLon(-181)).toBe(179);
+    expect(wrapLon(-71.3)).toBeCloseTo(-71.3, 9);
+    const lons = [176, 178, 180, 182, 184, 186, 188, 190];
+    expect(lonInGrid(lons, -172)).toBe(188);
+    expect(lonInGrid(lons, 178)).toBe(178);
+    expect(lonInGrid(lons, 10)).toBe(10); // nowhere on this axis
+    expect(lonInGrid([-190, -180, -170], 175)).toBe(-185);
+  });
+
+  it('asks the API for longitudes it accepts, and samples either side of the line', async () => {
+    const lats = [-20, -18, -16, -14, -12];
+    const lons = [176, 178, 180, 182, 184, 186, 188, 190];
+    const fetchImpl = stubFetch(stubGrid(lats, lons, 12, 15, 90));
+    const f = await fetchWindField(boundsForPassage(fiji, samoa, 2), { resolutionDeg: 2, days: 1, fetchImpl });
+
+    const url = String(fetchImpl.mock.calls[0][0]);
+    const asked = new URL(url).searchParams.get('longitude')!.split(',').map(Number);
+    expect(asked.every((lon) => lon >= -180 && lon <= 180)).toBe(true);
+    expect(asked.slice(0, 8)).toEqual([176, 178, -180, -178, -176, -174, -172, -170]);
+    expect(f.lons).toEqual(lons);
+
+    const sample = createWindSampler(f);
+    expect(sample(-16, 179, T0)!.speedKts).toBeCloseTo(15, 6);
+    // The router keeps positions in -180..180; the grid runs past 180.
+    expect(sample(-16, -175, T0)!.speedKts).toBeCloseTo(15, 6);
+    expect(sample(-16, 170, T0)).toBeNull();
+  });
+
+  it('routes across it', async () => {
+    const lats = [-20, -18, -16, -14, -12];
+    const lons = [176, 178, 180, 182, 184, 186, 188, 190];
+    // A southerly: the passage east-north-east is a broad reach.
+    const f = await fetchWindField(boundsForPassage(fiji, samoa, 2), {
+      resolutionDeg: 2, days: 4, fetchImpl: stubFetch(stubGrid(lats, lons, 96, 15, 180))
+    });
+    const result = routeIsochrone({
+      start: fiji,
+      destination: samoa,
+      departure: T0,
+      polar: GENERIC_POLARS.cruisingMonohull,
+      wind: createWindSampler(f),
+      stepMinutes: 60
+    });
+    expect(result.reachedDestination).toBe(true);
+    // About 620 nm at six to seven knots.
+    expect(result.etaHours).toBeGreaterThan(70);
+    expect(result.etaHours).toBeLessThan(95);
+  });
+});
+
+describe('timeoutSignal', () => {
+  it('uses the platform timeout where there is one', () => {
+    expect(timeoutSignal(1000)).toBeInstanceOf(AbortSignal);
+  });
+
+  it('builds one where AbortSignal.timeout is missing, as on an older Android WebView', () => {
+    vi.useFakeTimers();
+    const original = (AbortSignal as any).timeout;
+    (AbortSignal as any).timeout = undefined;
+    try {
+      const signal = timeoutSignal(1000)!;
+      expect(signal.aborted).toBe(false);
+      vi.advanceTimersByTime(1000);
+      expect(signal.aborted).toBe(true);
+    } finally {
+      (AbortSignal as any).timeout = original;
+      vi.useRealTimers();
+    }
   });
 });
 

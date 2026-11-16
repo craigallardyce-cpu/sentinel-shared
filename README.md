@@ -27,7 +27,7 @@ Projects/
 | `@sentinel/theme` | The fleet visual foundation: colour/font tokens, the Tailwind role map, night mode and glass surfaces | all three |
 | `@sentinel/ui` | UI primitives built on the theme: `Button` (48/40 px, a lit `active` state, a `link` variant and `layout="bare"`), `Input`/`Select`/`Textarea`, `UnitField`, `InstrumentCell`, `Tabs`, `Toggle`, `Modal`/`ConfirmDialog`, `ToastProvider` + `toast`/`confirm`, `StatusPill`, `PlanPill`, `EmptyState`, `AppShell`, `SettingsShell` (whose About carries `OpenSourceLicences`), `openExternal(url)` and `openUserGuide(section)` | all three |
 | `@sentinel/vessel` | The fleet's canonical vessel identity record (`public.vessels` in the shared Supabase project): the `VesselProfile` type and best-effort read/write helpers | all three |
-| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes when its `Host` header is local too, anything arriving over the boat's network presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
+| `@sentinel/lan-pairing` | LAN pairing auth for the on-boat backends: loopback passes when its `Host` header is local too and no browser marks it as sent by another site's page (`Origin`, `Sec-Fetch-Site`), anything else presents the pairing token the desktop publishes | OceanSentinel, HarborSentinel (servers) |
 | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check: each backend's `/app-version` route reads the website's public feed rather than the private GitHub repositories | all three (servers) |
 | `@sentinel/settings` | The settings registry: one declaration per setting — type, default, and the scopes allowed to hold it — resolved through account/vessel/host/device layers | all three |
 | `@mariner-sentinel/charts` | Nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. **Note the scope** — this is the one package published as `@mariner-sentinel/*` rather than `@sentinel/*`, which is a real trap: tooling that matched packages by the `@sentinel/` prefix skipped it entirely until 2026-09-08. See `charts/README.md` | see `charts/README.md` |
@@ -41,9 +41,15 @@ Projects/
 | Option | Default | What it does |
 |---|---|---|
 | `watchdogSeconds` | `8` | Silence for this long on a connected feed destroys the socket and reconnects (OpenCPN's `N_DOG_TIMEOUT`). |
-| `reconnectDelayMs` | `5000` | Fixed delay between reconnection attempts. The pool never gives up while clients or a watch are attached. |
+| `reconnectDelayMs` | `5000` | Delay before a reconnection attempt. The pool never gives up while clients or a watch are attached. |
+| `reconnectMaxDelayMs` | `reconnectDelayMs` | Ceiling for that delay. Each attempt that brings no sentences doubles it up to this, and the first sentence returns it to `reconnectDelayMs`. The default keeps the delay fixed: an anchor watch waits up to this long for a position after its gateway comes back, so backing off is the app's choice. |
 | `connectTimeoutMs` | `10000` | How long a TCP dial may take. Past it the socket is destroyed and the ordinary close/reconnect path takes over, rather than the OS connect timeout (minutes) during which the watchdog, which starts on connect, is not running. UDP ignores it. |
 | `onSentence`, `shouldKeepAlive`, `normalizeHost`, `log` | none | The per-app seams documented in `marine/src/nmeaPool.ts`. |
+
+An entry's `isSocketConnected` says the TCP link is up or the UDP port is bound;
+`isReceiving` says a sentence has arrived on that socket. Only the second means
+a gateway is talking, and "Connection restored" is sent to clients on the first
+sentence after a reconnect, not on the connect.
 
 A partial line longer than 8 KiB (NMEA 0183 caps a sentence at 82 characters)
 is discarded with a warning rather than held, so a source that never sends a
@@ -215,8 +221,9 @@ without the `@source` line.
 ## `@sentinel/vessel`
 
 One vessel identity for the fleet. The record lives in `public.vessels` in the
-shared Supabase project (one row, keyed by `vessel_slug`, historically
-`'sentinel'`); this package is just the `VesselProfile` type plus
+shared Supabase project (one row per account, keyed by `id` since migration
+`053`; `vessel_slug`, historically `'sentinel'`, is now the display handle);
+this package is just the `VesselProfile` type plus
 `fetchVesselProfile()` / `saveVesselProfile()`. It takes any Supabase client as
 an argument, so it has no runtime dependencies and never bundles a second client.
 
@@ -234,11 +241,57 @@ an argument, so it has no runtime dependencies and never bundles a second client
 - **Writes are best-effort by design**: offline or signed-out returns false
   quietly and the app keeps its local value. Treat the shared record as
   eventually consistent, not a hard dependency.
+- **A blank is not a name.** `saveVesselProfile` never writes an empty or
+  all-spaces `name` (the rest of the patch still goes), and stores a blank
+  `vesselType` or `mmsi` as NULL. It returns true only when a row was changed:
+  an update that matched no row, which PostgREST reports as success, is false.
 
-Column grants decide who may write what (migrations `002` and `007` in the
-MarinerSentinel Website repo): `anon` reads the identity columns and may update
-only `mmsi`/`updated_at`; `authenticated` may also update `name`/`vessel_type`;
-the site secrets are not client-readable at all.
+Who may touch what is decided in the MarinerSentinel Website migrations. A
+signed-out client holds nothing on the table (`027`, restated in `053`). A
+signed-in one sees and changes only its own row (`053`'s owner policy; `059`
+allows one vessel per account), reads the identity columns and may update only
+`name`, `vessel_type`, `mmsi` and `updated_at`. The site secrets are not
+client-readable at all.
+
+## `@sentinel/auth-ui`: when the session ends, and who an offline start is
+
+`AuthScreen` is on screen only until sign-in succeeds, so three things an app
+needs for the rest of the session are exports rather than behaviour of the
+screen:
+
+- **`onSignedOut` (a prop).** Called once each time the screen sees the session
+  end: its own Sign Out button, a sign-out made elsewhere, or a refresh token
+  the server rejected. The access flag, the offline grant and the entitlement
+  cache are already cleared by then. It is where an app drops what it holds for
+  that account on this device (a local cache, an outbox, a settings store), so
+  the next account to sign in does not start with the last one's data. The
+  screen does not wait for it; it may be async and may call Supabase.
+- **`watchForSignOut(supabase, { storage, accessStorageKey, onSignedOut })`.**
+  The same, after sign-in. Call it when `onAuthenticated` fires and keep it for
+  as long as the app is open: without it a session that was revoked ended with
+  nobody listening, and the app stayed open with every request failing. On
+  `SIGNED_OUT` it clears what the screen clears and calls `onSignedOut`, where
+  the app shows the sign-in screen again. Being offline is not a sign-out and
+  fires nothing. It returns the function that stops listening.
+- **`offlineGrantUserId(storage, accessStorageKey, offlineGraceDays, sessionError?)`.**
+  An offline start is admitted with no session at all, so `getSession()` cannot
+  say whose it is. This names the account, by the rule the screen admits on: a
+  device that verified online within `offlineGraceDays`, whose session is
+  missing because the network could not be reached (pass the `error` from
+  `getSession()`, or the browser reports itself offline). Null otherwise,
+  including after a sign-out. Use it to attach an account settings layer on an
+  offline start instead of treating it as nobody.
+
+Access checks are single-flight per account. auth-js emits `SIGNED_IN` as it
+restores a stored session, and again whenever the window regains focus, beside
+the screen's own `getSession()`; sign-up asks twice the same way. Two checks
+running together both found the device unregistered and both inserted it. A
+caller that arrives while a check for the same account is running gets that
+check. Every check ends by clearing the form's busy state, whatever its answer.
+
+`Entitlements.currentPeriodEnd` is the **latest** end among the product's
+grants, and null when any one grant has no end date. It was the soonest, which
+counted two overlapping trials down to the first to end.
 
 ## `@sentinel/weather-ui`: `WarningsBanner`
 
@@ -475,6 +528,11 @@ or the boat's name.
   drops writes still queued for the server, and notifies, so values re-resolve
   and the next `load()` addresses the new account. A `load()` or write for the
   previous account that is still in flight is discarded when it lands.
+  `reset({ keepQueued: true })` is for a caller that knows the account has
+  **not** changed (the same person signing back in after an offline spell): it
+  does everything else and keeps the queued writes, which the next `load()`
+  sends. Never pass it across a change of account: the queue would be written
+  to the new account's boat.
 - **Call `dispose()` on a settings store you replace.** `createSettingsStore`
   subscribes to every layer it is given; `dispose()` unsubscribes from each and
   drops the store's own listeners, so a store rebuilt on sign-in does not leave
@@ -487,6 +545,26 @@ the start of the next `load()` that can reach the row, where they win over
 anything saved meanwhile. OceanSentinel queues its alarm limits this way: they
 belong to the boat, and are usually set with no signal. `pendingKeys()` lists
 what has not reached the server yet.
+
+Three things a write can cross, and what the store does:
+
+- **A `load()` that was already out.** The read answers with what the server
+  held before the write, so for any key written since the read began, or whose
+  write is still in the air, the device's value stands and the read's answer is
+  kept only as what to go back to if that write fails.
+- **Another write to the same key.** Writes to one key go to the server one at
+  a time, in the order they were made, and a failed one rolls back only when no
+  later write to that key is waiting: to the last value the server accepted or
+  reported, never to another failed attempt.
+- **No row.** A vessel column (`vessel.name`, `vessel.mmsi`, `vessel.type`) is
+  an UPDATE, and PostgREST answers an UPDATE that matched nothing with success.
+  The store asks for the rows it changed and rejects with `NoRowError` when
+  there are none; a queued write that fails this way stays queued without
+  holding up the ones behind it.
+
+A device-scope write that storage refuses (full, or blocked in a private
+window) now throws "could not be saved on this device" instead of reporting a
+save that did not happen. Reads and clears still never throw.
 
 **Adopting loses nothing, but not for free.** A setting declares where it used to
 live per app, and the device store reads those names when the namespaced key is
@@ -629,6 +707,29 @@ setupAutoUpdater({ app, autoUpdater, ipcMain, getMainWindow: () => mainWindow,
 // in createWindow(), in place of the app's own setWindowOpenHandler:
 installWindowGuards(mainWindow, { appUrl: APP_URL });
 ```
+
+## `@sentinel/electron-shell`: an install that does not happen, and X11
+
+`setupAutoUpdater({ ..., onBeforeInstall, onInstallFailed, installTimeoutMs })`.
+`onBeforeInstall` is where an app shuts things down before `quitAndInstall`
+(VesselKeeper stops its forked backend). If the install then does not happen,
+`onInstallFailed(err)` is called so the app can undo that, and the renderer is
+sent an `error` updater event. "Does not happen" is either call throwing, or the
+app still running `installTimeoutMs` (default 15 s) after asking to quit:
+electron-updater returns normally when it cannot start the installer, so that
+case can only be seen by the app not having gone. An app that takes longer than
+that to quit should raise the timeout.
+
+`applyLinuxGpuCompatibility(app)` restarts the app once with
+`--ozone-platform=x11` when it was started without the switch on a Wayland
+session (a terminal, an AppImage run directly); the in-process switch reaches
+only the child processes. It returns `false` when that restart is under way,
+and the process ends inside the call, so callers need no change. It does
+nothing when the command line names a platform (either one), when there is no
+X display, or when `SENTINEL_NO_X11_RELAUNCH=1` is set. An AppImage restarts
+through the AppImage file (`APPIMAGE`). The launchers must still carry the
+switch (`build.linux.executableArgs`, which the drift checker enforces): a
+restart costs a second, and the switch on the command line costs nothing.
 
 ## `@sentinel/electron-shell`: the Windows installer include
 

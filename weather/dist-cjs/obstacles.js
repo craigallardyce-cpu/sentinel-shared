@@ -204,43 +204,61 @@ function createObstacleField(zones) {
             return null;
         },
         blocks(lat1, lon1, lat2, lon2) {
-            const minX = Math.min(lon1, lon2);
-            const maxX = Math.max(lon1, lon2);
-            const minY = Math.min(lat1, lat2);
-            const maxY = Math.max(lat1, lat2);
-            stamp++;
-            for (let cx = Math.floor(minX / CELL); cx <= Math.floor(maxX / CELL); cx++) {
-                for (let cy = Math.floor(minY / CELL); cy <= Math.floor(maxY / CELL); cy++) {
-                    const bucket = cells.get(cellKey(cx, cy));
-                    if (!bucket)
-                        continue;
-                    for (const id of bucket) {
-                        if (seenEdge[id] === stamp)
-                            continue;
-                        seenEdge[id] = stamp;
-                        const poly = polys[ePoly[id]];
-                        const ring = poly.rings[eRing[id]];
-                        const j = eVert[id];
-                        const n = ring.length / 2;
-                        const i = (j + 1) % n;
-                        if (segmentsIntersect(lon1, lat1, lon2, lat2, ring[j * 2], ring[j * 2 + 1], ring[i * 2], ring[i * 2 + 1]))
-                            return poly.zone;
-                    }
-                }
+            /*
+              A leg whose ends are more than half the world apart in longitude is a
+              short leg across the 180th meridian, not a long one the other way.
+              Tested as drawn, 179.9°E to 179.9°W swept every cell around the globe
+              at that latitude and was blocked by the first continent in the way.
+              It is two legs: up to the meridian, and on from it.
+            */
+            if (Math.abs(lon2 - lon1) > 180) {
+                const edge = lon1 > lon2 ? 180 : -180;
+                const lon2Unwrapped = lon2 + (lon1 > lon2 ? 360 : -360);
+                const span = lon2Unwrapped - lon1;
+                const fraction = span === 0 ? 0 : (edge - lon1) / span;
+                const latAtEdge = lat1 + (lat2 - lat1) * fraction;
+                return blocksLeg(lat1, lon1, latAtEdge, edge) ?? blocksLeg(latAtEdge, -edge, lat2, lon2);
             }
-            // No edge crossed. A small polygon could still have swallowed the leg
-            // whole; a continent could not — see SWALLOW_TEST_MAX_POINTS.
-            stamp++;
-            for (const pi of polysAt(lon2, lat2)) {
-                if (!small[pi] || seenPoly[pi] === stamp)
-                    continue;
-                seenPoly[pi] = stamp;
-                if (polyContains(polys[pi], lon2, lat2))
-                    return polys[pi].zone;
-            }
-            return null;
+            return blocksLeg(lat1, lon1, lat2, lon2);
         }
     };
+    function blocksLeg(lat1, lon1, lat2, lon2) {
+        const minX = Math.min(lon1, lon2);
+        const maxX = Math.max(lon1, lon2);
+        const minY = Math.min(lat1, lat2);
+        const maxY = Math.max(lat1, lat2);
+        stamp++;
+        for (let cx = Math.floor(minX / CELL); cx <= Math.floor(maxX / CELL); cx++) {
+            for (let cy = Math.floor(minY / CELL); cy <= Math.floor(maxY / CELL); cy++) {
+                const bucket = cells.get(cellKey(cx, cy));
+                if (!bucket)
+                    continue;
+                for (const id of bucket) {
+                    if (seenEdge[id] === stamp)
+                        continue;
+                    seenEdge[id] = stamp;
+                    const poly = polys[ePoly[id]];
+                    const ring = poly.rings[eRing[id]];
+                    const j = eVert[id];
+                    const n = ring.length / 2;
+                    const i = (j + 1) % n;
+                    if (segmentsIntersect(lon1, lat1, lon2, lat2, ring[j * 2], ring[j * 2 + 1], ring[i * 2], ring[i * 2 + 1]))
+                        return poly.zone;
+                }
+            }
+        }
+        // No edge crossed. A small polygon could still have swallowed the leg
+        // whole; a continent could not — see SWALLOW_TEST_MAX_POINTS.
+        stamp++;
+        for (const pi of polysAt(lon2, lat2)) {
+            if (!small[pi] || seenPoly[pi] === stamp)
+                continue;
+            seenPoly[pi] = stamp;
+            if (polyContains(polys[pi], lon2, lat2))
+                return polys[pi].zone;
+        }
+        return null;
+    }
 }
 /**
  * Build a zone from a skipper's drawn polygon.

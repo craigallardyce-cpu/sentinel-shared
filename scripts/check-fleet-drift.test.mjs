@@ -41,10 +41,10 @@ function fixture(files) {
  * expected and not interesting here -- a bare fixture app trips several
  * unrelated rules -- so the status is ignored and the report is what is read.
  */
-function runChecker(root) {
+function runChecker(root, env = {}) {
   try {
     return execFileSync('node', [path.join(root, 'sentinel-shared', 'scripts', 'check-fleet-drift.mjs')], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env },
     });
   } catch (e) {
     return `${e.stdout ?? ''}${e.stderr ?? ''}`;
@@ -119,6 +119,84 @@ test('a ref that appears only in a comment does not count as a pin', () => {
           # ref: ${PIN} was the pin before the 2.11.0 bump
 `));
   assert.match(runChecker(root), /HarborSentinel: shared checkout is not pinned to a SHA/);
+});
+
+/*
+  verify-clean runs the checker from a `git archive` copy with no .git. Until
+  SENTINEL_SHARED_GIT_DIR, every pin check there ended in "could not be
+  checked", so a pin that was never pushed -- which stops a release build in all
+  three apps -- was only found by the nightly full clone.
+*/
+function sharedRepoWithUnpushedCommit() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-drift-git-'));
+  const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+  git('init', '-q');
+  git('config', 'user.email', 'test@example.invalid');
+  git('config', 'user.name', 'Test');
+  fs.mkdirSync(path.join(dir, 'marine'));
+  fs.writeFileSync(path.join(dir, 'marine', 'index.js'), '// one\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'published');
+  const published = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', published);
+  fs.writeFileSync(path.join(dir, 'marine', 'index.js'), '// two\n');
+  git('commit', '-q', '-am', 'local only');
+  return { gitDir: path.join(dir, '.git'), published, unpushed: git('rev-parse', 'HEAD') };
+}
+
+const pinned = (sha) => app(`          repository: craigallardyce-cpu/sentinel-shared
+          ref: ${sha}
+`);
+
+test('inside a copy with no .git, an unpushed pin fails once the checker is told where the repository is', () => {
+  const repo = sharedRepoWithUnpushedCommit();
+  const root = fixture(pinned(repo.unpushed));
+  assert.match(runChecker(root, { SENTINEL_SHARED_GIT_DIR: '' }), /could not be checked/);
+  const out = runChecker(root, { SENTINEL_SHARED_GIT_DIR: repo.gitDir });
+  assert.match(out, /FAIL\s+\[pin\] HarborSentinel: pins sentinel-shared@[0-9a-f]{7}, which has never been pushed/);
+});
+
+test('inside a copy with no .git, a published pin is checked and passes', () => {
+  const repo = sharedRepoWithUnpushedCommit();
+  const out = runChecker(fixture(pinned(repo.published)), { SENTINEL_SHARED_GIT_DIR: repo.gitDir });
+  assert.doesNotMatch(out, /\[pin\]/);
+});
+
+/*
+  CLAUDE.md said the three apps "must keep" --ozone-platform=x11 in their Linux
+  launchers and nothing checked it. Setting executableArgs at all also removes
+  electron-builder's default --no-sandbox from the AppImage.
+*/
+const linuxApp = (build) => ({
+  'HarborSentinel/package.json': JSON.stringify({ name: 'harbor-sentinel', version: '2.11.1', build }),
+});
+
+test('a Linux launcher without the X11 switch fails, per target', () => {
+  const out = runChecker(fixture(linuxApp({ linux: { target: ['deb', 'AppImage'] } })));
+  assert.match(out, /HarborSentinel: the deb launcher does not pass --ozone-platform=x11/);
+  assert.match(out, /HarborSentinel: the appImage launcher does not pass --ozone-platform=x11/);
+});
+
+test('the X11 switch alone still fails the AppImage, which has lost its --no-sandbox', () => {
+  const out = runChecker(fixture(linuxApp({ linux: { target: ['deb', 'AppImage'], executableArgs: ['--ozone-platform=x11'] } })));
+  assert.doesNotMatch(out, /does not pass --ozone-platform=x11/);
+  assert.match(out, /HarborSentinel: the AppImage launcher does not pass --no-sandbox/);
+});
+
+test('the AppImage gets --no-sandbox from its own options, and the deb is not asked for it', () => {
+  const out = runChecker(fixture(linuxApp({
+    linux: { target: ['deb', 'AppImage'], executableArgs: ['--ozone-platform=x11'] },
+    appImage: { executableArgs: ['--no-sandbox'] },
+  })));
+  assert.doesNotMatch(out, /\[linux\]/);
+});
+
+test('an app that builds no AppImage is not asked for --no-sandbox, and one with no Linux build is not checked', () => {
+  assert.doesNotMatch(
+    runChecker(fixture(linuxApp({ linux: { target: 'deb', executableArgs: ['--ozone-platform=x11'] } }))),
+    /\[linux\]/
+  );
+  assert.doesNotMatch(runChecker(fixture(linuxApp({ win: { target: 'nsis' } }))), /\[linux\]/);
 });
 
 /*

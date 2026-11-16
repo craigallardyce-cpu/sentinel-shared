@@ -131,6 +131,55 @@ describe('lanAuthGuard', () => {
     }
   );
 
+  it.each([
+    ['its own page', { origin: 'http://localhost:3000', 'sec-fetch-site': 'same-origin' }],
+    ['a dev server on another port', { origin: 'http://localhost:5173', 'sec-fetch-site': 'same-site' }],
+    ['a page loaded by address', { origin: 'http://127.0.0.1:3000' }],
+    ['an address typed into the browser', { 'sec-fetch-site': 'none' }],
+    ['the Electron main process, which sends neither header', {}],
+  ])('lets loopback through from %s', (_what, extra) => {
+    const { lanAuthGuard } = createLanPairing({ tokenFile });
+    const { res } = fakeRes();
+    let passed = false;
+    lanAuthGuard(from('127.0.0.1', '/status', { host: 'localhost:3000', ...extra }), res, () => (passed = true));
+    expect(passed).toBe(true);
+  });
+
+  it.each([
+    ['a page from another site', { origin: 'https://evil.example' }],
+    ['a site that only looks local', { origin: 'http://localhost.evil.example' }],
+    ['a sandboxed frame', { origin: 'null' }],
+    ['a browser extension', { origin: 'chrome-extension://abcdefgh' }],
+    ['an origin that is not a URL', { origin: 'localhost:3000' }],
+    ['an image or form on another site, which sends no Origin', { 'sec-fetch-site': 'cross-site' }],
+    ['a repeated header whose first value is foreign', { origin: ['https://evil.example', 'http://localhost:3000'] }],
+  ])('treats loopback from %s as the boat network', (_what, extra) => {
+    // The request reaches the backend over loopback with a local Host, because
+    // the browser is on this machine. Only the browser says whose page sent it.
+    const { lanAuthGuard } = createLanPairing({ tokenFile });
+    const { res, out } = fakeRes();
+    let passed = false;
+    lanAuthGuard(from('127.0.0.1', '/api/session/1/end', { host: 'localhost:3000', ...extra }), res, () => (passed = true));
+    expect(passed).toBe(false);
+    expect(out.code).toBe(401);
+  });
+
+  it('still accepts a valid token from another site, like any network caller', () => {
+    const pairing = createLanPairing({ tokenFile });
+    const { res } = fakeRes();
+    let passed = false;
+    pairing.lanAuthGuard(
+      from('127.0.0.1', '/status', {
+        host: 'localhost:3000',
+        origin: 'http://harborsentinel.local',
+        'x-sentinel-token': pairing.getPairingToken(),
+      }),
+      res,
+      () => (passed = true)
+    );
+    expect(passed).toBe(true);
+  });
+
   it('still accepts a valid token on loopback with a foreign Host', () => {
     // Falls through to the token check rather than being refused outright.
     const pairing = createLanPairing({ tokenFile });
@@ -224,6 +273,17 @@ describe('pairingTokenHandler', () => {
     for (const headers of [{ host: 'evil.example' }, {}]) {
       const { res, out } = fakeRes();
       pairing.pairingTokenHandler(from('127.0.0.1', '/api/pairing-token', headers), res);
+      expect(out.code).toBe(403);
+      expect(JSON.stringify(out.body)).not.toContain(token);
+    }
+  });
+
+  it('refuses a page from another site, although it arrives over loopback', () => {
+    const pairing = createLanPairing({ tokenFile });
+    const token = pairing.getPairingToken();
+    for (const extra of [{ origin: 'https://evil.example' }, { 'sec-fetch-site': 'cross-site' }]) {
+      const { res, out } = fakeRes();
+      pairing.pairingTokenHandler(from('127.0.0.1', '/api/pairing-token', { host: 'localhost:3000', ...extra }), res);
       expect(out.code).toBe(403);
       expect(JSON.stringify(out.body)).not.toContain(token);
     }

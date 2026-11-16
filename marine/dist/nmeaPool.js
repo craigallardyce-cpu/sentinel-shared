@@ -78,7 +78,7 @@ function stripBrackets(value) {
  * fight over it. Nothing needs that, and a test certainly does not.
  */
 export function createNmeaPool(options) {
-    const { createConnection, createUdpSocket, watchdogSeconds = 8, reconnectDelayMs = 5000, connectTimeoutMs = 10000, onSentence, shouldKeepAlive, normalizeHost = (value) => value, log = SILENT, } = options;
+    const { createConnection, createUdpSocket, watchdogSeconds = 8, reconnectDelayMs = 5000, reconnectMaxDelayMs = reconnectDelayMs, connectTimeoutMs = 10000, onSentence, shouldKeepAlive, normalizeHost = (value) => value, log = SILENT, } = options;
     const entries = new Map();
     const timers = new Map();
     /*
@@ -90,7 +90,13 @@ export function createNmeaPool(options) {
     function getTimers(key) {
         let found = timers.get(key);
         if (!found) {
-            found = { watchdogInterval: null, watchdogCounter: 0, reconnectTimer: null };
+            found = {
+                watchdogInterval: null,
+                watchdogCounter: 0,
+                reconnectTimer: null,
+                reconnectAttempts: 0,
+                announceOnData: false,
+            };
             timers.set(key, found);
         }
         return found;
@@ -131,6 +137,8 @@ export function createNmeaPool(options) {
             const trimmed = line.trim();
             if (!trimmed || (!trimmed.startsWith('$') && !trimmed.startsWith('!')))
                 continue;
+            if (!conn.isReceiving)
+                markReceiving(key, conn);
             // Serialised once per sentence, not once per client.
             const sse = `data: ${trimmed}\n\n`;
             for (const client of conn.clients) {
@@ -192,6 +200,30 @@ export function createNmeaPool(options) {
             }
         }
     }
+    /**
+     * The first sentence on a socket is what "connected" means to a navigator.
+     *
+     * A TCP connect or a UDP bind used to be announced as "Connection restored".
+     * A bind always succeeds, so a UDP feed with the gateway switched off told
+     * its clients the connection was restored every time the watchdog rebound
+     * the port, and a TCP gateway that accepts connections with its instruments
+     * off did the same. The announcement now waits for a sentence.
+     */
+    function markReceiving(key, conn) {
+        conn.isReceiving = true;
+        const t = timers.get(key);
+        if (!t)
+            return;
+        t.reconnectAttempts = 0;
+        if (!t.announceOnData)
+            return;
+        t.announceOnData = false;
+        notify(key, 'event: reconnected\ndata: Connection restored\n\n', {
+            type: 'status',
+            status: 'connected',
+            message: 'Connection restored',
+        });
+    }
     function stopWatchdog(key) {
         // `get`, not `getTimers`: stopping must not re-create the timers of a key
         // that drop or closeIfEmpty has just removed.
@@ -222,6 +254,7 @@ export function createNmeaPool(options) {
             // Destroy the socket but keep the entry, so attached clients survive.
             const conn = entries.get(key);
             if (conn) {
+                conn.isReceiving = false;
                 try {
                     conn.socket.destroy();
                 }
@@ -253,22 +286,30 @@ export function createNmeaPool(options) {
             return;
         if (target.transport === 'tcp' && !target.host)
             return;
-        log.info(`[NMEA Pool] Reconnecting to ${key} in ${reconnectDelayMs}ms.`);
-        notify(key, `event: reconnecting\ndata: Reconnecting in ${reconnectDelayMs / 1000}s...\n\n`, {
+        /*
+          Counted when an attempt is MADE, not when one is scheduled: a watchdog
+          trip schedules here and so does the close of the socket it destroyed, and
+          that is one failure, not two.
+        */
+        const t = getTimers(key);
+        const delayMs = Math.max(reconnectDelayMs, Math.min(reconnectDelayMs * 2 ** Math.min(t.reconnectAttempts, 16), reconnectMaxDelayMs));
+        const seconds = Math.round(delayMs / 100) / 10;
+        log.info(`[NMEA Pool] Reconnecting to ${key} in ${delayMs}ms.`);
+        notify(key, `event: reconnecting\ndata: Reconnecting in ${seconds}s...\n\n`, {
             type: 'status',
             status: 'reconnecting',
-            message: `Reconnecting in ${reconnectDelayMs / 1000}s...`,
+            message: `Reconnecting in ${seconds}s...`,
         });
-        const t = getTimers(key);
         t.reconnectTimer = host.setTimeout(() => {
             t.reconnectTimer = null;
+            t.reconnectAttempts += 1;
             if (target.transport === 'udp') {
                 attemptRebind(key, target);
             }
             else {
                 attemptReconnect(key, target.host, target.port);
             }
-        }, reconnectDelayMs);
+        }, delayMs);
     }
     /**
      * Dial, and give up on the dial after `connectTimeoutMs`.
@@ -318,16 +359,15 @@ export function createNmeaPool(options) {
                 }
                 configureSocket(socket);
                 startWatchdog(key);
-                notify(key, 'event: reconnected\ndata: Connection restored\n\n', {
-                    type: 'status',
-                    status: 'connected',
-                    message: 'Connection restored',
-                });
+                // Clients hear "Connection restored" from markReceiving, on the first
+                // sentence, not here: a link that is up and silent has restored nothing.
+                getTimers(key).announceOnData = true;
             });
             const existing = entries.get(key);
             if (existing) {
                 existing.socket = socket;
                 existing.buffer = '';
+                existing.isReceiving = false;
             }
             else {
                 entries.set(key, newEntry(socket));
@@ -445,15 +485,16 @@ export function createNmeaPool(options) {
     function attemptRebind(key, target) {
         log.info(`[NMEA Pool] Rebinding ${key}.`);
         try {
-            const socket = openUdp(key, target, () => notify(key, 'event: reconnected\ndata: Connection restored\n\n', {
-                type: 'status',
-                status: 'connected',
-                message: 'Connection restored',
-            }));
+            // As for TCP: a bound port is not a feed, so the announcement waits for
+            // the first datagram that carries a sentence.
+            const socket = openUdp(key, target, () => {
+                getTimers(key).announceOnData = true;
+            });
             const existing = entries.get(key);
             if (existing) {
                 existing.socket = socket;
                 existing.buffer = '';
+                existing.isReceiving = false;
             }
             else {
                 entries.set(key, newEntry(socket));
@@ -478,6 +519,7 @@ export function createNmeaPool(options) {
             wsClients: new Set(),
             buffer: '',
             isSocketConnected: false,
+            isReceiving: false,
             lastLoggedErrorMsg: '',
             lastErrorLoggedTime: 0,
         };
@@ -544,6 +586,7 @@ export function createNmeaPool(options) {
             if (!conn)
                 return;
             conn.isSocketConnected = false;
+            conn.isReceiving = false;
             if (conn.clients.size > 0 || conn.wsClients.size > 0 || keepAlive(key)) {
                 scheduleReconnect(key);
             }
@@ -660,6 +703,7 @@ export function createNmeaPool(options) {
             conn.clients.clear();
             conn.wsClients.clear();
             conn.isSocketConnected = false;
+            conn.isReceiving = false;
             // Before destroy(), for the reason closeIfEmpty gives.
             entries.delete(key);
             timers.delete(key);

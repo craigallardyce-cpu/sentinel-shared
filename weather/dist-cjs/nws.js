@@ -87,8 +87,12 @@ function toKnots(value, unit) {
     return unit === 'mph' ? Math.round(value * exports.MPH_TO_KNOTS) : Math.round(value);
 }
 const UNIT = String.raw `(kt|kts|knots?|mph|m\.p\.h\.)`;
-const WIND_RE = new RegExp(String.raw `(?:wind|winds|wind speed)\s*(?:around|of)?\s*(\d+)\s*(?:to\s*(\d+))?\s*` + UNIT, 'i');
-const GUST_RE = new RegExp(String.raw `(?:gust|gusts|gusting)\s*(?:as|up|of)?\s*(?:high|to)?\s*(?:as)?\s*(\d+)\s*` + UNIT, 'i');
+// Every speed in the text: "15 kt", "10 to 15 kt", "17 to 21 mph". Nothing else
+// NWS writes in a forecast period carries these units (seas are ft, visibility
+// nm, rain inches), so a number with one is a wind speed or a gust.
+const SPEED_RE = new RegExp(String.raw `(\d+)\s*(?:to\s*(\d+)\s*)?` + UNIT + String.raw `(?![a-z])`, 'gi');
+// "gusts up to", "gusting to", "could gust as high as", "gusty winds in excess of".
+const GUST_WORD_RE = /\bgust/i;
 const FIELD_RE = new RegExp(String.raw `^\s*(\d+)\s*(?:to\s*(\d+))?\s*` + UNIT + String.raw `?\s*$`, 'i');
 /**
  * An NWS `windSpeed` field ("10 to 15 mph", "5 mph", "10 kt") as knots. A field
@@ -106,32 +110,56 @@ function parseNwsWindSpeed(field) {
     return { min: Math.min(a, b), max: Math.max(a, b) };
 }
 /**
- * The wind in one NWS period, in knots: from its text, and from its `windSpeed`
- * field when the text names no sustained wind.
+ * The wind in one NWS period, in knots: every speed its text gives, and its
+ * `windSpeed` field.
+ *
+ * A period often names more than one wind: "NW winds 10 to 15 kt, increasing
+ * to 20 to 25 kt in the afternoon", "N winds 5 to 10 kt, becoming NW 15 to 20
+ * kt". Only the first used to be read, so that afternoon was reported as 15
+ * knots, and the figure an anchor watch is judged by was the lightest wind of
+ * the period rather than the strongest. Every speed is read now: the sustained
+ * range runs from the lowest to the highest of them, and the gust is the
+ * highest gust.
+ *
+ * A speed is a gust when a "gust" word stands between it and the speed before
+ * it (or the start of its sentence): "with gusts as high as 36 mph", "gusting
+ * to 30 kt", "winds could gust as high as 30 mph".
+ *
+ * The gridpoint `windSpeed` field covers the whole period and is taken with
+ * the text, not only when the text names no wind.
  */
 function parseNwsWind(text, windSpeedField) {
     let sustainedMin = null;
     let sustainedMax = null;
     let gust = null;
-    const w = text.match(WIND_RE);
-    const wUnit = w ? windUnit(w[3]) : null;
-    if (w && wUnit) {
-        const a = toKnots(parseInt(w[1], 10), wUnit);
-        const b = w[2] ? toKnots(parseInt(w[2], 10), wUnit) : a;
-        sustainedMin = Math.min(a, b);
-        sustainedMax = Math.max(a, b);
-    }
-    else {
-        const field = parseNwsWindSpeed(windSpeedField);
-        if (field) {
-            sustainedMin = field.min;
-            sustainedMax = field.max;
+    const sustained = (low, high) => {
+        sustainedMin = sustainedMin === null ? low : Math.min(sustainedMin, low);
+        sustainedMax = sustainedMax === null ? high : Math.max(sustainedMax, high);
+    };
+    const source = typeof text === 'string' ? text : '';
+    let contextStart = 0;
+    for (const m of source.matchAll(SPEED_RE)) {
+        const unit = windUnit(m[3]);
+        const index = m.index ?? 0;
+        // What introduces this speed: back to the previous speed, or to the start
+        // of its sentence when that is nearer.
+        const sentenceStart = source.lastIndexOf('. ', index) + 1;
+        const lead = source.slice(Math.max(contextStart, sentenceStart), index);
+        contextStart = index + m[0].length;
+        if (!unit)
+            continue;
+        const a = toKnots(parseInt(m[1], 10), unit);
+        const b = m[2] ? toKnots(parseInt(m[2], 10), unit) : a;
+        if (GUST_WORD_RE.test(lead)) {
+            gust = Math.max(gust ?? 0, a, b);
+        }
+        else {
+            sustained(Math.min(a, b), Math.max(a, b));
         }
     }
-    const g = text.match(GUST_RE);
-    const gUnit = g ? windUnit(g[2]) : null;
-    if (g && gUnit)
-        gust = toKnots(parseInt(g[1], 10), gUnit);
+    const field = parseNwsWindSpeed(windSpeedField);
+    if (field)
+        sustained(field.min, field.max);
     const max = Math.max(0, sustainedMax ?? 0, gust ?? 0);
     return { sustainedMin, sustainedMax, gust, max };
 }

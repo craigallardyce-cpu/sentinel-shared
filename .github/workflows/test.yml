@@ -91,9 +91,16 @@ jobs:
       # and a stale one silently ships old code to all three. Editing a shared
       # package without rebuilding is a documented recurring failure here; this
       # is the check that catches it at the push rather than in a release.
+      #
+      # `git status`, not `git diff`: diff compares tracked files only, so a new
+      # source file whose built output was never added passed here, and the apps
+      # then consumed a dist/ without it. Status lists untracked files too.
       - name: Confirm committed dist matches src
         run: |
-          if ! git diff --exit-code -- dist dist-cjs; then
-            echo "::error::Committed dist/ does not match a fresh build of src/. Run 'npm run build' in ${{ matrix.package }} and commit the result."
+          changed="$(git status --porcelain --untracked-files=all -- dist dist-cjs)"
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            git diff --stat -- dist dist-cjs
+            echo "::error::Committed dist/ does not match a fresh build of src/ (' M' is a stale file, '??' one that was never added). Run 'npm run build' in ${{ matrix.package }} and commit the result."
             exit 1
           fi

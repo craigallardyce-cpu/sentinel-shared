@@ -8,6 +8,8 @@ exports.speedToKnots = speedToKnots;
 exports.fetchMarineField = fetchMarineField;
 exports.createWaveSampler = createWaveSampler;
 exports.createCurrentSampler = createCurrentSampler;
+const windField_js_1 = require("./windField.js");
+const timeoutSignal_js_1 = require("./timeoutSignal.js");
 /**
  * The sea the router sails through: a grid of wave AND current forecasts over
  * the passage area, sampled continuously in space and time.
@@ -146,15 +148,16 @@ async function fetchMarineField(bounds, options = {}) {
     const lons = axis(bounds.west, bounds.east, resolutionDeg);
     const latParam = [];
     const lonParam = [];
+    // As for the wind field: the axis may run past 180, the request may not.
     for (const la of lats)
         for (const lo of lons) {
             latParam.push(la);
-            lonParam.push(lo);
+            lonParam.push(Math.round((0, windField_js_1.wrapLon)(lo) * 1000) / 1000);
         }
     const url = `${MARINE_URL}?latitude=${latParam.join(',')}&longitude=${lonParam.join(',')}` +
         '&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction' +
         `&forecast_days=${Math.min(MAX_MARINE_DAYS, Math.max(1, Math.round(days)))}`;
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetchImpl(url, { signal: (0, timeoutSignal_js_1.timeoutSignal)(FETCH_TIMEOUT_MS) });
     if (!res.ok)
         throw new Error(`Open-Meteo wave field returned HTTP ${res.status}`);
     const payload = await res.json();
@@ -279,7 +282,7 @@ function slot(values, target) {
 function createWaveSampler(field) {
     return (lat, lon, timeMs) => {
         const y = slot(field.lats, lat);
-        const x = slot(field.lons, lon);
+        const x = slot(field.lons, (0, windField_js_1.lonInGrid)(field.lons, lon));
         const t = slot(field.times, timeMs);
         if (!y || !x || !t)
             return null;
@@ -368,7 +371,7 @@ function createWaveSampler(field) {
 function createCurrentSampler(field) {
     return (lat, lon, timeMs) => {
         const y = slot(field.lats, lat);
-        const x = slot(field.lons, lon);
+        const x = slot(field.lons, (0, windField_js_1.lonInGrid)(field.lons, lon));
         const t = slot(field.times, timeMs);
         if (!y || !x || !t)
             return null;
