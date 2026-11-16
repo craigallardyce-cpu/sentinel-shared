@@ -16,6 +16,8 @@
  *     file directly. The Host check is what stops DNS rebinding: a web page on
  *     some other site whose name has been re-pointed at 127.0.0.1 arrives over
  *     loopback, but with that site's name in Host, so it is treated as LAN.
+ *     So is a request a browser marks as coming from another site's page
+ *     (`Origin`, `Sec-Fetch-Site`): see `isCrossSiteRequest`.
  *   - Anything arriving over the network presents the pairing token, which the
  *     backend mints once and keeps.
  *
@@ -105,9 +107,59 @@ function isLocalHostHeader(value: string | string[] | undefined): boolean {
   return name === 'localhost' || name === '127.0.0.1' || name === '[::1]';
 }
 
-/** Loopback socket and a local Host header: the machine talking to itself. */
+function headerValue(req: PairingRequest, name: string): string | undefined {
+  const value = req.headers?.[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Whether a browser says this request was made by a page from somewhere else.
+ *
+ * Loopback and a local Host header are not enough to be "the machine talking
+ * to itself": a page from any website, open in a browser on the boat PC, can
+ * send a request to `http://localhost:3000` and it arrives exactly that way.
+ * CORS stops that page reading the answer, not the request being carried out,
+ * and a request that ends an anchor watch needs no answer. A browser cannot be
+ * made to lie about where a request came from, so two headers settle it:
+ *
+ *   - `Origin`, sent with every cross-origin request that can change anything,
+ *     must name this machine (`localhost`, `127.0.0.1` or `[::1]`, any port,
+ *     which covers the app's own page and a dev server). `null`, the origin of
+ *     a sandboxed frame, does not.
+ *   - `Sec-Fetch-Site: cross-site` marks the rest, such as an `<img>` or a
+ *     form pointed at the backend, which carry no `Origin`.
+ *
+ * A request with neither header is not from a browser page at all (the
+ * Electron main process, curl on the same machine) and is local as before.
+ * A foreign request is not refused here, only no longer waved through: it is
+ * treated like one from the network and needs the pairing token.
+ */
+export function isCrossSiteRequest(req: PairingRequest): boolean {
+  const origin = headerValue(req, 'origin');
+  if (origin !== undefined) {
+    let local = false;
+    try {
+      const url = new URL(origin);
+      local = (url.protocol === 'http:' || url.protocol === 'https:') && isLocalHostHeader(url.host);
+    } catch {
+      local = false;
+    }
+    if (!local) return true;
+  }
+  const site = headerValue(req, 'sec-fetch-site');
+  return typeof site === 'string' && site.trim().toLowerCase() === 'cross-site';
+}
+
+/**
+ * Loopback socket, a local Host header, and no sign of a page from elsewhere:
+ * the machine talking to itself.
+ */
 function isLocalRequest(req: PairingRequest): boolean {
-  return isLoopbackAddress(req.socket?.remoteAddress) && isLocalHostHeader(req.headers?.host);
+  return (
+    isLoopbackAddress(req.socket?.remoteAddress) &&
+    isLocalHostHeader(headerValue(req, 'host')) &&
+    !isCrossSiteRequest(req)
+  );
 }
 
 /** Constant-time compare, so a wrong token cannot be found one character at a time. */
