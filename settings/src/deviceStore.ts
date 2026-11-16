@@ -103,8 +103,16 @@ export function createDeviceStore(storage: StorageLike, options: DeviceStoreOpti
     set(key, raw) {
       try {
         storage.setItem(namespaced(key), raw);
-      } catch {
-        /* Out of quota or storage disabled. The value is NOT kept: `get` re-reads storage, so this write is lost. */
+      } catch (cause) {
+        /*
+          Out of quota or storage disabled. The value is NOT kept: `get` re-reads
+          storage. This used to be swallowed, so the screen that made the change
+          went on showing it and the setting was gone at the next start. Reads
+          stay guarded (they are on the way to first paint); a write is something
+          a person just did, and they are owed the truth about it.
+        */
+        const reason = cause instanceof Error && cause.message ? ` (${cause.message})` : '';
+        throw new Error(`Settings: "${key}" could not be saved on this device: its storage is full or unavailable${reason}.`);
       }
     },
 

@@ -116,12 +116,19 @@ describe('hostile storage', () => {
     },
   };
 
-  it('reads, writes and clears without throwing', () => {
+  it('reads and clears without throwing', () => {
     const store = createDeviceStore(throwing, { app: 'ocean', registry });
     expect(() => store.get('display.keep_awake')).not.toThrow();
     expect(store.get('display.keep_awake')).toBeUndefined();
-    expect(() => store.set('display.keep_awake', 'true')).not.toThrow();
     expect(() => store.clear('display.keep_awake')).not.toThrow();
+  });
+
+  it('says so when a write could not be stored, instead of appearing to have saved (L16)', async () => {
+    const store = createDeviceStore(throwing, { app: 'ocean', registry });
+    expect(() => store.set('display.keep_awake', 'true')).toThrow(/could not be saved on this device/);
+    // Through the settings store, that is a rejected write like any other.
+    const settings = createSettingsStore({ registry, stores: [store] });
+    await expect(settings.set('display.keep_awake', true, { scope: 'device' })).rejects.toThrow(/storage is full or unavailable/);
   });
 
   it('still resolves declared defaults through the settings store', () => {

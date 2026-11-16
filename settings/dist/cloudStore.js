@@ -21,6 +21,13 @@
  * The client is injected, exactly as in `@sentinel/vessel`, so this package
  * depends on no Supabase library and three apps install nothing new.
  */
+/** A write the server accepted and applied to nothing: the row is not there. */
+export class NoRowError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'NoRowError';
+    }
+}
 export function createCloudStore(options) {
     const { scope, client, table, match = {}, jsonColumn, columns = {}, columnsTable, merge } = options;
     const identity = columnsTable ?? { table, match };
@@ -188,16 +195,28 @@ export function createCloudStore(options) {
             return String(value);
         return undefined;
     }
-    /** One key to the server: a value, or null to clear it. Throws on any failure. */
+    /**
+     * One key to the server: a value, or null to clear it. Throws on any failure.
+     *
+     * An UPDATE that matches no row is not an error to PostgREST: it answers
+     * success with nothing changed, and a column write used to be reported as
+     * saved on the strength of that. The statement now asks for the rows it
+     * changed and an empty answer is a failure (`NoRowError`). A client or test
+     * double whose update cannot be asked for rows is taken at its word, as before.
+     */
     async function send(at, key, raw) {
         const column = columns[key];
         if (column) {
-            const { error } = await client
+            const update = client
                 .from(identity.table)
                 .update({ [column]: raw, updated_at: new Date().toISOString() })
                 .match(at.identityMatch ?? identity.match);
+            const { data, error } = typeof update?.select === 'function' ? await update.select(column) : await update;
             if (error)
                 throw new Error(error.message ?? String(error));
+            if (Array.isArray(data) && data.length === 0) {
+                throw new NoRowError(`Settings: "${key}" was not saved, because no ${identity.table} row matched.`);
+            }
         }
         else {
             const change = raw === null ? { remove_keys: [key] } : { patch: { [key]: raw } };
@@ -207,6 +226,82 @@ export function createCloudStore(options) {
         }
     }
     const targetOf = (at) => (at ? JSON.stringify(at.match) : undefined);
+    const writes = new Map();
+    const tails = new Map();
+    let tick = 0;
+    /** Run `task` after every earlier write to `key` has settled, pass or fail. */
+    function inTurn(key, task) {
+        const run = (tails.get(key) ?? Promise.resolve()).then(task);
+        const tail = run.then(() => undefined, () => undefined);
+        tails.set(key, tail);
+        void tail.then(() => {
+            if (tails.get(key) === tail)
+                tails.delete(key);
+        });
+        return run;
+    }
+    /**
+     * Put `raw` (undefined to clear) in the cache and on the server.
+     *
+     * On failure a queued key is held for later. Any other key goes back to the
+     * last value the server is known to hold, but only if no later write to it is
+     * waiting: that one is the latest word, and gets its own verdict.
+     */
+    async function write(key, raw) {
+        const started = generation;
+        const state = writes.get(key) ?? { base: cache.get(key), open: 0, touched: 0 };
+        writes.set(key, state);
+        state.open += 1;
+        state.touched = ++tick;
+        if (raw === undefined)
+            cache.delete(key);
+        else
+            cache.set(key, raw);
+        // Filled in by the task below; read again if it fails, to name the row a held write is for.
+        const where = { at: null };
+        try {
+            await inTurn(key, async () => {
+                const at = await addressing();
+                where.at = at;
+                if (!at) {
+                    throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not ${raw === undefined ? 'cleared' : 'saved'}.`);
+                }
+                await send(at, key, raw ?? null);
+            });
+            if (started !== generation)
+                return; // Reset meanwhile: leave the new account's state alone.
+            state.open -= 1;
+            state.touched = ++tick;
+            state.base = raw;
+            if (pending.delete(key))
+                writePending();
+            writeCache();
+            notify();
+        }
+        catch (cause) {
+            if (started !== generation)
+                throw cause; // Reset dropped it: neither queued nor rolled back.
+            state.open -= 1;
+            state.touched = ++tick;
+            if (queues(key)) {
+                // Held for the server, so for this device it is the value.
+                state.base = raw;
+                if (state.open === 0)
+                    holdForLater(key, raw ?? null, where.at);
+                return;
+            }
+            if (state.open === 0) {
+                // Roll back, or the screen would show a value nothing is holding.
+                if (state.base === undefined)
+                    cache.delete(key);
+                else
+                    cache.set(key, state.base);
+                writeCache();
+                notify();
+            }
+            throw cause;
+        }
+    }
     /**
      * Send what is pending, in the order it was queued. Stops at the first
      * failure: offline, the rest would fail too, and they are all still held.
@@ -224,7 +319,11 @@ export function createCloudStore(options) {
             try {
                 await send(at, key, entry.raw);
             }
-            catch {
+            catch (cause) {
+                // A missing row is this entry's problem, not the network's: keep it and
+                // carry on, or one write that can never land would hold up every other.
+                if (cause instanceof NoRowError)
+                    continue;
                 break;
             }
             // Only if nothing newer was queued for this key while the request was out.
@@ -251,6 +350,7 @@ export function createCloudStore(options) {
         },
         async load() {
             const started = generation;
+            const began = tick;
             try {
                 const next = new Map();
                 let found = false;
@@ -313,9 +413,37 @@ export function createCloudStore(options) {
                 if (started !== generation)
                     return false; // Reset mid-read: the previous account's answer.
                 if (found) {
+                    /*
+                      A key written while this read was out keeps what the device says.
+                      The server's answer for it may predate the write, and putting it
+                      back showed the old value on a screen whose change had been saved.
+                      Keys last written before the read began are in the answer already.
+                    */
+                    const crossed = new Map();
+                    for (const [key, state] of writes) {
+                        if (state.open > 0 || state.touched > began)
+                            crossed.set(key, cache.get(key));
+                        else
+                            writes.delete(key);
+                    }
                     cache.clear();
                     for (const [key, value] of next)
                         cache.set(key, value);
+                    for (const [key, value] of crossed) {
+                        if (value === undefined)
+                            cache.delete(key);
+                        else
+                            cache.set(key, value);
+                        const state = writes.get(key);
+                        if (!state)
+                            continue;
+                        // Settled: nothing left to roll back. Still in the air: if it fails,
+                        // what the server has just said is what there is to go back to.
+                        if (state.open === 0)
+                            writes.delete(key);
+                        else
+                            state.base = next.get(key);
+                    }
                     // Anything still unsent is this device's latest word on that key.
                     applyPending();
                     writeCache();
@@ -329,94 +457,43 @@ export function createCloudStore(options) {
                   Offline, signed out, or a table this account cannot see. All three mean
                   the same thing to a resolution chain — this layer has nothing — and none
                   of them should stop the app opening.
+        
+                  Subscribers are told all the same: `loaded` has changed, and a screen
+                  waiting on it would otherwise wait until something else happened.
                 */
-                if (started === generation)
+                if (started === generation) {
                     loaded = true;
+                    notify();
+                }
                 return false;
             }
         },
         get(key) {
             return cache.get(key);
         },
-        async set(key, raw) {
-            const started = generation;
-            const previous = cache.get(key);
-            cache.set(key, raw);
-            let at = null;
-            try {
-                at = await addressing();
-                if (!at)
-                    throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not saved.`);
-                await send(at, key, raw);
-                if (started !== generation)
-                    return; // Reset meanwhile: leave the new account's state alone.
-                if (pending.delete(key))
-                    writePending();
-                writeCache();
-                notify();
-            }
-            catch (cause) {
-                if (started !== generation)
-                    throw cause; // Reset dropped it: neither queued nor rolled back.
-                if (queues(key)) {
-                    holdForLater(key, raw, at);
-                    return;
-                }
-                // Roll back, or the screen would show a value nothing is holding.
-                if (previous === undefined)
-                    cache.delete(key);
-                else
-                    cache.set(key, previous);
-                writeCache();
-                notify();
-                throw cause;
-            }
+        set(key, raw) {
+            return write(key, raw);
         },
-        async clear(key) {
-            const started = generation;
-            const previous = cache.get(key);
-            cache.delete(key);
-            let at = null;
-            try {
-                at = await addressing();
-                if (!at)
-                    throw new Error(`Settings: no ${scope} row is addressable yet, so "${key}" was not cleared.`);
-                await send(at, key, null);
-                if (started !== generation)
-                    return;
-                if (pending.delete(key))
-                    writePending();
-                writeCache();
-                notify();
-            }
-            catch (cause) {
-                if (started !== generation)
-                    throw cause;
-                if (queues(key)) {
-                    holdForLater(key, null, at);
-                    return;
-                }
-                if (previous !== undefined)
-                    cache.set(key, previous);
-                writeCache();
-                notify();
-                throw cause;
-            }
+        clear(key) {
+            return write(key, undefined);
         },
-        reset() {
+        reset({ keepQueued = false } = {}) {
             generation += 1;
             addressed = null;
             resolving = null;
             loaded = false;
             cache.clear();
-            pending.clear();
+            writes.clear();
+            tails.clear();
+            if (!keepQueued)
+                pending.clear();
             if (options.cache) {
                 /*
                   The legacy names go too: they are read whenever the current key is
                   absent, so leaving one would hand the previous account's boat back on
                   the next boot with no network.
                 */
-                for (const name of [cacheKey, pendingKey, ...(options.cache.legacyKeys ?? [])]) {
+                for (const name of [cacheKey, ...(keepQueued ? [] : [pendingKey]), ...(options.cache.legacyKeys ?? [])]) {
                     try {
                         options.cache.storage.removeItem(name);
                     }

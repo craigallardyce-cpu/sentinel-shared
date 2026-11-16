@@ -188,8 +188,23 @@ export interface CloudStore extends ScopeStore {
      * Work already in flight when this is called is discarded when it lands: a
      * `load()` started for the previous account does not fill the cache, and a
      * failed write for it is neither queued nor rolled back.
+     *
+     * `keepQueued: true` keeps the writes still queued for the server, in memory
+     * and in storage, and nothing else. It is for a caller that knows the account
+     * has NOT changed: an app that started offline on its 30-day grace has no
+     * session, so a write made then is queued without a row, and the session
+     * arriving later looks like a sign-in. Dropping the queue at that moment lost
+     * what the owner set at sea. The kept writes are not shown until the next
+     * `load()` has sent them. Never pass it when the account may differ: a write
+     * queued without a row goes to whichever row resolves next.
      */
-    reset(): void;
+    reset(options?: {
+        keepQueued?: boolean;
+    }): void;
+}
+/** A write the server accepted and applied to nothing: the row is not there. */
+export declare class NoRowError extends Error {
+    constructor(message: string);
 }
 export declare function createCloudStore(options: CloudStoreOptions): CloudStore;
 /**
