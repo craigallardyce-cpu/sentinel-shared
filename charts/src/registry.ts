@@ -23,11 +23,13 @@
 import type {
   BasemapSource,
   ChartProvider,
+  CoverageBox,
   ChartRegistry,
   ProviderDescriptor,
   RegistryOptions,
   TileOptions
 } from './types.js';
+import { CHS_REACH, CHS_WATERS } from './chsCoverage.js';
 
 const MERCATOR_MAX = 20037508.3427892;
 
@@ -110,6 +112,24 @@ function buildProviders(options: RegistryOptions): ChartProvider[] {
 
   return [
     {
+      // Listed ahead of NOAA on purpose. Selection takes the first official chart
+      // whose waters hold the position, here and in every client that tests the
+      // boxes itself, and NOAA's boxes are coarse rectangles that take in Canada
+      // south of 50°N. CHS's are drawn inside Canadian water only, so asking it
+      // first cannot take a US harbour from NOAA. See `chsCoverage.ts`.
+      id: 'chs_enc',
+      label: 'CA ENC',
+      kind: 'base',
+      authority: 'official',
+      background: 'light',
+      coverage: CHS_WATERS,
+      reach: CHS_REACH,
+      attribution: 'Canadian Hydrographic Service — not for navigation',
+      maxZoom: 19,
+      referer: 'https://egisp.dfo-mpo.gc.ca/',
+      build: maritimeChartService(CHS_MCS)
+    },
+    {
       id: 'noaa_enc',
       label: 'US ENC',
       kind: 'base',
@@ -129,18 +149,6 @@ function buildProviders(options: RegistryOptions): ChartProvider[] {
       referer: 'https://gis.charttools.noaa.gov/',
       covers: options.noaaCellCoverage,
       build: maritimeChartService(NOAA_MCS)
-    },
-    {
-      id: 'chs_enc',
-      label: 'CA ENC',
-      kind: 'base',
-      authority: 'official',
-      background: 'light',
-      coverage: [{ west: -141, south: 41, east: -52, north: 84 }],
-      attribution: 'Canadian Hydrographic Service — not for navigation',
-      maxZoom: 19,
-      referer: 'https://egisp.dfo-mpo.gc.ca/',
-      build: maritimeChartService(CHS_MCS)
     },
     {
       id: 'maptiler_satellite',
@@ -220,6 +228,10 @@ function buildProviders(options: RegistryOptions): ChartProvider[] {
   ];
 }
 
+function inBoxes(boxes: CoverageBox[], lat: number, lon: number): boolean {
+  return boxes.some((b) => lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north);
+}
+
 function coversPoint(provider: ChartProvider, lat: number, lon: number): boolean {
   // An exact test wins where the host can supply one; it returns null when it cannot answer.
   if (typeof provider.covers === 'function') {
@@ -227,9 +239,7 @@ function coversPoint(provider: ChartProvider, lat: number, lon: number): boolean
     if (exact !== null && exact !== undefined) return exact;
   }
   if (!provider.coverage) return true;
-  return provider.coverage.some(
-    (b) => lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north
-  );
+  return inBoxes(provider.coverage, lat, lon);
 }
 
 /**
@@ -270,9 +280,12 @@ export function createChartRegistry(options: RegistryOptions = {}): ChartRegistr
       if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
         return getProvider(fallbackId);
       }
-      const official = active.find(
-        (p) => p.kind === 'base' && p.authority === 'official' && coversPoint(p, lat, lon)
-      );
+      const charts = active.filter((p) => p.kind === 'base' && p.authority === 'official');
+      // Each chart service is asked for its own waters first, in order. Only when
+      // none claims the position is a service asked about its wider reach.
+      const official =
+        charts.find((p) => coversPoint(p, lat, lon)) ??
+        charts.find((p) => p.reach !== undefined && inBoxes(p.reach, lat, lon));
       return official ?? getProvider(fallbackId);
     },
     describe(): ProviderDescriptor[] {

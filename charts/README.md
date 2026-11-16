@@ -90,12 +90,26 @@ Note that "is any cell here" is also insufficient: NOAA's small-scale overview c
 past US waters, so a usable-scale threshold (coastal, 1:350,000 or better) is what actually
 answers the question.
 
+### The US and Canadian charts along the border
+
+`chs_enc` is listed, and asked, before `noaa_enc`. NOAA's boxes are coarse rectangles that take
+in Canada south of 50°N and the coast of British Columbia, so a boat in Victoria, Toronto or
+Saint John used to be given the US chart, which draws nothing there. CHS's boxes
+(`CHS_WATERS`, in `src/chsCoverage.ts`) are a staircase drawn inside Canadian water only, so
+asking it first cannot take a US harbour away from NOAA, and a client that tests the published
+boxes in list order gets the same answer as `selectBaseProvider`.
+
+Where a river is the border, or two towns face each other across it (Detroit and Windsor,
+Sarnia, Niagara, the Thousand Islands, the St Croix), no box is drawn and the water stays with
+NOAA as before. A host with the NOAA cell catalog does better there: when NOAA has no cell,
+the registry asks CHS about its wider `reach` and gives the position the Canadian chart.
+
 ## Providers
 
 | id | kind | authority | coverage |
 |---|---|---|---|
-| `noaa_enc` | base | official | US waters |
 | `chs_enc` | base | official | Canadian waters |
+| `noaa_enc` | base | official | US waters |
 | `maptiler_satellite` | base | reference | worldwide (key required) |
 | `maptiler_streets` | base | reference | worldwide (key required) |
 | `satellite` | base | reference | worldwide (unlicensed, dev only) |

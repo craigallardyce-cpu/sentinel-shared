@@ -14,5 +14,8 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.CHS_WATERS = void 0;
 __exportStar(require("./types.js"), exports);
 __exportStar(require("./registry.js"), exports);
+var chsCoverage_js_1 = require("./chsCoverage.js");
+Object.defineProperty(exports, "CHS_WATERS", { enumerable: true, get: function () { return chsCoverage_js_1.CHS_WATERS; } });
