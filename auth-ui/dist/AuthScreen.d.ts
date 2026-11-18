@@ -31,7 +31,9 @@ export interface SupabaseClientLike {
             data: any;
             error: any;
         }>;
-        signOut(): Promise<{
+        signOut(options?: {
+            scope?: 'global' | 'local' | 'others';
+        }): Promise<{
             error: any;
         }>;
     };

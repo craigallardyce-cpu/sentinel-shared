@@ -744,7 +744,12 @@ export function AuthScreen({ appName, appId, storage, accessStorageKey, productI
         setLoading(true);
         const seen = signOutsSeen.current;
         try {
-            await supabase.auth.signOut();
+            // This device only. supabase-js signs out globally by default, which ended
+            // the account's session on every phone, tablet and PC, and in every fleet
+            // app, while their unexpired tokens kept them half working: the database
+            // still took them and the AI functions did not (2026-11-16, a VesselKeeper
+            // upload left with no description). Craig chose device-only the same day.
+            await supabase.auth.signOut({ scope: 'local' });
         }
         catch (err) {
             console.error('Sign-out failed:', err);
