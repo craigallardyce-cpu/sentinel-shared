@@ -18,5 +18,5 @@ export { UpdatePanel } from './UpdatePanel';
 export { ScopeBadge, ClearOverride } from './ScopeBadge';
 export { SettingsShell, SettingsSection, SettingsRow } from './SettingsShell';
 export { OpenSourceLicences, LICENCES_FILE, isLicenceFile } from './OpenSourceLicences';
-export { AppShell, HeaderButton } from './AppShell';
+export { AppShell, HeaderButton, HeaderLabel, useHeaderFit, HEADER_STATUS_FLOOR_PX } from './AppShell';
 export { USER_GUIDE_URL, USER_GUIDE_ANCHORS, USER_GUIDE_APP_SECTION, userGuideUrl, openUserGuide } from './userGuide';

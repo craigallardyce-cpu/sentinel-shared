@@ -36,21 +36,65 @@ export interface ShellTab {
      */
     surface?: ShellSurface;
 }
+/**
+ * How much the header has had to give up to fit its controls on one line.
+ *
+ * - `full`: words on the header buttons from `sm` up, icons below it (the
+ *   layout as designed).
+ * - `icons`: the words did not fit, so every header button is its icon at any
+ *   width, the word kept for screen readers.
+ * - `tight`: icons were not enough either, so the wordmark goes too (the brand
+ *   glyph stays) and an app may shorten its own header items.
+ *
+ * AppShell measures this rather than guessing it from a breakpoint, because
+ * Android's WebView scales text with the system font size while every box keeps
+ * its width: a portrait tablet at 736px with 130% text overflowed by 80px, the
+ * watch state off the right edge (Craig, 17 Nov 2026), while the same tablet at
+ * 100% fits with room to spare.
+ */
+export type HeaderFit = 'full' | 'icons' | 'tight';
+/** The header's current fit, for an app's own `headerActions` items. `full` outside a header. */
+export declare function useHeaderFit(): HeaderFit;
+/**
+ * The room a status band keeps when the header is squeezed: its own 8px sides
+ * and a StatusPill standing as its dot (the pill's 32px floor). The status
+ * band gives way before the controls do, but not to nothing --
+ * HarborSentinel's Instruments dot is the connection state and has to show.
+ * At 736px with 100% text that is what tips HarborSentinel's watch header into
+ * icons: the words fitted only by cutting the dot off.
+ */
+export declare const HEADER_STATUS_FLOOR_PX = 48;
+export interface HeaderLabelProps {
+    /** Shown alone below `sm`, and whenever the header has had to give up words. */
+    icon: React.ReactNode;
+    /** Shown instead of the icon from `sm` up while the header fits it. */
+    label?: React.ReactNode;
+}
+/**
+ * The icon-or-word pair every header control draws (HeaderButton's own
+ * content), for an app's header item that is not a HeaderButton, such as
+ * OceanSentinel's "Muted". Follows the header's fit: the word from `sm` up
+ * while it fits, the icon otherwise, with the word kept for screen readers.
+ */
+export declare function HeaderLabel({ icon, label }: HeaderLabelProps): React.JSX.Element;
 export interface HeaderButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    /** Shown alone below `sm`, and wherever there is no `label`. */
+    /** Shown alone below `sm`, wherever there is no `label`, and when the header has had to give up words. */
     icon: React.ReactNode;
     active?: boolean;
-    /** Shown instead of the icon from `sm` up; the icon stands in for it below. */
+    /** Shown instead of the icon from `sm` up, while the header has room; the icon stands in for it otherwise. */
     label?: React.ReactNode;
 }
 /**
  * A header control (Night, Settings, Guide, End watch…): Inter 15/600 in
  * sentence case, 48px tall.
  *
- * An icon or a word, never both: the word from `sm` up, where there is room for
- * it, and the icon below, where there is not (fit-and-finish, "Icons": icon and
- * word together belong only to primary navigation). It was mono, letter-spaced
- * and always iconned, which put a third typeface in every header (X1).
+ * An icon or a word, never both: the word from `sm` up, where there is usually
+ * room for it, and the icon below, where there is not (fit-and-finish, "Icons":
+ * icon and word together belong only to primary navigation). It was mono,
+ * letter-spaced and always iconned, which put a third typeface in every header
+ * (X1). When the words do not fit even from `sm` up (large system text on a
+ * portrait tablet), AppShell switches every header button to its icon; see
+ * `HeaderFit`.
  */
 export declare function HeaderButton({ icon, active, label, className, ...rest }: HeaderButtonProps): React.JSX.Element;
 export interface AppShellProps {
