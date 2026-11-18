@@ -21,6 +21,7 @@
 
 import type { AnyDefinition, Registry, AnySpec } from './registry.js';
 import type { AppName, ScopeStore } from './types.js';
+import { notifyListeners } from './notify.js';
 
 /**
  * The two methods this package needs from a `Storage`. Injected rather than
@@ -141,7 +142,7 @@ export function createDeviceStore(storage: StorageLike, options: DeviceStoreOpti
     },
 
     notifyExternalChange() {
-      for (const listener of listeners) listener();
+      notifyListeners(listeners);
     },
   };
 }
@@ -203,7 +204,7 @@ export function createHostStore(storage: StorageLike, options: HostStoreOptions 
     },
 
     notifyExternalChange() {
-      for (const listener of listeners) listener();
+      notifyListeners(listeners);
     },
   };
 }

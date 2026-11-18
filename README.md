@@ -566,12 +566,22 @@ A device-scope write that storage refuses (full, or blocked in a private
 window) now throws "could not be saved on this device" instead of reporting a
 save that did not happen. Reads and clears still never throw.
 
+A subscriber that throws does not touch the change it was told about. Every
+layer and the settings store call each listener on its own and report one that
+throws with `console.error`; the others are still told, and the `set`, `clear`,
+`load()` or `reset()` that notified finishes as if nothing had happened. A
+listener's error used to reach a cloud write's failure branch, which rolled the
+saved value back on the device and rejected a write the server had kept.
+
 **Adopting loses nothing, but not for free.** A setting declares where it used to
 live per app, and the device store reads those names when the namespaced key is
 absent. That only covers settings declared at `device` scope, because a store is
 never consulted for a scope its setting does not declare — so anything held at
 `account` or `vessel` has its old value sitting in `localStorage` where nothing
-will read it. `migrateLegacyKeys()` carries those up once and records a marker.
+will read it. `migrateLegacyKeys()` carries those up once and records a marker,
+but only when every write landed: a write that fails (offline, signed out,
+refused) is listed in the result's `failed` and leaves the marker unwritten, so
+the next start tries again and skips whatever did land.
 Call it **after** every cloud layer has finished `load()`: a setting reads as
 unconfigured while its layer is still loading, and migrating into that would push
 a stale local value over what the account already holds.

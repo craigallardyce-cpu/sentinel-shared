@@ -27,6 +27,7 @@ exports.NoRowError = void 0;
 exports.createCloudStore = createCloudStore;
 exports.createAccountStore = createAccountStore;
 exports.createVesselStore = createVesselStore;
+const notify_js_1 = require("./notify.js");
 /** A write the server accepted and applied to nothing: the row is not there. */
 class NoRowError extends Error {
     constructor(message) {
@@ -187,10 +188,13 @@ function createCloudStore(options) {
         }
         return resolving;
     }
-    const notify = () => {
-        for (const listener of listeners)
-            listener();
-    };
+    /*
+      Each listener on its own (review S-07). `notify()` runs inside `write()`'s
+      try, after the server has accepted the value, so a listener that threw
+      there used to land in the failure branch: the saved value was rolled back
+      in the cache and the set rejected, though the server had kept it.
+    */
+    const notify = () => (0, notify_js_1.notifyListeners)(listeners);
     const identityColumns = [...new Set(Object.values(columns))].join(', ');
     /** A stored value of any JSON type, as the string a ScopeStore hands back. */
     function asRaw(value) {

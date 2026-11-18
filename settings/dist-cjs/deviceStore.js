@@ -24,6 +24,7 @@ exports.DEFAULT_PREFIX = void 0;
 exports.createDeviceStore = createDeviceStore;
 exports.createHostStore = createHostStore;
 exports.browserStorage = browserStorage;
+const notify_js_1 = require("./notify.js");
 exports.DEFAULT_PREFIX = 'sentinel.';
 function createDeviceStore(storage, options) {
     const { app, registry, prefix = exports.DEFAULT_PREFIX } = options;
@@ -110,8 +111,7 @@ function createDeviceStore(storage, options) {
             return () => listeners.delete(listener);
         },
         notifyExternalChange() {
-            for (const listener of listeners)
-                listener();
+            (0, notify_js_1.notifyListeners)(listeners);
         },
     };
 }
@@ -164,8 +164,7 @@ function createHostStore(storage, options = {}) {
             return () => listeners.delete(listener);
         },
         notifyExternalChange() {
-            for (const listener of listeners)
-                listener();
+            (0, notify_js_1.notifyListeners)(listeners);
         },
     };
 }

@@ -47,7 +47,7 @@ export const DEFAULT_MARKER_KEY = 'sentinel.migrated.legacy.v3';
  */
 export async function migrateLegacyKeys(options) {
     const { registry, settings, app, storage, writableScopes, platform = { native: false }, devicePrefix = DEFAULT_PREFIX, markerKey = DEFAULT_MARKER_KEY, dryRun = false, } = options;
-    const result = { migrated: {}, unparseable: [], alreadyDone: false };
+    const result = { migrated: {}, unparseable: [], failed: [], alreadyDone: false };
     try {
         if (storage.getItem(markerKey)) {
             result.alreadyDone = true;
@@ -139,13 +139,21 @@ export async function migrateLegacyKeys(options) {
         }
         catch {
             /*
-              Offline, signed out, or refused. The marker is still written below, so
-              this value is not retried until the marker is bumped; the legacy key
-              stays in storage for that.
+              Offline, signed out, or refused. Carry on with the rest, but leave the
+              marker unwritten below so the whole migration runs again next time; the
+              legacy key is still in storage for it. Anything that did land is skipped
+              on that run, because its layer now holds a value.
             */
+            result.failed.push(definition.key);
         }
     }
-    if (!dryRun) {
+    /*
+      The marker goes down only when every write landed (review S-09). It used to
+      be written regardless, so a first start with no network recorded the
+      migration as done and the values it could not carry were never tried again.
+      An unparseable value does not hold it back: no later run could read it either.
+    */
+    if (!dryRun && result.failed.length === 0) {
         try {
             storage.setItem(markerKey, new Date().toISOString());
         }

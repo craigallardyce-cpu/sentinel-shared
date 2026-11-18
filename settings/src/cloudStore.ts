@@ -24,6 +24,7 @@
 
 import type { StorageLike } from './deviceStore.js';
 import type { Scope, ScopeStore } from './types.js';
+import { notifyListeners } from './notify.js';
 
 /**
  * Any `@supabase/supabase-js` client, structurally. Deliberately loose: a
@@ -368,9 +369,13 @@ export function createCloudStore(options: CloudStoreOptions): CloudStore {
     return resolving;
   }
 
-  const notify = () => {
-    for (const listener of listeners) listener();
-  };
+  /*
+    Each listener on its own (review S-07). `notify()` runs inside `write()`'s
+    try, after the server has accepted the value, so a listener that threw
+    there used to land in the failure branch: the saved value was rolled back
+    in the cache and the set rejected, though the server had kept it.
+  */
+  const notify = () => notifyListeners(listeners);
 
   const identityColumns = [...new Set(Object.values(columns))].join(', ');
 
