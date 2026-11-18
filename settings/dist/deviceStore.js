@@ -18,6 +18,7 @@
  * without a migration having to run first and without this store quietly
  * rewriting a person's storage on a read.
  */
+import { notifyListeners } from './notify.js';
 export const DEFAULT_PREFIX = 'sentinel.';
 export function createDeviceStore(storage, options) {
     const { app, registry, prefix = DEFAULT_PREFIX } = options;
@@ -104,8 +105,7 @@ export function createDeviceStore(storage, options) {
             return () => listeners.delete(listener);
         },
         notifyExternalChange() {
-            for (const listener of listeners)
-                listener();
+            notifyListeners(listeners);
         },
     };
 }
@@ -158,8 +158,7 @@ export function createHostStore(storage, options = {}) {
             return () => listeners.delete(listener);
         },
         notifyExternalChange() {
-            for (const listener of listeners)
-                listener();
+            notifyListeners(listeners);
         },
     };
 }

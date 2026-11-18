@@ -45,6 +45,11 @@ export interface MigrateLegacyResult {
   migrated: Record<string, Scope>;
   /** Keys that had a legacy value this build could not parse. */
   unparseable: string[];
+  /**
+   * Keys whose write failed -- offline, signed out, refused. When any did, the
+   * marker is not written, so the migration runs again next time.
+   */
+  failed: string[];
   /** True when the marker said this had already run. */
   alreadyDone: boolean;
 }
@@ -94,7 +99,7 @@ export async function migrateLegacyKeys<D extends Record<string, AnySpec>>(
     dryRun = false,
   } = options;
 
-  const result: MigrateLegacyResult = { migrated: {}, unparseable: [], alreadyDone: false };
+  const result: MigrateLegacyResult = { migrated: {}, unparseable: [], failed: [], alreadyDone: false };
 
   try {
     if (storage.getItem(markerKey)) {
@@ -185,14 +190,22 @@ export async function migrateLegacyKeys<D extends Record<string, AnySpec>>(
       result.migrated[definition.key] = target;
     } catch {
       /*
-        Offline, signed out, or refused. The marker is still written below, so
-        this value is not retried until the marker is bumped; the legacy key
-        stays in storage for that.
+        Offline, signed out, or refused. Carry on with the rest, but leave the
+        marker unwritten below so the whole migration runs again next time; the
+        legacy key is still in storage for it. Anything that did land is skipped
+        on that run, because its layer now holds a value.
       */
+      result.failed.push(definition.key);
     }
   }
 
-  if (!dryRun) {
+  /*
+    The marker goes down only when every write landed (review S-09). It used to
+    be written regardless, so a first start with no network recorded the
+    migration as done and the values it could not carry were never tried again.
+    An unparseable value does not hold it back: no later run could read it either.
+  */
+  if (!dryRun && result.failed.length === 0) {
     try {
       storage.setItem(markerKey, new Date().toISOString());
     } catch {

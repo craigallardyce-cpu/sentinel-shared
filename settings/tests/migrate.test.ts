@@ -381,3 +381,111 @@ describe('what makes deleting the old keys safe', () => {
     expect(settings.get('units.metric')).toBe(false);
   });
 });
+
+describe('a migration that could not finish (review S-09)', () => {
+  /** A server that answers reads but refuses every write until `online` is set. */
+  function flaky() {
+    const state = { online: false, merged: 0, updated: 0 };
+    const api: SupabaseLike = {
+      from: () => ({
+        select: () => ({ match: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+        update: () => ({
+          match: async () => {
+            if (!state.online) return { error: { message: 'Failed to fetch' } };
+            state.updated += 1;
+            return { error: null };
+          },
+        }),
+      }),
+      rpc: async () => {
+        if (!state.online) return { data: null, error: { message: 'Failed to fetch' } };
+        state.merged += 1;
+        return { data: null, error: null };
+      },
+    };
+    return { api, state };
+  }
+
+  function setup() {
+    const store = storage(OCEAN_BEFORE);
+    const { api, state } = flaky();
+    const account = createAccountStore(api, 'user-1');
+    const vessel = createVesselStore(api, async () => ({ id: 'v-uuid-1', vesselSlug: 'sentinel' }));
+    const device = createDeviceStore(store, { app: 'ocean', registry: FLEET_SETTINGS });
+    const settings = createSettingsStore({ registry: FLEET_SETTINGS, stores: [account, vessel, device] });
+    const options = {
+      registry: FLEET_SETTINGS,
+      settings,
+      app: 'ocean' as const,
+      storage: store,
+      writableScopes: ['account', 'vessel', 'device'] as const,
+    };
+    return { store, state, account, vessel, settings, options };
+  }
+
+  it('leaves the marker unwritten when a write failed, and names what failed', async () => {
+    const { store, account, vessel, options } = setup();
+    await Promise.all([account.load(), vessel.load()]);
+
+    const result = await migrateLegacyKeys(options);
+
+    expect(result.failed.sort()).toEqual(
+      [
+        'logbook.auto_interval_min',
+        'logbook.included_nmea',
+        'logbook.quick_tap_presets',
+        'vessel.mmsi',
+        'vessel.name',
+        'vessel.type',
+        'vhf.retention_days',
+      ].sort(),
+    );
+    // The device layer has no network to lose, so those still landed.
+    expect(result.migrated).toEqual({
+      'display.night_brightness': 'device',
+      'display.keep_awake': 'device',
+      'units.metric': 'device',
+    });
+    expect(store.getItem(DEFAULT_MARKER_KEY)).toBeNull();
+    // The legacy values are still there for the next run.
+    expect(store.getItem('vhf_retention_days')).toBe('30');
+  });
+
+  it('carries the rest on the next run once the server answers, then marks itself done', async () => {
+    const { store, state, account, vessel, settings, options } = setup();
+    await Promise.all([account.load(), vessel.load()]);
+    await migrateLegacyKeys(options);
+
+    state.online = true;
+    const second = await migrateLegacyKeys(options);
+
+    expect(second.alreadyDone).toBe(false);
+    expect(second.failed).toEqual([]);
+    expect(Object.keys(second.migrated).sort()).toEqual(
+      [
+        'logbook.auto_interval_min',
+        'logbook.included_nmea',
+        'logbook.quick_tap_presets',
+        'vessel.mmsi',
+        'vessel.name',
+        'vessel.type',
+        'vhf.retention_days',
+      ].sort(),
+    );
+    // What landed the first time is not written again.
+    expect(second.migrated).not.toHaveProperty('display.night_brightness');
+    expect(state.merged).toBe(4);
+    expect(state.updated).toBe(3);
+    expect(settings.get('vhf.retention_days')).toBe(30);
+    expect(store.getItem(DEFAULT_MARKER_KEY)).toBeTruthy();
+  });
+
+  it('a dry run still writes no marker', async () => {
+    const { store, state, account, vessel, options } = setup();
+    state.online = true;
+    await Promise.all([account.load(), vessel.load()]);
+    const result = await migrateLegacyKeys({ ...options, dryRun: true });
+    expect(result.failed).toEqual([]);
+    expect(store.getItem(DEFAULT_MARKER_KEY)).toBeNull();
+  });
+});

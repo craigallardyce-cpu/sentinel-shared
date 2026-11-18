@@ -27,6 +27,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createSettingsStore = createSettingsStore;
 const types_js_1 = require("./types.js");
+const notify_js_1 = require("./notify.js");
 const registry_js_1 = require("./registry.js");
 const DESKTOP = { native: false };
 function createSettingsStore(options) {
@@ -39,10 +40,8 @@ function createSettingsStore(options) {
         byScope.set(store.scope, store);
     }
     const listeners = new Set();
-    const notify = () => {
-        for (const listener of listeners)
-            listener();
-    };
+    // Each listener on its own: one that throws must not fail a set that has already saved.
+    const notify = () => (0, notify_js_1.notifyListeners)(listeners);
     const detach = [];
     for (const store of stores) {
         const unsubscribe = store.subscribe?.(notify);

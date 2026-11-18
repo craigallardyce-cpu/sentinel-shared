@@ -25,6 +25,7 @@
  */
 
 import { SCOPE_ORDER } from './types.js';
+import { notifyListeners } from './notify.js';
 import { defaultFor } from './registry.js';
 import type { AnySpec, Registry } from './registry.js';
 import type { PlatformContext, Scope, ScopeStore, SettingValue, Source } from './types.js';
@@ -117,9 +118,8 @@ export function createSettingsStore<D extends Record<string, AnySpec>>(
   }
 
   const listeners = new Set<() => void>();
-  const notify = () => {
-    for (const listener of listeners) listener();
-  };
+  // Each listener on its own: one that throws must not fail a set that has already saved.
+  const notify = () => notifyListeners(listeners);
   const detach: Array<() => void> = [];
   for (const store of stores) {
     const unsubscribe = store.subscribe?.(notify);

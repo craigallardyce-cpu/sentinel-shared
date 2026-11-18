@@ -40,6 +40,11 @@ export interface MigrateLegacyResult {
     migrated: Record<string, Scope>;
     /** Keys that had a legacy value this build could not parse. */
     unparseable: string[];
+    /**
+     * Keys whose write failed -- offline, signed out, refused. When any did, the
+     * marker is not written, so the migration runs again next time.
+     */
+    failed: string[];
     /** True when the marker said this had already run. */
     alreadyDone: boolean;
 }

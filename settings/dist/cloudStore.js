@@ -21,6 +21,7 @@
  * The client is injected, exactly as in `@sentinel/vessel`, so this package
  * depends on no Supabase library and three apps install nothing new.
  */
+import { notifyListeners } from './notify.js';
 /** A write the server accepted and applied to nothing: the row is not there. */
 export class NoRowError extends Error {
     constructor(message) {
@@ -180,10 +181,13 @@ export function createCloudStore(options) {
         }
         return resolving;
     }
-    const notify = () => {
-        for (const listener of listeners)
-            listener();
-    };
+    /*
+      Each listener on its own (review S-07). `notify()` runs inside `write()`'s
+      try, after the server has accepted the value, so a listener that threw
+      there used to land in the failure branch: the saved value was rolled back
+      in the cache and the set rejected, though the server had kept it.
+    */
+    const notify = () => notifyListeners(listeners);
     const identityColumns = [...new Set(Object.values(columns))].join(', ');
     /** A stored value of any JSON type, as the string a ScopeStore hands back. */
     function asRaw(value) {
