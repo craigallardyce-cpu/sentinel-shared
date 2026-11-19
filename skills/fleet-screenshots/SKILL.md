@@ -1,6 +1,6 @@
 ---
 name: fleet-screenshots
-description: Capture or re-capture screenshots of HarborSentinel, OceanSentinel or VesselKeeper with headless Playwright, at the device reference size plus the Web Tablet and Web Phone sizes the website and catalogues need, and publish them to docs-kb. Use when asked for app screenshots, to add a screen or a size to a catalogue, to re-shoot after a UI change, or when a catalogue's images no longer match the app.
+description: Capture or re-capture screenshots of HarborSentinel, OceanSentinel or VesselKeeper with headless Playwright, at the device reference size plus the Web Tablet and Web Phone sizes the website and catalogues need, and publish them to docs-kb and the MarinerSentinel website. Use when asked for app screenshots, to add a screen or a size to a catalogue, to re-shoot after a UI change, or when a catalogue's or the website's images no longer match the app.
 ---
 
 # Fleet screenshots
@@ -128,9 +128,48 @@ These cost a run each and are not app-specific — check for them at every size.
 3. **Verify the page, do not assume it.** Load it headless, click each size
    button, and assert every image has `naturalWidth > 0`, no "Not yet captured"
    fallback, and no console errors.
-4. One PR per repo — the images in `docs-kb`, any pipeline change in
-   NMEADataSimulator — each with a `Fleet:` line naming the other. Neither repo
+4. One PR per repo — the images in `docs-kb` (and the website, below), any
+   pipeline change in NMEADataSimulator — each with a `Fleet:` line naming the other. Neither repo
    runs CI, so say plainly that the evidence is your own review, not a green check.
+
+## Publishing to the website
+
+The MarinerSentinel website carries its own copies, under
+`public/screenshots/<Harbor Sentinel|Ocean Sentinel|Vessel Keeper>/<Tablet|Mobile>/`,
+as **JPEG** at the capture's exact pixels (Web Tablet 2560×1440 into `Tablet/`,
+Web Phone 1236×2415 into `Mobile/`), named `<N>. <Screen>.jpg`. Never resize or
+crop to fit: a size that does not match is a wrong viewport, so re-shoot.
+
+1. Convert each PNG to a progressive JPEG (quality about 88) at the same size.
+2. Add the file stem to the product view's `file` map in
+   `src/views/<Product>View.tsx`. Both folders carry identically named files,
+   so a screen goes into both or the tour's phone view shows a broken image.
+3. A product page job shows a screen through its `shot` id in
+   `src/content/products.ts`; a tour screen needs an entry in the view's
+   `screens` (and the tour intro's count updated). Captions and alt text are
+   for experienced sailors and must say only what the picture shows.
+4. Run `verify-clean` on the website and load the page headless: assert each
+   new image has `naturalWidth > 0`, at both the tablet and phone tour views.
+5. The website PR carries a `Customer-visible:` line. Captions are not in
+   `COPY-INVENTORY.md`; anything else the PR changes in the copy may be.
+
+### A screen that needs a live call
+
+Some screens only exist after the app does real work, such as an Ask answer.
+Script the input in the screen definition (the exact words, spelled right,
+since they end up on the website), wait for the result, and fail on the app's
+error text rather than save it. Shoot such a screen by name on its own, never
+in a full run, because each run spends a real call.
+
+## Where it runs
+
+The saved session (`.auth/`), the apps' local config and the owner's data are on
+Craig's PC, so a cloud session cannot shoot. Push the pipeline change on a
+branch, then run it there through Remote Control: check out that branch in
+`NMEA Data Simulator` (only if its tree is clean), serve the app as the README
+says, run `run-<app>.mjs` for the named screens and sizes, and copy the PNGs to
+a folder the thread can stage. Stop Remote Control before staging, because the
+folder tools are withheld while it runs.
 
 ## Reporting back
 
