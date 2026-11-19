@@ -171,6 +171,13 @@ says, run `run-<app>.mjs` for the named screens and sizes, and copy the PNGs to
 a folder the thread can stage. Stop Remote Control before staging, because the
 folder tools are withheld while it runs.
 
+The saved session lasts weeks, not months (VesselKeeper's lapsed after about
+six), and an expired one stops the run at the sign-in screen. Check it with a
+one-screen run before a full shoot; if it has lapsed, Craig runs
+`node save-session.mjs <app>` and signs in himself. Craig's installed desktop
+VesselKeeper holds port 3001, so serve a clean build on another port and pass
+`VK_URL`.
+
 ## Reporting back
 
 Say which screens were reviewed and against what, and keep the provenance: "the
