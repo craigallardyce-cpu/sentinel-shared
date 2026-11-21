@@ -171,7 +171,7 @@ reproduce this layout before anything builds.
   ```
   It covers cross-app dependency alignment, version alignment, Vite aliases for
   every bare import a shared package makes, the dev server's `fs.allow` reaching this repo, local re-copies of extracted
-  modules, Android parity and `applicationId` vs Electron `appId`, OceanSentinel's
+  modules, Android and iOS parity, `applicationId` vs Electron `appId`, OceanSentinel's
   backend-dep mirroring, the Linux launchers' switches, stale or unpublished `sentinel-shared` SHA pins, palette
   integrity, the installed `sentinel-check` skill, settings drift, theme
   adoption and the open-source licence list each build ships. It is part of each app's `npm run verify`, run at the same per-app
@@ -285,7 +285,10 @@ something then broke.
    see Deliberate divergence). Keep all three the same. OceanSentinel's `frontend/` and `backend/` versions are not
    the real one. **Bump `fleet-version.json` here in the same set**, because the
    drift checker compares every app against it and all three go red until it
-   moves — which is the guard working, not a fault to route around. Then run
+   moves — which is the guard working, not a fault to route around. Bump
+   `MARKETING_VERSION` in each app's iOS project too
+   (`ios/App/App.xcodeproj/project.pbxproj`, OceanSentinel's under `frontend/`):
+   Xcode cannot read `package.json`, and the checker fails a mismatch. Then run
    `npm install --legacy-peer-deps` in each app and commit the lockfile: npm
    records the version in the lockfile too, and the checker fails a stale one.
 3. If a shared package changed, bump the pinned `sentinel-shared` SHA in all
@@ -342,6 +345,18 @@ something then broke.
    is left by hand is signing in and About. Nothing automated touches macOS, and
    a build that packages is not a build that starts: the Supabase-configuration
    failure survived four releases because nobody launched an installer.
+
+**iPhone and iPad** (added 2026-11-21, roadmap #7): each app has a Capacitor
+iOS project (`ios/`, OceanSentinel's `frontend/ios/`), on Swift Package Manager,
+with the bundle id equal to the Electron `appId` and phones locked to portrait
+as on Android; the drift checker holds all of that. Nothing here can compile it:
+it needs Xcode on a Mac. Each app's `ios.yml` is a `workflow_dispatch`-only
+simulator compile with no signing, on macOS, so it bills at ×10 and runs only
+when Craig asks. Signing, archiving and the App Store Connect upload wait on the
+Apple developer account, which comes with the LLC in April 2027. The build
+number (`CURRENT_PROJECT_VERSION`, 1 in all three) has no scheme yet; App Store
+Connect needs it to rise with every upload, so settle it with the first
+TestFlight build.
 
 Android bundles and the Play Console upload run on a machine with the Android
 SDK and the signing keystore; the private `sentinel-fleet-play-release` skill
