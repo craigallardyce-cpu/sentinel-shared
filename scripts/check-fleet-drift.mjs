@@ -34,6 +34,7 @@ import {
   inlineFontSizes,
 } from './lib/style-scan.mjs';
 import { findAppDir } from './lib/fleet-apps.mjs';
+import { plistArray, plistString, pbxSettings } from './lib/ios-project.mjs';
 
 const SHARED_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = path.resolve(SHARED_ROOT, '..');
@@ -44,14 +45,15 @@ const APPS = [
     // Capacitor/Android live under frontend/ for this app, unlike the other two.
     viteConfig: 'frontend/vite.config.js',
     androidDir: 'frontend/android',
+    iosDir: 'frontend/ios',
     playPackage: 'com.oceansentinel.app',
     // dist/server.cjs is bundled at the repo root with --packages=external, so it
     // resolves runtime deps from the ROOT node_modules, not backend/'s. Any runtime
     // dep of the backend must therefore also appear in the root package.json.
     mirrorsBackendDeps: true,
   },
-  { name: 'HarborSentinel', viteConfig: 'vite.config.ts', androidDir: 'android', playPackage: 'com.harborsentinel.app' },
-  { name: 'VesselKeeper', viteConfig: 'vite.config.ts', androidDir: 'android', playPackage: 'com.vesselkeeper.app' },
+  { name: 'HarborSentinel', viteConfig: 'vite.config.ts', androidDir: 'android', iosDir: 'ios', playPackage: 'com.harborsentinel.app' },
+  { name: 'VesselKeeper', viteConfig: 'vite.config.ts', androidDir: 'android', iosDir: 'ios', playPackage: 'com.vesselkeeper.app' },
 ];
 
 // Packages that must not diverge across apps: they are either shared-package peer
@@ -59,7 +61,7 @@ const APPS = [
 // version split silently changes behaviour on one app only.
 const ALIGNED_DEPS = [
   'react', 'react-dom', 'lucide-react', 'motion',
-  '@capacitor/core', '@capacitor/device', '@capacitor/android',
+  '@capacitor/core', '@capacitor/device', '@capacitor/android', '@capacitor/ios',
   '@supabase/supabase-js', 'tailwindcss',
   // The desktop shell: @sentinel/electron-shell is written against one Electron
   // major, and the three apps release as one, so they move together.
@@ -640,6 +642,61 @@ for (const app of presentApps) {
   const appIdMatch = gSrc.match(/applicationId\s+["']([^"']+)["']/);
   if (appIdMatch && app.playPackage && appIdMatch[1] !== app.playPackage) {
     fail('android', `${app.name}: applicationId "${appIdMatch[1]}" != Play Console package "${app.playPackage}" (Play rejects uploads under any other name)`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6b. iPhone and iPad parity (roadmap #7, added 2026-11-21).
+//
+//     The same rules as Android, held in the Xcode project instead. The bundle
+//     identifier is the Electron appId: unlike Play, App Store Connect has no
+//     package registered under the old names, so the fleet's own com.marinersentinel.*
+//     is the one to use, and it can never change once the app exists there.
+//     MARKETING_VERSION is iOS's versionName; Xcode cannot read package.json, so
+//     it is written into the project and a release bumps it with the rest
+//     (CLAUDE.md, Releasing, step 2). Phones lock to portrait and iPads rotate,
+//     as on Android. An app with no iOS project only warns, so this can land
+//     before the apps' own PRs do.
+// ---------------------------------------------------------------------------
+const ALL_ORIENTATIONS = ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown',
+  'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'];
+for (const app of presentApps.filter((a) => a.iosDir)) {
+  const iDir = path.join(app.dir, app.iosDir, 'App');
+  const pbx = path.join(iDir, 'App.xcodeproj/project.pbxproj');
+  const plist = path.join(iDir, 'App/Info.plist');
+  if (!exists(pbx) || !exists(plist)) { warn('ios', `${app.name}: no iOS project at ${app.iosDir}`); continue; }
+  const pSrc = readText(pbx);
+  const lSrc = readText(plist);
+  const pkg = readJson(path.join(app.dir, 'package.json'));
+
+  const appId = pkg.build && pkg.build.appId;
+  const bundleIds = pbxSettings(pSrc, 'PRODUCT_BUNDLE_IDENTIFIER');
+  if (!bundleIds.length) fail('ios', `${app.name}: no PRODUCT_BUNDLE_IDENTIFIER in the Xcode project`);
+  for (const id of bundleIds) {
+    if (appId && id !== appId) fail('ios', `${app.name}: iOS bundle id "${id}" != Electron appId "${appId}"`);
+  }
+
+  const versions = pbxSettings(pSrc, 'MARKETING_VERSION');
+  if (!versions.length) fail('ios', `${app.name}: no MARKETING_VERSION in the Xcode project`);
+  for (const v of versions) {
+    if (v !== pkg.version) fail('ios', `${app.name}: iOS MARKETING_VERSION ${v} != package.json ${pkg.version} — bump it in ${app.iosDir}/App/App.xcodeproj/project.pbxproj with the release`);
+  }
+  if (plistString(lSrc, 'CFBundleShortVersionString') !== '$(MARKETING_VERSION)') {
+    fail('ios', `${app.name}: Info.plist CFBundleShortVersionString must be $(MARKETING_VERSION)`);
+  }
+
+  const families = pbxSettings(pSrc, 'TARGETED_DEVICE_FAMILY');
+  if (!families.length || families.some((f) => f !== '1,2')) {
+    fail('ios', `${app.name}: TARGETED_DEVICE_FAMILY must be "1,2" (iPhone and iPad), found ${families.join(', ') || 'none'}`);
+  }
+
+  const phone = plistArray(lSrc, 'UISupportedInterfaceOrientations');
+  const pad = plistArray(lSrc, 'UISupportedInterfaceOrientations~ipad');
+  if (!phone || phone.length !== 1 || phone[0] !== 'UIInterfaceOrientationPortrait') {
+    fail('ios', `${app.name}: iPhone must lock to portrait (UISupportedInterfaceOrientations = Portrait only), as Android phones do`);
+  }
+  if (!pad || ALL_ORIENTATIONS.some((o) => !pad.includes(o))) {
+    fail('ios', `${app.name}: iPad must rotate freely (UISupportedInterfaceOrientations~ipad lists all four), as Android tablets do`);
   }
 }
 
