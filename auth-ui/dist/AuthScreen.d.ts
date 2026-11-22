@@ -56,6 +56,18 @@ export interface AuthScreenProps {
     storage: StorageLike;
     /** Two-word product name used in copy, e.g. "Harbor Sentinel". */
     appName: string;
+    /**
+     * The app's own glyph, drawn above its name on the sign-in and sign-up form
+     * and on the licence check: the same element the app gives `AppShell` as
+     * `brandIcon` (HarborSentinel's anchor, OceanSentinel's waves, VesselKeeper's
+     * shield). Sized by this screen, so pass it unsized.
+     *
+     * There is deliberately no default. This screen used to draw VesselKeeper's
+     * shield for every app (and HarborSentinel's anchor on the licence check), so
+     * OceanSentinel's sign-in wore VesselKeeper's mark. An app that passes nothing
+     * gets no glyph rather than another app's.
+     */
+    brandIcon?: React.ReactNode;
     /** One-word app id used in the "not connected to Supabase" message, e.g. "HarborSentinel". */
     appId: string;
     /** Storage key that gates access once a subscription is verified, e.g. "harborsentinel_access". */
@@ -214,4 +226,4 @@ export declare function offlineGraceRemaining(storage: StorageLike, accessStorag
  * and so does a start that simply has no session while online.
  */
 export declare function offlineGrantUserId(storage: StorageLike, accessStorageKey: string, offlineGraceDays: number, sessionError?: unknown): string | null;
-export declare function AuthScreen({ appName, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays, termsVersion, onSignedOut }: AuthScreenProps): React.JSX.Element;
+export declare function AuthScreen({ appName, brandIcon, appId, storage, accessStorageKey, productId, supabase, isConfigured, fetchMachineId, onAuthenticated, desktopRequiresFeature, legacyStorageKey, allowOfflineMode, offlineGraceDays, termsVersion, onSignedOut }: AuthScreenProps): React.JSX.Element;
