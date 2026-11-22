@@ -175,6 +175,51 @@ describe('AuthScreen — login form', () => {
     expect(screen.getByText('Harbor Sentinel')).toBeInTheDocument();
   });
 
+  // OceanSentinel's sign-in wore VesselKeeper's shield: the screen drew one
+  // hardcoded glyph for every app. It now draws the glyph the app hands it.
+  it("draws the app's own brand icon above its name", async () => {
+    const supabase = makeMockSupabase({ session: null });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="OceanSentinel"
+        appId="OceanSentinel"
+        brandIcon={<svg data-testid="ocean-waves" />}
+        accessStorageKey="oceansentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+
+    await screen.findByText('Sign in to continue');
+    const slot = screen.getByTestId('auth-brand-icon');
+    expect(slot).toContainElement(screen.getByTestId('ocean-waves'));
+    expect(slot.querySelectorAll('svg')).toHaveLength(1);
+  });
+
+  it('draws no glyph at all rather than another app\'s when none is given', async () => {
+    const supabase = makeMockSupabase({ session: null });
+    render(
+      <AuthScreen
+        storage={storage}
+        appName="OceanSentinel"
+        appId="OceanSentinel"
+        accessStorageKey="oceansentinel_access"
+        productId="prod-1"
+        supabase={supabase}
+        isConfigured={true}
+        fetchMachineId={fetchMachineId}
+        onAuthenticated={vi.fn()}
+      />
+    );
+
+    await screen.findByText('Sign in to continue');
+    expect(screen.queryByTestId('auth-brand-icon')).not.toBeInTheDocument();
+  });
+
   it('submits email/password via supabase.auth.signInWithPassword', async () => {
     const supabase = makeMockSupabase({ session: null });
     render(

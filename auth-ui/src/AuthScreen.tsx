@@ -1,6 +1,6 @@
 import type { StorageLike } from './storage';
 import React, { useState, useEffect, useRef } from 'react';
-import { Anchor, ShieldCheck, AlertTriangle, RefreshCw, LogOut, Trash2 } from 'lucide-react';
+import { AlertTriangle, RefreshCw, LogOut, Trash2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Device } from '@capacitor/device';
 import type { Entitlements } from './entitlements';
@@ -43,6 +43,18 @@ export interface AuthScreenProps {
   storage: StorageLike;
   /** Two-word product name used in copy, e.g. "Harbor Sentinel". */
   appName: string;
+  /**
+   * The app's own glyph, drawn above its name on the sign-in and sign-up form
+   * and on the licence check: the same element the app gives `AppShell` as
+   * `brandIcon` (HarborSentinel's anchor, OceanSentinel's waves, VesselKeeper's
+   * shield). Sized by this screen, so pass it unsized.
+   *
+   * There is deliberately no default. This screen used to draw VesselKeeper's
+   * shield for every app (and HarborSentinel's anchor on the licence check), so
+   * OceanSentinel's sign-in wore VesselKeeper's mark. An app that passes nothing
+   * gets no glyph rather than another app's.
+   */
+  brandIcon?: React.ReactNode;
   /** One-word app id used in the "not connected to Supabase" message, e.g. "HarborSentinel". */
   appId: string;
   /** Storage key that gates access once a subscription is verified, e.g. "harborsentinel_access". */
@@ -359,6 +371,7 @@ export function offlineGrantUserId(
 
 export function AuthScreen({
   appName,
+  brandIcon,
   appId,
   storage,
   accessStorageKey,
@@ -964,7 +977,11 @@ export function AuthScreen({
     return (
       <div className="min-h-screen bg-bg-panel flex items-center justify-center text-text-primary">
         <div className="flex flex-col items-center gap-4">
-          <Anchor className="w-12 h-12 text-cyan animate-pulse" />
+          {brandIcon && (
+            <span className="text-cyan animate-pulse [&>svg]:w-12 [&>svg]:h-12" aria-hidden data-testid="auth-brand-icon">
+              {brandIcon}
+            </span>
+          )}
           <h2 className="text-xl font-bold">Verifying Sentinel License...</h2>
         </div>
       </div>
@@ -1070,9 +1087,15 @@ export function AuthScreen({
     <div className="min-h-screen bg-bg-panel flex items-center justify-center text-text-primary p-4">
       <div className="max-w-md w-full bg-bg-card rounded-xl border border-border-color shadow-2xl overflow-hidden">
         <div className="p-8 text-center bg-bg-card border-b border-border-color">
-          <div className="mx-auto bg-cyan/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-cyan/50">
-            <ShieldCheck className="w-8 h-8 text-cyan" />
-          </div>
+          {brandIcon && (
+            <div
+              className="mx-auto bg-cyan/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 border border-cyan/50 text-cyan [&>svg]:w-8 [&>svg]:h-8"
+              aria-hidden
+              data-testid="auth-brand-icon"
+            >
+              {brandIcon}
+            </div>
+          )}
           <h1 className="text-2xl font-heading font-semibold text-text-primary">{appName}</h1>
           <p className="text-sm text-text-secondary mt-2">
             {isRegistering ? 'Create your credentials for free' : 'Sign in to continue'}
