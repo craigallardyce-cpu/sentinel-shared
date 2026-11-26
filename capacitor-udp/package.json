@@ -1,0 +1,38 @@
+{
+  "name": "@sentinel/capacitor-udp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UDP NMEA input for the fleet's Android apps: a small Capacitor plugin that listens on a port for what a gateway broadcasts, and a client with the same shape as the apps' TCP clients.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.4.3",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.12"
+  }
+}

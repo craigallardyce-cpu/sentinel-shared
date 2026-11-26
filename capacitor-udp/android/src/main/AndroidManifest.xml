@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Merged into each app's manifest. Without the multicast lock that this
+      permission allows, many phones filter broadcast and multicast packets
+      out on the Wi-Fi chip (to save battery), and a gateway's NMEA broadcast
+      never reaches the app. A normal permission: granted at install, no prompt.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

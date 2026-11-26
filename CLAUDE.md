@@ -154,6 +154,7 @@ reproduce this layout before anything builds.
   | `@sentinel/settings` | The settings registry: one declaration per setting, resolved through account, vessel, host and device layers |
   | `@sentinel/lan-pairing` | LAN pairing auth for the two on-boat backends (server-side; not for Vite) |
   | `@sentinel/update-feed` | The desktop update feed's address and the About panel's version check (server-side) |
+  | `@sentinel/capacitor-udp` | UDP NMEA input on Android: a small native Capacitor plugin plus a client shaped like the apps' TCP clients |
   | `@mariner-sentinel/charts` | The nautical chart provider registry: coverage-aware layer selection, tile URL construction and per-provider licensing metadata. Note the scope: this one package is `@mariner-sentinel/*`, not `@sentinel/*` |
 
   The README here describes each one in depth.
