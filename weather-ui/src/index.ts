@@ -24,6 +24,7 @@ export {
   hasNewAdvisory,
   parseAdvisoryCollapse,
   localStorageCollapseStore,
+  WARNINGS_BANNER_MAX_HEIGHT_VAR,
 } from './WarningsBanner';
 export type {
   WarningsBannerProps,

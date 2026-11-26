@@ -150,6 +150,14 @@ export declare function sentenceCase(text: string): string;
 /** "just now", "12 min ago", "3 h ago", "2 days ago". Same wording as OceanSentinel's strip. */
 export declare function formatCheckAge(checkedAt: number | null | undefined, now?: number): string | null;
 /**
+ * The CSS custom property a host sets, on the banner or any element around it,
+ * to the most height the banner may take: the room between where it sits and
+ * whatever is under it (an instrument strip, a control cluster, the tab bar).
+ * Past it, the expanded details scroll inside the banner and the summary row
+ * stays in view. Unset, the banner grows with its content.
+ */
+export declare const WARNINGS_BANNER_MAX_HEIGHT_VAR = "--warnings-banner-max-height";
+/**
  * The banner. Without `collapsible` or `collapseStore` it is exactly the banner
  * it always was; with either, see `CollapsibleWarningsBanner` below.
  */
