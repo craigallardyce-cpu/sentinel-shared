@@ -198,6 +198,41 @@ describe('count and expand', () => {
   });
 });
 
+/**
+ * A long advisory expanded on a phone ran past the instrument strip with no way
+ * to read the rest (HarborSentinel, Craig, 26 Nov 2026). The host now says how
+ * tall the banner may grow, and past that the details scroll inside it while
+ * the summary row, which collapses it again, stays in view.
+ */
+describe('WarningsBanner expanded past the room it has', () => {
+  it('names the custom property hosts set', () => {
+    expect(pkg.WARNINGS_BANNER_MAX_HEIGHT_VAR).toBe('--warnings-banner-max-height');
+  });
+
+  it('takes its ceiling from the host and grows freely without one', () => {
+    render(<WarningsBanner warnings={[STORM]} defaultExpanded />);
+    const banner = screen.getByRole('alert', { name: /marine warnings/i });
+    expect(banner.getAttribute('style')).toContain('max-height: var(--warnings-banner-max-height, none)');
+    expect(banner).toHaveClass('flex', 'flex-col');
+  });
+
+  it('scrolls the details, not the summary row', () => {
+    render(<WarningsBanner warnings={[STORM, GALE]} defaultExpanded />);
+    const details = screen.getByTestId('warnings-banner-details');
+    expect(details).toHaveClass('min-h-0', 'overflow-y-auto', 'overscroll-contain', 'touch-pan-y');
+    expect(within(details).getByRole('list', { name: /warnings in force/i })).toBeInTheDocument();
+    const toggle = screen.getByRole('button', { expanded: true });
+    expect(toggle).toHaveClass('shrink-0');
+    expect(details).not.toContainElement(toggle);
+  });
+
+  it('keeps the scroller when the banner is collapsible', () => {
+    const store = { read: () => null, write: () => {} };
+    render(<WarningsBanner warnings={[STORM]} collapseStore={store} defaultExpanded />);
+    expect(screen.getByTestId('warnings-banner-details')).toHaveClass('overflow-y-auto');
+  });
+});
+
 describe('host clauses', () => {
   it('reads the host detail after the event name', () => {
     const { container } = render(

@@ -330,6 +330,15 @@ const NOTICE_TEXT: Record<WarningsNotice, string> = {
   'not-checked': "Couldn't check for warnings — not an all-clear",
 };
 
+/**
+ * The CSS custom property a host sets, on the banner or any element around it,
+ * to the most height the banner may take: the room between where it sits and
+ * whatever is under it (an instrument strip, a control cluster, the tab bar).
+ * Past it, the expanded details scroll inside the banner and the summary row
+ * stays in view. Unset, the banner grows with its content.
+ */
+export const WARNINGS_BANNER_MAX_HEIGHT_VAR = '--warnings-banner-max-height';
+
 /* Token classes. Every colour and radius resolves through @sentinel/theme, so
    `.theme-night` re-colours all of it. Both consuming apps already @source this
    package's dist for Tailwind. */
@@ -448,14 +457,22 @@ function BannerBody({
   );
 
   const rowClass =
-    'w-full min-h-12 py-1.5 sm:h-12 sm:py-0 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
+    'shrink-0 w-full min-h-12 py-1.5 sm:h-12 sm:py-0 flex items-center gap-3 pl-4 pr-2 text-left text-body-md cursor-pointer ' +
     'rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus';
 
+  /* How tall the banner may grow is the host's to say, through
+     --warnings-banner-max-height (see WARNINGS_BANNER_MAX_HEIGHT_VAR): only the
+     host knows what is under it. Expanded past that, the summary row stays put
+     and the details scroll inside the banner, so the last lines of a long
+     advisory are never left under the instrument strip or the tab bar where
+     nothing can reach them (HarborSentinel, Craig, 26 Nov 2026). Unset, the
+     banner grows with its content as it always did. */
   return (
     <section
       aria-label="Marine warnings"
       role={level === 'alarm' ? 'alert' : 'status'}
-      className={`pointer-events-auto ${SURFACE} ${tone.band} ${className}`}
+      className={`pointer-events-auto flex flex-col ${SURFACE} ${tone.band} ${className}`}
+      style={{ maxHeight: `var(${WARNINGS_BANNER_MAX_HEIGHT_VAR}, none)` }}
     >
       {onOpen ? (
         <button type="button" className={rowClass} onClick={onOpen}>
@@ -481,7 +498,15 @@ function BannerBody({
       )}
 
       {!onOpen && expanded && (
-        <div id={listId} className="px-4 pb-4 pt-1 flex flex-col gap-3 text-body-md text-text-primary">
+        <div
+          id={listId}
+          data-testid="warnings-banner-details"
+          /* The details are the banner's scroller. `overscroll-contain` keeps a
+             fling that reaches the end from carrying on into the page, and
+             `touch-pan-y` gives the gesture to this box rather than the chart:
+             the banner floats over a map that pans on the same drag. */
+          className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y rounded-b-xl px-4 pb-4 pt-1 flex flex-col gap-3 text-body-md text-text-primary"
+        >
           {(area || stale || partial) && (
             <div className="flex flex-col gap-1 text-body-sm text-text-secondary">
               {area && <span>{area}</span>}

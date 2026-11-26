@@ -4,7 +4,7 @@ export { default as ForecastTimeline } from './ForecastTimeline';
 export type { ForecastPeriod, ForecastTimelineProps } from './ForecastTimeline';
 export { nwsSentenceCase, isShouting, windUnitKt } from './nwsText';
 export type { NwsSentenceCaseOptions } from './nwsText';
-export { WarningsBanner, warningLevel, sortWarnings, sentenceCase, formatCheckAge, advisoryKey, isAdvisoryCollapsed, hasNewAdvisory, parseAdvisoryCollapse, localStorageCollapseStore, } from './WarningsBanner';
+export { WarningsBanner, warningLevel, sortWarnings, sentenceCase, formatCheckAge, advisoryKey, isAdvisoryCollapsed, hasNewAdvisory, parseAdvisoryCollapse, localStorageCollapseStore, WARNINGS_BANNER_MAX_HEIGHT_VAR, } from './WarningsBanner';
 export type { WarningsBannerProps, BannerWarning, WarningLevel, WarningsNotice, AdvisoryCollapseSnapshot, AdvisoryCollapseStore, CollapseStorageLike, } from './WarningsBanner';
 export * from './weatherUtils';
 export { WIND_BANDS, windBandRgb, windBandColor, windScaleGradient, windBandEdges } from './windScale';
